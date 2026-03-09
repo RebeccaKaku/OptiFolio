@@ -1,26 +1,30 @@
-# # src/data_core/fetchers/__init__.py
+# fetchers/__init__.py
+"""
+NeoFM 数据抓取模块
 
-# from .us_equity import UsEquityFetcher
-# from .cn_fund import CnFundFetcher
-# from .cn_stock import CnStockFetcher
-# from .currency import CurrencyFetcher
-# from .factory import FetcherFactory, get_factory, register_fetcher, get_fetcher
+提供统一的数据抓取接口，支持多种数据源：
+- CryptoFetcher: 加密货币数据 (基于 CCXT)
+- YahooFinanceFetcher: 美股/港股/ETF 数据 (基于 yfinance)
+- CnFundFetcher: 中国公募基金数据 (基于 akshare)
+"""
 
-# # For backward compatibility
-# YFinanceFetcher = UsEquityFetcher
-# AkshareFetcher = CnFundFetcher
-# FXFetcher = CurrencyFetcher
+from .interfaces import AsyncBaseFetcher
+from .crypto_fetcher import CryptoFetcher
+from .yahoo_fetcher import YahooFinanceFetcher
+from .cn_fund import CnFundFetcher
 
-# __all__ = [
-#     'UsEquityFetcher',
-#     'CnFundFetcher',
-#     'CnStockFetcher',
-#     'CurrencyFetcher',
-#     'FetcherFactory',
-#     'get_factory',
-#     'register_fetcher',
-#     'get_fetcher',
-#     'YFinanceFetcher',  # alias for backward compatibility
-#     'AkshareFetcher',   # alias for backward compatibility
-#     'FXFetcher',        # alias for CurrencyFetcher
-# ]
+# 别名，方便使用
+YFinanceFetcher = YahooFinanceFetcher
+AkshareFetcher = CnFundFetcher
+
+__all__ = [
+    # 核心接口
+    'AsyncBaseFetcher',
+    # 具体实现
+    'CryptoFetcher',
+    'YahooFinanceFetcher',
+    'CnFundFetcher',
+    # 别名
+    'YFinanceFetcher',
+    'AkshareFetcher',
+]
