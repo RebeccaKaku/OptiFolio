@@ -12,7 +12,7 @@ import pandas as pd
 from typing import Optional
 
 # 导入标准接口
-from interfaces import AsyncBaseFetcher
+from .interfaces import AsyncBaseFetcher
 
 
 class CnFundFetcher(AsyncBaseFetcher):

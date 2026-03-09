@@ -4,7 +4,7 @@ import yfinance as yf
 from typing import Optional
 
 # 导入你之前定义的接口 (假设在 interfaces.py 中)
-from interfaces import AsyncBaseFetcher
+from .interfaces import AsyncBaseFetcher
 
 class YahooFinanceFetcher(AsyncBaseFetcher):
     """

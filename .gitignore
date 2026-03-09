@@ -163,14 +163,6 @@ cython_debug/
 *.swp
 *.swo
 
-# Legacy fetchers (to be ignored)
-fetchers/cn_stock.py
-fetchers/currency.py
-fetchers/factory.py
-fetchers/fetcher_test.py
-fetchers/main.py
-fetchers/money_market_fund.py
-fetchers/us_equity.py
 
 # Local data files
 *.csv

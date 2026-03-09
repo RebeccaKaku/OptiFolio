@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 # 导入你之前定义的接口
-from interfaces import AsyncBaseFetcher 
+from .interfaces import AsyncBaseFetcher
 
 class CryptoFetcher(AsyncBaseFetcher):
     """
