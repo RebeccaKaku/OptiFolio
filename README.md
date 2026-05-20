@@ -20,6 +20,21 @@ uvicorn src.api.fastapi_app:app --reload
 
 Streamlit 入口 `app.py` 仍保留为 legacy dashboard，后续新功能优先进入 `src/services/` 和 `src/api/fastapi_app.py`。
 
+## 隐私边界
+
+真实业务状态不要提交到 Git。推荐放在 `local/`，例如真实组合快照、现金余额、经纪商设置、数据库、行情数据和临时导出。
+
+提交前运行：
+
+```bash
+python tools/privacy_scan.py --strict --with-detect-secrets
+```
+
+仓库里只保留安全模板：
+
+- `config/portfolio.example.yaml`
+- `config/secrets.example.yaml`
+
 ## 项目结构
 
 ```

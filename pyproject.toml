@@ -47,6 +47,7 @@ solvers = [
 test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "detect-secrets>=1.5.0",
 ]
 
 [build-system]

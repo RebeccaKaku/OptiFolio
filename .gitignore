@@ -159,6 +159,10 @@ cython_debug/
 .cache/
 .safe_export/
 
+# Private local workspace
+local/*
+!local/README.md
+
 # Temporary and backup files
 *~
 *.swp

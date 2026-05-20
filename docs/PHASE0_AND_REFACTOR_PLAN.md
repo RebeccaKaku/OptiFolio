@@ -152,6 +152,8 @@ Definition of done:
 Tasks:
 
 - Confirm all local data and secret files are ignored.
+- Move future real business state under ignored `local/`.
+- Run `python tools/privacy_scan.py --strict --with-detect-secrets` before publishing.
 - Keep only templates and tiny deterministic fixtures in Git.
 - Document how to initialize local data.
 - Consider moving test fixtures under `tests/fixtures/`.
