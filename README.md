@@ -2,6 +2,24 @@
 
 OptiFolio 是一个集成了量化资产配置、多资产投资组合优化（如 Markowitz、Black-Litterman 模型）以及多数据源增量同步的统一金融计算与抓取框架。
 
+## 当前运行入口
+
+FastAPI 是新的后端入口：
+
+```bash
+uvicorn src.api.fastapi_app:app --reload
+```
+
+常用接口：
+
+- `GET /health`
+- `GET /api/system/status`
+- `GET /api/dashboard/summary`
+- `GET /api/portfolio/value`
+- `GET /api/assets/overview`
+
+Streamlit 入口 `app.py` 仍保留为 legacy dashboard，后续新功能优先进入 `src/services/` 和 `src/api/fastapi_app.py`。
+
 ## 项目结构
 
 ```

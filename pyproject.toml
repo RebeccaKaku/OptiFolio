@@ -22,6 +22,8 @@ dependencies = [
     
     # Web框架和API
     "flask>=2.3.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
     "aiohttp>=3.8.0",
     
     # 配置和数据处理

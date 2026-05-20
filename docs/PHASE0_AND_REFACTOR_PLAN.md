@@ -83,14 +83,14 @@ app.py               # legacy Streamlit entrypoint, frozen
 
 Tasks:
 
-- Mark `app.py` as legacy in comments/docs.
-- Create a FastAPI app entrypoint.
-- Add API routes:
+- Mark `app.py` as legacy in comments/docs. Done: new work should go through `src/services/` and `src/api/fastapi_app.py`.
+- Create a FastAPI app entrypoint. Initial entrypoint: `src/api/fastapi_app.py`.
+- Add API routes. Initial routes:
   - `GET /api/system/status`
   - `GET /api/dashboard/summary`
   - `GET /api/portfolio/value`
   - `GET /api/assets/overview`
-- Create `src/services/` and move UI-facing orchestration there.
+- Create `src/services/` and move UI-facing orchestration there. Initial services now wrap system, dashboard, portfolio, and assets.
 - Create a Vite React app under `frontend/`.
 - Build a minimal dashboard page using the new API.
 
