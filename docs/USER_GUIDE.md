@@ -1,6 +1,6 @@
-# NeoFM User Guide
+# OptiFolio User Guide
 
-> A practical guide for using NeoFM to fetch financial data and optimize portfolios
+> A practical guide for using OptiFolio to fetch financial data and optimize portfolios
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ pip install pandas numpy scipy pyportfolioopt yfinance ccxt akshare
 ### Project Structure
 
 ```
-NeoFM/
+OptiFolio/
 ├── fetchers/      # Data source modules
 ├── downloader/    # Download management
 ├── processor/     # Data cleaning

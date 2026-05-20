@@ -1,6 +1,6 @@
-# NeoFM Financial Methodology Review
+# OptiFolio Financial Methodology Review
 
-> This document is intended for financial experts to review the mathematical models, algorithms, and statistical methods used in NeoFM.
+> This document is intended for financial experts to review the mathematical models, algorithms, and statistical methods used in OptiFolio.
 
 ## Table of Contents
 

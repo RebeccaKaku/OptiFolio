@@ -1,11 +1,11 @@
-# NeoFM - 金融数据抓取框架
+# OptiFolio - 极致组合投资优化与金融数据分析系统
 
-NeoFM 是一个统一的金融数据抓取框架，提供标准化的 API 接口，支持多种数据源的数据获取。
+OptiFolio 是一个集成了量化资产配置、多资产投资组合优化（如 Markowitz、Black-Litterman 模型）以及多数据源增量同步的统一金融计算与抓取框架。
 
 ## 项目结构
 
 ```
-NeoFM/
+OptiFolio/
 ├── fetchers/                 # 数据抓取模块
 │   ├── __init__.py          # 模块入口
 │   ├── interfaces.py        # 核心接口定义

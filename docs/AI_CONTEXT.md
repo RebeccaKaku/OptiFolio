@@ -1,10 +1,10 @@
-# NeoFM AI Context Document
+# OptiFolio AI Context Document
 
 > This document is intended for AI assistants to understand the codebase structure, design patterns, and implementation details.
 
 ## Project Overview
 
-NeoFM is a financial data processing and portfolio optimization framework. It provides:
+OptiFolio is a financial data processing and portfolio optimization framework. It provides:
 - Multi-source data fetching (crypto, stocks, funds)
 - Data cleaning and alignment pipeline
 - Portfolio optimization with Black-Litterman model
@@ -12,7 +12,7 @@ NeoFM is a financial data processing and portfolio optimization framework. It pr
 ## Architecture Summary
 
 ```
-NeoFM/
+OptiFolio/
 ├── fetchers/          # Data source adapters
 ├── downloader/        # Raw data download with caching
 ├── processor/         # Data cleaning and alignment
