@@ -12,6 +12,8 @@ from .interfaces import AsyncBaseFetcher
 from .crypto_fetcher import CryptoFetcher
 from .yahoo_fetcher import YahooFinanceFetcher
 from .cn_fund import CnFundFetcher
+from .icbc import IcbcFetcher
+from .boc import BocFetcher
 
 # 别名，方便使用
 YFinanceFetcher = YahooFinanceFetcher
@@ -24,6 +26,8 @@ __all__ = [
     'CryptoFetcher',
     'YahooFinanceFetcher',
     'CnFundFetcher',
+    'IcbcFetcher',
+    'BocFetcher',
     # 别名
     'YFinanceFetcher',
     'AkshareFetcher',

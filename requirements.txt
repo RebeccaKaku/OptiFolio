@@ -1,0 +1,17 @@
+# Core dependencies from pyproject.toml
+akshare>=1.10.0
+cvxpy>=1.3.0
+matplotlib>=3.7.0
+numpy>=1.24.0
+pandas>=2.0.0
+pyarrow>=14.0.0
+pyyaml>=6.0
+scipy>=1.10.0
+seaborn>=0.12.0
+yfinance>=0.2.0
+
+# Additional dependencies for dashboard
+streamlit>=1.28.0
+plotly>=5.18.0
+cachetools>=5.3.0
+selenium

@@ -11,7 +11,13 @@ NeoFM/
 │   ├── interfaces.py        # 核心接口定义
 │   ├── crypto_fetcher.py    # 加密货币数据抓取
 │   ├── yahoo_fetcher.py     # Yahoo Finance 数据抓取
-│   └── cn_fund.py           # 中国公募基金数据抓取
+│   ├── cn_fund.py           # 中国公募基金数据抓取
+│   └── icbc.py              # 工商银行理财产品抓取
+├── data/                     # 数据存储目录
+│   └── icbc/                # 工商银行数据
+│       ├── raw/             # 原始 JSON 数据
+│       └── processed/       # 处理后的 OHLCV CSV
+├── sync_icbc_data.py         # 工行数据同步脚本
 ├── api_checker/              # API 检测模块
 │   ├── __init__.py          # 模块入口
 │   ├── base.py              # 基类定义
@@ -267,6 +273,67 @@ asyncio.run(main())
 | `end_date` | str | 是 | 结束日期 |
 | `timeframe` | str | 否 | 仅支持 `1d` (默认) |
 | `exchange` | str | 否 | 基金数据不需要此参数 |
+
+---
+
+### IcbcFetcher - 工商银行理财产品数据
+
+支持工行自主发行及代销的理财产品。
+
+**初始化:**
+
+```python
+from fetchers import IcbcFetcher
+
+fetcher = IcbcFetcher(data_dir="data/icbc", save_raw=True)
+```
+
+**使用示例:**
+
+```python
+import asyncio
+from fetchers import IcbcFetcher
+
+async def main():
+    fetcher = IcbcFetcher()
+    
+    # 抓取理财产品净值
+    df = await fetcher.fetch(
+        symbol='23GS8125',
+        start_date='2024-01-01',
+        end_date='2024-05-01'
+    )
+    
+    print(df.head())
+
+asyncio.run(main())
+```
+
+**数据同步与触发器:**
+
+为了方便每日更新，提供了 `sync_icbc_data.py` 脚本，支持增量更新：
+
+```bash
+# 同步所有已存在的理财产品
+python sync_icbc_data.py
+
+# 同步指定理财产品
+python sync_icbc_data.py 23GS8125 23GS8689
+```
+
+**参数说明:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `symbol` | str | 是 | 理财产品代码 |
+| `start_date` | str | 是 | 开始日期 |
+| `end_date` | str | 是 | 结束日期 |
+| `timeframe` | str | 否 | 仅支持 `1d` (默认) |
+
+**数据存储规范:**
+
+- **原始数据**: 存储在 `data/icbc/raw/`，保存为每日抓取的 JSON 页面。
+- **处理后数据**: 存储在 `data/icbc/processed/`，保存为符合规范的 CSV 文件。
 
 ---
 

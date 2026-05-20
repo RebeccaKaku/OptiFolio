@@ -1,0 +1,389 @@
+#!/usr/bin/env python
+"""
+测试资产注册表功能
+专注于资产管理、冲突处理等
+"""
+
+import sys
+import os
+import pytest
+import yaml
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.asset_importer import AssetRegistry, AssetDefinition
+
+
+class TestAssetRegistryAdvanced:
+    """测试资产注册表高级功能"""
+    
+    def setup_method(self):
+        """每个测试前的设置"""
+        self.registry = AssetRegistry()
+        self.test_config_path = "config/test_registry_advanced.yaml"
+        self.registry.config_path = self.test_config_path
+        if os.path.exists(self.test_config_path):
+            os.remove(self.test_config_path)
+    
+    def teardown_method(self):
+        """每个测试后的清理"""
+        if os.path.exists(self.test_config_path):
+            os.remove(self.test_config_path)
+    
+    def test_conflict_resolution_scenarios(self):
+        """测试冲突解决的各种场景"""
+        # 场景1：普通资产 -> 冲突资产转换
+        asset1 = AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY')
+        
+        # 注册为普通资产
+        self.registry.register_asset(asset1)
+        assert '000001' in self.registry.assets
+        assert '000001' not in self.registry.conflicts
+        
+        # 注册第二个相同代码的资产（应该转换为冲突）
+        asset2 = AssetDefinition('000001', 'cn_fund_open', '华夏成长混合', 'CNY')
+        success = self.registry.register_conflict_asset(asset2)
+        
+        assert success is True
+        assert '000001' in self.registry.conflicts
+        assert len(self.registry.conflicts['000001']) == 2
+        assert '000001' not in self.registry.assets  # 应该已从普通资产中移除
+        
+        # 验证冲突ID
+        conflict1 = self.registry.conflicts['000001'][0]
+        conflict2 = self.registry.conflicts['000001'][1]
+        assert conflict1.conflict_id == '000001_1'
+        assert conflict2.conflict_id == '000001_2'
+        assert conflict1.is_conflict is True
+        assert conflict2.is_conflict is True
+        
+        # 验证资产类型
+        assert conflict1.asset_type == 'cn_stock_sz'
+        assert conflict2.asset_type == 'cn_fund_open'
+    
+    def test_conflict_to_single_asset_conversion(self):
+        """测试从冲突资产转换回单个资产"""
+        # 创建两个冲突资产
+        asset1 = AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY')
+        asset2 = AssetDefinition('000001', 'cn_fund_open', '华夏成长混合', 'CNY')
+        
+        self.registry.register_conflict_asset(asset1)
+        self.registry.register_conflict_asset(asset2)
+        
+        assert '000001' in self.registry.conflicts
+        assert len(self.registry.conflicts['000001']) == 2
+        
+        # 移除一个冲突资产
+        success = self.registry.remove_asset('000001', '000001_2')
+        assert success is True
+        assert len(self.registry.conflicts['000001']) == 1
+        
+        # 再移除一个，应该转换为普通资产
+        success = self.registry.remove_asset('000001', '000001_1')
+        assert success is True
+        assert '000001' not in self.registry.conflicts
+        assert '000001' in self.registry.assets
+        
+        # 验证普通资产属性
+        final_asset = self.registry.get_asset('000001')
+        assert final_asset is not None
+        assert final_asset.is_conflict is False
+        assert final_asset.conflict_id is None
+    
+    def test_config_compatibility(self):
+        """测试配置兼容性"""
+        # 创建测试配置
+        test_config = {
+            'version': '1.0',
+            'description': '测试配置',
+            'assets': [
+                {
+                    'symbol': '600519',
+                    'asset_type': 'cn_stock_sh',
+                    'name': '贵州茅台',
+                    'currency': 'CNY',
+                    'exchange': 'SH'
+                },
+                {
+                    'symbol': '000001',
+                    'asset_type': 'cn_stock_sz',
+                    'name': '平安银行',
+                    'currency': 'CNY',
+                    'conflict_id': '000001_1',
+                    'is_conflict': True
+                },
+                {
+                    'symbol': '000001',
+                    'asset_type': 'cn_fund_open',
+                    'name': '华夏成长混合',
+                    'currency': 'CNY',
+                    'conflict_id': '000001_2',
+                    'is_conflict': True
+                }
+            ]
+        }
+        
+        # 保存配置
+        with open(self.test_config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(test_config, f, allow_unicode=True, default_flow_style=False)
+        
+        # 创建新的注册表并加载配置
+        new_registry = AssetRegistry(self.test_config_path)
+        
+        # 验证配置加载
+        assert new_registry.get_asset('600519') is not None
+        assert '000001' in new_registry.conflicts
+        assert len(new_registry.conflicts['000001']) == 2
+        
+        # 验证冲突资产属性
+        conflict1 = new_registry.get_asset('000001', '000001_1')
+        conflict2 = new_registry.get_asset('000001', '000001_2')
+        
+        assert conflict1 is not None
+        assert conflict2 is not None
+        assert conflict1.asset_type == 'cn_stock_sz'
+        assert conflict2.asset_type == 'cn_fund_open'
+        assert conflict1.is_conflict is True
+        assert conflict2.is_conflict is True
+    
+    def test_asset_filtering(self):
+        """测试资产过滤功能"""
+        # 创建各种类型的资产
+        test_assets = [
+            AssetDefinition('600519', 'cn_stock_sh', '贵州茅台', 'CNY'),
+            AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY'),
+            AssetDefinition('601398', 'cn_stock_sh', '工商银行', 'CNY'),
+            AssetDefinition('002892', 'cn_fund_qdii', '华夏移动互联混合', 'USD'),
+            AssetDefinition('510300', 'cn_fund_etf', '沪深300ETF', 'CNY'),
+            AssetDefinition('005827', 'cn_fund_open', '易方达蓝筹精选', 'CNY'),
+            AssetDefinition('AAPL', 'us_equity', '苹果公司', 'USD'),
+        ]
+        
+        for asset in test_assets:
+            self.registry.register_asset(asset)
+        
+        # 测试按类型过滤
+        cn_stocks = self.registry.find_assets_by_type('cn_stock_sh')
+        assert len(cn_stocks) == 2  # 600519和601398
+        
+        cn_funds = self.registry.find_assets_by_type('cn_fund_qdii')
+        assert len(cn_funds) == 1  # 002892
+        
+        us_equities = self.registry.find_assets_by_type('us_equity')
+        assert len(us_equities) == 1  # AAPL
+        
+        # 测试不存在的类型
+        non_existent = self.registry.find_assets_by_type('non_existent')
+        assert len(non_existent) == 0
+    
+    def test_currency_operations(self):
+        """测试币种相关操作"""
+        # 创建各种币种的资产
+        test_assets = [
+            AssetDefinition('600519', 'cn_stock_sh', '贵州茅台', 'CNY'),
+            AssetDefinition('002892', 'cn_fund_qdii', '华夏移动互联混合', 'USD'),
+            AssetDefinition('03888', 'hk_stock', '金山软件', 'HKD'),
+            AssetDefinition('AAPL', 'us_equity', '苹果公司', 'USD'),
+            AssetDefinition('USDCNY', 'currency', '美元人民币', 'USD'),
+        ]
+        
+        for asset in test_assets:
+            self.registry.register_asset(asset)
+        
+        # 测试币种检测功能
+        usd_detection_tests = [
+            ('华夏移动互联混合(QDII)美元现汇', 'USD'),
+            ('嘉实美国成长股票美元现钞', 'USD'),
+            ('易方达全球医药行业混合发起式(QDII)A(美元现汇)', 'USD'),
+            ('美元人民币', 'USD'),
+        ]
+        
+        for name, expected_currency in usd_detection_tests:
+            detected = self.registry.detect_currency_from_name(name)
+            assert detected == expected_currency, \
+                f"Expected {expected_currency} for '{name}', got {detected}"
+        
+        cny_detection_tests = [
+            ('贵州茅台', 'CNY'),
+            ('平安银行', 'CNY'),
+            ('沪深300ETF', 'CNY'),
+            ('人民币', 'CNY'),
+        ]
+        
+        for name, expected_currency in cny_detection_tests:
+            detected = self.registry.detect_currency_from_name(name)
+            assert detected == expected_currency, \
+                f"Expected {expected_currency} for '{name}', got {detected}"
+        
+        hkd_detection_tests = [
+            ('恒生指数ETF(港币)', 'HKD'),
+            ('香港科技股基金(HKD)', 'HKD'),
+            ('港币', 'HKD'),
+        ]
+        
+        for name, expected_currency in hkd_detection_tests:
+            detected = self.registry.detect_currency_from_name(name)
+            assert detected == expected_currency, \
+                f"Expected {expected_currency} for '{name}', got {detected}"
+    
+    def test_asset_attributes_management(self):
+        """测试资产管理属性"""
+        # 创建带额外属性的资产
+        asset = AssetDefinition(
+            symbol='600519',
+            asset_type='cn_stock_sh',
+            name='贵州茅台',
+            currency='CNY',
+            exchange='SH',
+            sector='白酒',
+            industry='饮料制造',
+            market_cap=1000000000000,
+            pe_ratio=30.5
+        )
+        
+        self.registry.register_asset(asset)
+        
+        # 验证属性
+        retrieved = self.registry.get_asset('600519')
+        assert retrieved is not None
+        assert retrieved.attributes['exchange'] == 'SH'
+        assert retrieved.attributes['sector'] == '白酒'
+        assert retrieved.attributes['industry'] == '饮料制造'
+        assert retrieved.attributes['market_cap'] == 1000000000000
+        assert retrieved.attributes['pe_ratio'] == 30.5
+        
+        # 测试从字典加载
+        asset_dict = retrieved.to_dict()
+        assert 'attributes' in asset_dict
+        assert asset_dict['attributes']['exchange'] == 'SH'
+        
+        # 测试从字典恢复
+        restored = AssetDefinition.from_dict(asset_dict)
+        assert restored.attributes == retrieved.attributes
+    
+    def test_bulk_operations(self):
+        """测试批量操作"""
+        # 批量注册资产
+        assets_to_register = [
+            AssetDefinition(f'TEST{i:03d}', 'cn_stock_sh', f'测试资产{i}', 'CNY')
+            for i in range(1, 11)
+        ]
+        
+        for asset in assets_to_register:
+            self.registry.register_asset(asset)
+        
+        # 验证批量注册
+        all_assets = self.registry.list_all_assets()
+        assert len(all_assets) == 10
+        
+        # 批量移除
+        symbols_to_remove = [f'TEST{i:03d}' for i in range(1, 6)]
+        for symbol in symbols_to_remove:
+            self.registry.remove_asset(symbol)
+        
+        # 验证批量移除
+        remaining_assets = self.registry.list_all_assets()
+        assert len(remaining_assets) == 5
+        
+        remaining_symbols = [asset.symbol for asset in remaining_assets]
+        expected_symbols = [f'TEST{i:03d}' for i in range(6, 11)]
+        
+        for symbol in expected_symbols:
+            assert symbol in remaining_symbols
+    
+    def test_edge_cases(self):
+        """测试边界情况"""
+        # 空符号
+        empty_symbol_asset = AssetDefinition('', 'cn_stock_sh', '测试', 'CNY')
+        success = self.registry.register_asset(empty_symbol_asset)
+        assert success is False
+        
+        # None符号
+        none_symbol_asset = AssetDefinition(None, 'cn_stock_sh', '测试', 'CNY')
+        success = self.registry.register_asset(none_symbol_asset)
+        assert success is False
+        
+        # 空资产类型
+        empty_type_asset = AssetDefinition('TEST001', '', '测试', 'CNY')
+        success = self.registry.register_asset(empty_type_asset)
+        assert success is False
+        
+        # None资产类型
+        none_type_asset = AssetDefinition('TEST002', None, '测试', 'CNY')
+        success = self.registry.register_asset(none_type_asset)
+        assert success is False
+        
+        # 获取不存在的资产
+        non_existent = self.registry.get_asset('NON_EXISTENT')
+        assert non_existent is None
+        
+        # 获取不存在的冲突ID
+        self.registry.register_conflict_asset(
+            AssetDefinition('CONFLICT', 'cn_stock_sh', '冲突资产', 'CNY')
+        )
+        non_existent_conflict = self.registry.get_asset('CONFLICT', 'CONFLICT_999')
+        assert non_existent_conflict is None
+    
+    def test_config_persistence(self):
+        """测试配置持久化"""
+        # 创建复杂配置
+        assets = [
+            AssetDefinition('600519', 'cn_stock_sh', '贵州茅台', 'CNY', exchange='SH'),
+            AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY', exchange='SZ'),
+            AssetDefinition('002892', 'cn_fund_qdii', '华夏移动互联混合', 'USD'),
+        ]
+        
+        for asset in assets:
+            self.registry.register_asset(asset)
+        
+        # 添加一个冲突资产
+        conflict_asset = AssetDefinition('000001', 'cn_fund_open', '华夏成长混合', 'CNY')
+        self.registry.register_conflict_asset(conflict_asset)
+        
+        # 保存配置
+        self.registry.save_config()
+        
+        # 验证配置文件存在且内容正确
+        assert os.path.exists(self.test_config_path)
+        
+        with open(self.test_config_path, 'r', encoding='utf-8') as f:
+            saved_config = yaml.safe_load(f)
+        
+        assert 'assets' in saved_config
+        assert len(saved_config['assets']) == 4  # 3个普通资产 + 1个冲突资产
+        
+        # 验证配置中的资产
+        asset_symbols = [asset['symbol'] for asset in saved_config['assets']]
+        assert '600519' in asset_symbols
+        assert '000001' in asset_symbols
+        assert '002892' in asset_symbols
+        
+        # 验证冲突资产信息
+        conflict_assets = [
+            asset for asset in saved_config['assets'] 
+            if asset['symbol'] == '000001'
+        ]
+        assert len(conflict_assets) == 2
+        assert any('conflict_id' in asset for asset in conflict_assets)
+        assert any('is_conflict' in asset for asset in conflict_assets)
+
+
+def test_registry_singleton_behavior():
+    """测试注册表的单例行为"""
+    registry1 = AssetRegistry("config/test_singleton1.yaml")
+    registry2 = AssetRegistry("config/test_singleton2.yaml")
+    
+    # 它们是不同的实例，应该有不同的配置
+    assert registry1 is not registry2
+    assert registry1.config_path != registry2.config_path
+    
+    # 清理测试文件
+    import os
+    if os.path.exists("config/test_singleton1.yaml"):
+        os.remove("config/test_singleton1.yaml")
+    if os.path.exists("config/test_singleton2.yaml"):
+        os.remove("config/test_singleton2.yaml")
+
+
+if __name__ == '__main__':
+    # 运行测试
+    pytest.main([__file__, '-v'])

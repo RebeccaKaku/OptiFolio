@@ -1,0 +1,91 @@
+# config/candidates.yaml - 简化版本
+# 只使用三种资产类型：cn_stock, cn_fund, us_equity
+# AssetImporter根据符号前缀自动识别具体类型
+
+candidates:
+  assets:
+    # --- 美股战线 ---
+    - symbol: "AAPL"
+      type: "us_equity"
+      
+    - symbol: "QQQ"
+      type: "us_equity"
+      
+    - symbol: "GOOGL"
+      type: "us_equity"
+      
+    - symbol: "GLD"
+      type: "us_equity"
+      
+    - symbol: "TLT"
+      type: "us_equity"
+      
+    - symbol: "SGOV"
+      type: "us_equity"
+
+    # --- 中国基金战线 ---
+    # 注意：基金代码保持原样，不带前缀
+    - symbol: "510300"
+      type: "cn_fund"
+      
+    - symbol: "005827"
+      type: "cn_fund"
+      
+    - symbol: "002892"
+      type: "cn_fund"
+      
+    - symbol: "022459"
+      type: "cn_fund"
+      
+    - symbol: "161723"
+      type: "cn_fund"
+      
+    - symbol: "000071"
+      type: "cn_fund"
+      
+    - symbol: "019599"
+      type: "cn_fund"
+      
+    - symbol: "001235"
+      type: "cn_fund"
+      
+    - symbol: "015282"
+      type: "cn_fund"
+      
+    - symbol: "015283"
+      type: "cn_fund"
+      
+    - symbol: "004502"
+      type: "cn_fund"
+      
+    - symbol: "000198"
+      type: "cn_fund"
+      
+    - symbol: "003537"
+      type: "cn_fund"
+      
+    - symbol: "161226"
+      type: "cn_fund"
+
+    # --- 中国股票战线 ---
+    # A股代码必须带前缀，从根本上解决撞号问题
+    # sh000001 (上证平安银行) vs sz000001 (深证平安银行) vs 000001 (华夏基金)
+    - symbol: "sh600519"
+      type: "cn_stock"
+      
+    - symbol: "sh601398"
+      type: "cn_stock"
+      
+    - symbol: "sh601899"
+      type: "cn_stock"
+      
+    - symbol: "sh600028"
+      type: "cn_stock"
+      
+    # 示例：深证股票
+    - symbol: "sz000001"
+      type: "cn_stock"
+      
+    # 示例：上证股票  
+    - symbol: "sh000001"
+      type: "cn_stock"
