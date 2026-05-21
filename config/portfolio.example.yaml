@@ -1,5 +1,5 @@
 # portfolio.example.yaml
-# Copy this file to config/portfolio.yaml for local use.
+# Copy this file to local/portfolio.yaml for local use.
 # Do not commit real holdings, cash balances, account data, or personal allocation targets.
 
 cash:

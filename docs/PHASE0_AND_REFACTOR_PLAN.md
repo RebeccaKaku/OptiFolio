@@ -63,6 +63,7 @@ The skips are intentional placeholders for AssetRegistry features that are not i
 - Existing Streamlit smoke tests showed the app can start, but the next product direction is a new FastAPI + React shell.
 - `data/optifolio.db` is ignored and local-only.
 - `data/fm_database.db` remains locally available for one-time migration compatibility.
+- Runtime portfolio loading now prefers `OPTIFOLIO_PORTFOLIO_PATH`, then `local/portfolio.yaml`, then legacy `config/portfolio.yaml`.
 
 ## Next Direction
 

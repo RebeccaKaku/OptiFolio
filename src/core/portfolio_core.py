@@ -13,6 +13,7 @@ import numpy as np
 
 from .interfaces import IPortfolioManager
 from .cache import get_cache, CacheKeys, cached
+from .paths import get_portfolio_config_path
 
 # 导入现有模块
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -62,12 +63,13 @@ class PortfolioCore(IPortfolioManager):
         初始化组合管理核心
         
         Args:
-            config_path: 组合配置文件路径，默认为 config/portfolio.yaml
+            config_path: 组合配置文件路径。默认优先读取 local/portfolio.yaml，
+                兼容旧的 config/portfolio.yaml，也可用 OPTIFOLIO_PORTFOLIO_PATH 覆盖。
             base_currency: 基准货币
             enable_cache: 是否启用缓存
         """
         if config_path is None:
-            config_path = os.path.join(project_root, "config", "portfolio.yaml")
+            config_path = str(get_portfolio_config_path())
         
         self.config_path = config_path
         self.base_currency = base_currency

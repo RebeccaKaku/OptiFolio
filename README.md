@@ -35,6 +35,12 @@ python tools/privacy_scan.py --strict --with-detect-secrets
 - `config/portfolio.example.yaml`
 - `config/secrets.example.yaml`
 
+真实组合读取顺序：
+
+1. `OPTIFOLIO_PORTFOLIO_PATH`
+2. `local/portfolio.yaml`
+3. legacy `config/portfolio.yaml`
+
 ## 项目结构
 
 ```
