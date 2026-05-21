@@ -1,6 +1,8 @@
 # src/data_loader.py
 import pandas as pd
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from src.data_core.fetchers import get_factory, get_fetcher
 from src.data_core.validator import DataValidator
 from src.data_core.storage import DataStorage
@@ -34,7 +36,11 @@ class DataLoader:
         
         raw_data_buffer = {}
         
-        for asset in self.assets:
+        # 共享的请求限流器状态
+        rate_limit_lock = threading.Lock()
+        last_request_time = [0.0]
+
+        def process_asset(asset):
             symbol = asset['symbol']
             asset_type = asset['type']
             name = asset.get('name', symbol)
@@ -48,6 +54,14 @@ class DataLoader:
             
             if fetcher:
                 try:
+                    # 防封控 - 保证每次请求之间至少有0.5秒间隔
+                    with rate_limit_lock:
+                        now = time.time()
+                        time_since_last = now - last_request_time[0]
+                        if time_since_last < 0.5:
+                            time.sleep(0.5 - time_since_last)
+                        last_request_time[0] = time.time()
+
                     data = fetcher.fetch(symbol, self.start_date, self.end_date)
                     if data is not None and not data.empty:
                         print(f"        [成功] 获取到 {len(data)} 行数据")
@@ -95,6 +109,7 @@ class DataLoader:
                     if is_valid:
                         print(f"        [成功-本地] 从本地仓储成功加载历史数据 ({len(series)}行)")
 
+            result = None
             if is_valid:
                 print(f"        [√] 数据有效 ({len(series)}行)")
                 
@@ -104,12 +119,19 @@ class DataLoader:
                 
                 # 保存原始数据，默认频率为daily
                 self.storage.save_raw(symbol, series, frequency='daily')
-                raw_data_buffer[symbol] = series
+                result = (symbol, series)
             else:
                 print(f"        [×] 废弃 ({msg})")
 
-            # 防封控
-            time.sleep(0.5)
+            return result
+
+        with ThreadPoolExecutor(max_workers=min(10, len(self.assets) if self.assets else 1)) as executor:
+            results = list(executor.map(process_asset, self.assets))
+
+        for res in results:
+            if res:
+                symbol, series = res
+                raw_data_buffer[symbol] = series
 
         # --- 4. 加工 (Processing) ---
         print(f"    [加工] 使用策略: {self.processor.strategy}")
