@@ -19,3 +19,9 @@ Portfolio loading order:
 1. `OPTIFOLIO_PORTFOLIO_PATH`
 2. `local/portfolio.yaml`
 3. legacy `config/portfolio.yaml`
+
+Bootstrap local runtime files:
+
+```bash
+python -m src.runtime.bootstrap
+```

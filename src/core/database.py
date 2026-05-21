@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 from pathlib import Path
+from .paths import get_database_path, get_legacy_database_candidates
 
 class DatabaseManager:
     """
@@ -27,14 +28,14 @@ class DatabaseManager:
     4. calculated_metrics - 计算指标表
     """
     
-    def __init__(self, db_path: str = "data/optifolio.db"):
+    def __init__(self, db_path: Optional[str] = None):
         """
         初始化数据库管理器
         
         Args:
             db_path: SQLite数据库文件路径
         """
-        self.db_path = Path(db_path)
+        self.db_path = Path(db_path) if db_path is not None else get_database_path()
         self.db_path.parent.mkdir(exist_ok=True)
         self._migrate_legacy_database_file()
         self.conn = None
@@ -42,9 +43,17 @@ class DatabaseManager:
 
     def _migrate_legacy_database_file(self) -> None:
         """Copy the old FM database file to the OptiFolio path once, if needed."""
-        legacy_path = self.db_path.parent / "fm_database.db"
-        if self.db_path.name == "optifolio.db" and not self.db_path.exists() and legacy_path.exists():
-            shutil.copy2(legacy_path, self.db_path)
+        if self.db_path.exists():
+            return
+
+        same_dir_legacy = self.db_path.parent / "fm_database.db"
+        candidates = [same_dir_legacy, *get_legacy_database_candidates()]
+        for legacy_path in candidates:
+            if legacy_path == self.db_path:
+                continue
+            if legacy_path.exists():
+                shutil.copy2(legacy_path, self.db_path)
+                return
     
     def _init_database(self) -> None:
         """初始化数据库表结构"""

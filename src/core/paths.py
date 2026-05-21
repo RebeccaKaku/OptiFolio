@@ -44,3 +44,18 @@ def get_portfolio_config_path() -> Path:
         "portfolio.yaml",
         "config/portfolio.yaml",
     )
+
+
+def get_database_path() -> Path:
+    return resolve_private_file(
+        "OPTIFOLIO_DB_PATH",
+        "optifolio.db",
+        "data/optifolio.db",
+    )
+
+
+def get_legacy_database_candidates() -> list[Path]:
+    return [
+        PROJECT_ROOT / "data" / "optifolio.db",
+        PROJECT_ROOT / "data" / "fm_database.db",
+    ]
