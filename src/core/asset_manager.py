@@ -9,6 +9,9 @@ from typing import Dict, List, Any, Optional, Union
 from datetime import datetime, timedelta
 import yaml
 import pandas as pd
+import concurrent.futures
+import threading
+import time
 
 from .interfaces import IAssetManager
 from .cache import get_cache, CacheKeys, cached
@@ -250,16 +253,37 @@ class AssetManager(IAssetManager):
         """批量导入资产"""
         results = {}
         
-        for i, symbol in enumerate(symbols):
+        last_time = 0.0
+        lock = threading.Lock()
+
+        def throttle():
+            nonlocal last_time
+            with lock:
+                now = time.time()
+                elapsed = now - last_time
+                if elapsed < 0.5:
+                    time.sleep(0.5 - elapsed)
+                last_time = time.time()
+
+        def process_symbol(i: int, symbol: str) -> tuple:
             asset_type = asset_types[i] if asset_types and i < len(asset_types) else None
-            
             print(f"[批量导入] ({i+1}/{len(symbols)}) {symbol}")
-            result = self.import_asset(symbol, asset_type)
-            results[symbol] = result
             
-            # 添加延迟，避免请求过频繁
-            import time
-            time.sleep(0.5)
+            # 添加全局限流，确保任意两次导入之间间隔至少0.5秒
+            throttle()
+            result = self.import_asset(symbol, asset_type)
+            return symbol, result
+
+        # 使用最大5个线程并发处理，但是受限于节流阀
+        max_workers = min(5, len(symbols)) if symbols else 1
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_symbol = {
+                executor.submit(process_symbol, i, sym): sym
+                for i, sym in enumerate(symbols)
+            }
+            for future in concurrent.futures.as_completed(future_to_symbol):
+                symbol, result = future.result()
+                results[symbol] = result
         
         # 统计结果
         success_count = sum(1 for r in results.values() if r.get("success"))
