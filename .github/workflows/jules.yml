@@ -1,0 +1,29 @@
+name: Invoke Google Labs Jules
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  jules-execution:
+    # Only run if the issue is labeled with 'jules' or contains 'jules' in the title,
+    # and only if triggered by the repository owner (RebeccaKaku) to prevent unauthorized/unwanted billing.
+    if: |
+      (github.event.issue.user.login == 'RebeccaKaku') &&
+      (contains(github.event.issue.labels.*.name, 'jules') || contains(github.event.issue.title, 'jules') || contains(github.event.issue.title, 'Jules'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Invoke Jules Agent
+        uses: google-labs-code/jules-invoke@v1
+        with:
+          prompt: |
+            Please analyze and implement the following task from docs/JULES_CLOUD_TASKS.md:
+            
+            Task Title: ${{ github.event.issue.title }}
+            Task Description: ${{ github.event.issue.body }}
+            
+            Always adhere to project conventions, including private data safeguards (docs/JULES_CLOUD_TASKS.md #Rules) and architecture boundaries (docs/ARCHITECTURE_FOUNDATION.md).
+          api-key: ${{ secrets.JULES_API_KEY }}
