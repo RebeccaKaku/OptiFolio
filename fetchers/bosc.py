@@ -20,6 +20,7 @@ class BoscFetcher(AsyncBaseFetcher):
     """
 
     PRODUCT_LIST_URL = "https://www.bosc.cn/apiQry/apiPCQry/qryPcFinanceProductZh"
+    NET_WORTH_URL = "https://ebanks.bankofshanghai.com/pweb/FinanceRateChartQuery.do"
 
     def __init__(self, data_dir: str = "data/bosc", save_raw: bool = True):
         self.data_dir = Path(data_dir)
@@ -38,34 +39,54 @@ class BoscFetcher(AsyncBaseFetcher):
 
     async def fetch_all_products(self) -> List[Dict]:
         """
-        Query all active wealth management products from BOSC portal.
+        Query all active wealth management products from BOSC portal across all categories.
+        Includes both the generic POST API and the specific GET APIs.
         """
-        print("    [BOSC] Discovering products...")
-        payload = {
-            "current": 1,
-            "size": 1000
-        }
-
+        print("    [BOSC] Discovering all products across categories...")
+        get_endpoints = [
+            "https://www.bosc.cn/apiQry/apiPCQry/v2/doPcD709QryPage",
+            "https://www.bosc.cn/apiQry/apiPCQry/v2/qryMCFinanceNetProHisValueForPersonPage",
+            "https://www.bosc.cn/apiQry/apiPCQry/v2/doPcD709CompanyQryPage",
+            "https://www.bosc.cn/apiQry/apiPCQry/qryMCFinanceNetProHisValueForCompanyPage"
+        ]
+        
+        all_rows = []
         async with httpx.AsyncClient(verify=False) as client:
+            # 1. First fetch using the original comprehensive POST API
             try:
-                response = await client.post(self.PRODUCT_LIST_URL, headers=self.headers, json=payload, timeout=15)
-                response.raise_for_status()
-                data = response.json()
-
-                if data.get("code") != 200 or not data.get("success"):
-                    print(f"    [BOSC] Error: Product discovery failed: {data.get('message')}")
-                    return []
-
-                rows = data.get("data", {}).get("records", [])
-
-                if self.save_raw:
-                    self._save_raw("bosc_products_snapshot", data)
-
-                print(f"    [BOSC] Discovered {len(rows)} products.")
-                return rows
+                post_payload = {"current": 1, "size": 1000}
+                post_resp = await client.post(self.PRODUCT_LIST_URL, headers=self.headers, json=post_payload, timeout=15)
+                post_resp.raise_for_status()
+                post_data = post_resp.json()
+                if post_data.get("code") == 200 and post_data.get("success"):
+                    rows = post_data.get("data", {}).get("records", [])
+                    all_rows.extend(rows)
             except Exception as e:
-                print(f"    [BOSC] Request error during product discovery: {e}")
-                return []
+                print(f"    [BOSC] Request error discovering products at POST {self.PRODUCT_LIST_URL}: {e}")
+
+            # 2. Then try the specific GET APIs (which might 502)
+            for url in get_endpoints:
+                try:
+                    params = {"size": 1000, "current": 1}
+                    response = await client.get(url, headers=self.headers, params=params, timeout=15)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    if data.get("code") == 200 and data.get("success"):
+                        rows = data.get("data", {}).get("records", [])
+                        all_rows.extend(rows)
+                except Exception as e:
+                    print(f"    [BOSC] Request error discovering products at GET {url}: {e}")
+
+        # Deduplicate by prdCode
+        unique_products = {p.get("prdCode"): p for p in all_rows if p.get("prdCode")}.values()
+        unique_products_list = list(unique_products)
+
+        if self.save_raw and unique_products_list:
+            self._save_raw("bosc_all_products_snapshot", {"data": {"records": unique_products_list}})
+
+        print(f"    [BOSC] Discovered {len(unique_products_list)} unique products across all categories.")
+        return unique_products_list
 
     async def fetch(
         self,
@@ -77,20 +98,52 @@ class BoscFetcher(AsyncBaseFetcher):
         **kwargs
     ) -> pd.DataFrame:
         """
-        Fetch logic implementation for BOSC.
-        As BOSC API does not publicly expose historical net values in an easily accessible JSON format,
-        this function relies on data passed via kwargs or assumes `sync` handles the accumulation.
+        Fetch historical net value data from BOSC ebanks system.
 
         Args:
             symbol: BOSC product code
             start_date: YYYY-MM-DD
             end_date: YYYY-MM-DD
             timeframe: Only '1d' supported
+            kwargs: Must include 'prdTemplate', 'status', 'isDxFlag'
         """
-        print(f"    [BOSC] Fetching placeholder for: {symbol} | {start_date} -> {end_date}")
-        # Note: BOSC's historical net values are difficult to retrieve dynamically without browser emulation or internal APIs.
-        # So we process the snapshot in `sync`.
-        return pd.DataFrame()
+        print(f"    [BOSC] Fetching history for: {symbol} | {start_date} -> {end_date}")
+
+        payload = {
+            "Month": "36",  # Try to grab up to 3 years of data
+            "CacheFlag": "0",
+            "PrdTemplate": kwargs.get("prdTemplate", ""),
+            "PrdCode": symbol,
+            "RateFlag": "1",  # 1 for Cumulative/10k yield
+            "Status": kwargs.get("status", "0"),
+            "IsDxFlag": kwargs.get("isDxFlag", "2")
+        }
+
+        # Need form-urlencoded headers for this specific API
+        headers = self.headers.copy()
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+
+        async with httpx.AsyncClient(verify=False) as client:
+            try:
+                response = await client.post(self.NET_WORTH_URL, headers=headers, data=payload, timeout=20)
+                response.raise_for_status()
+                # Server returns JSON even for form requests
+                data = response.json()
+                
+                dates = data.get("dates", [])
+                rates = data.get("rates", [])
+                
+                if not dates or not rates:
+                    print(f"    [BOSC] No historical data returned for {symbol}.")
+                    return pd.DataFrame()
+                
+                # Dates are in YYYY.MM.DD format, convert them
+                dates = [d.replace(".", "-") for d in dates]
+                
+                return self._transform_to_ohlcv(dates, rates, start_date, end_date)
+            except Exception as e:
+                print(f"    [BOSC] Request error for {symbol} historical data: {e}")
+                return pd.DataFrame()
 
     def _save_raw(self, symbol: str, data: Dict):
         """Save raw JSON data file."""
@@ -101,11 +154,11 @@ class BoscFetcher(AsyncBaseFetcher):
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def _transform_to_ohlcv(self, timestamp_str: str, close_val: float, start_date: str, end_date: str) -> pd.DataFrame:
-        """Transform single snapshot to standardized OHLCV DataFrame."""
+    def _transform_to_ohlcv(self, dates: List[str], worths: List[Any], start_date: str, end_date: str) -> pd.DataFrame:
+        """Transform historical arrays to standardized OHLCV DataFrame."""
         df = pd.DataFrame({
-            "timestamp": [timestamp_str],
-            "close": [close_val]
+            "timestamp": dates,
+            "close": worths
         })
 
         df["timestamp"] = pd.to_datetime(df["timestamp"])
@@ -146,30 +199,28 @@ class BoscFetcher(AsyncBaseFetcher):
 
             processed_file = self.processed_dir / f"bosc_net_value_{symbol}.parquet"
 
-            # Determine best value to use: nav (净值) or unitRate (份额净值)
-            val = product.get("nav")
-            if not val or val == "None" or val == "":
-                val = product.get("unitRate")
+            # Determine incremental fetch start date
+            start_date = "2000-01-01"
+            if processed_file.exists():
+                try:
+                    existing_df = pd.read_parquet(processed_file)
+                    if not existing_df.empty:
+                        start_date = existing_df.index[-1].strftime("%Y-%m-%d")
+                except Exception:
+                    pass
 
-            if not val or val == "None" or val == "":
-                # Default to 1.0
-                val = 1.0
-
-            try:
-                close_val = float(val)
-            except (ValueError, TypeError):
+            if start_date == today_str:
+                print(f"    [BOSC] {symbol} is already up to date ({start_date}).")
                 continue
 
-            # Since the API provides a live snapshot of current product rates without an explicit update date,
-            # we use the current fetch date (today_str) as the date for this net value snapshot.
-            date_val = today_str
+            # Pass necessary metadata to fetch
+            kwargs = {
+                "prdTemplate": str(product.get("prdTemplate", "")),
+                "status": str(product.get("status", "0")),
+                "isDxFlag": str(product.get("isDxFlag", "2"))
+            }
 
-            try:
-                date_obj = pd.to_datetime(date_val).strftime("%Y-%m-%d")
-            except Exception:
-                date_obj = today_str
-
-            df = self._transform_to_ohlcv(date_obj, close_val, "2000-01-01", "2099-12-31")
+            df = await self.fetch(symbol, start_date, "2099-12-31", **kwargs)
 
             if not df.empty:
                 if processed_file.exists():
