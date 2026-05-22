@@ -1,5 +1,6 @@
 """FastAPI entrypoint for the new OptiFolio HTTP API."""
 
+import os
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Query
@@ -44,12 +45,18 @@ def create_app() -> FastAPI:
         description="HTTP API for OptiFolio portfolio and asset services.",
     )
 
+    cors_origins_str = os.environ.get("CORS_ORIGINS", "")
+    if cors_origins_str:
+        allow_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+    else:
+        allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=allow_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "Accept"],
     )
 
     @app.get("/health", tags=["system"])

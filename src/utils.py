@@ -50,58 +50,6 @@ def load_config_with_deep_merge(public_path: str = "config/settings.yaml",
     if os.path.exists(public_path):
         with open(public_path, "r", encoding='utf-8') as f:
             config = yaml.safe_load(f)
-# src/utils.py
-"""
-工具函数集合，包括配置合并、数据处理等辅助函数。
-"""
-
-import os
-import yaml
-from typing import Any, Dict
-
-
-def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    递归深度合并两个字典，解决config.update()浅合并问题。
-    
-    Args:
-        base: 基础配置字典
-        override: 覆盖配置字典
-    
-    Returns:
-        深度合并后的字典
-    """
-    result = base.copy()
-    
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            # 如果两个都是字典，递归合并
-            result[key] = deep_merge(result[key], value)
-        else:
-            # 否则直接覆盖
-            result[key] = value
-    
-    return result
-
-
-def load_config_with_deep_merge(public_path: str = "config/settings.yaml", 
-                                private_path: str = "config/secrets.yaml") -> Dict[str, Any]:
-    """
-    加载并深度合并配置。
-    
-    Args:
-        public_path: 公共配置文件路径
-        private_path: 私有配置文件路径
-    
-    Returns:
-        合并后的配置字典
-    """
-    config = {}
-    
-    # 1. 加载公开配置
-    if os.path.exists(public_path):
-        with open(public_path, "r", encoding='utf-8') as f:
-            config = yaml.safe_load(f)
     else:
         raise FileNotFoundError(f"Public config file not found: {public_path}")
     
