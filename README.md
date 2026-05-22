@@ -2,16 +2,22 @@
 
 OptiFolio 是一个集成了量化资产配置、多资产投资组合优化（如 Markowitz、Black-Litterman 模型）以及多数据源增量同步的统一金融计算与抓取框架。
 
-## 当前运行入口
+## 运行环境与启动
 
-FastAPI 是新的后端入口：
+### Python 版本要求
+本项目要求 Python **>=3.11, <3.14**。
+> 注意：目前量化工具栈在 Python 3.14 上尚不稳定，请务必使用推荐版本。
+
+### 启动应用
+推荐使用统一的启动脚本，该脚本会自动完成本地环境初始化（Bootstrap）并启动 API 服务：
 
 ```bash
-python -m src.runtime.bootstrap
-uvicorn src.api.fastapi_app:app --reload
+python tools/start_app.py
 ```
 
-常用接口：
+服务默认运行在 `http://localhost:8011`。
+
+### 常用接口
 
 - `GET /health`
 - `GET /api/system/status`
