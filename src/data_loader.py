@@ -36,9 +36,17 @@ class DataLoader:
         
         raw_data_buffer = {}
         
-        # 共享的请求限流器状态
-        rate_limit_lock = threading.Lock()
-        last_request_time = [0.0]
+        # 按资产类型/提供商的请求限流器状态
+        provider_locks = {}
+        provider_last_times = {}
+        global_lock = threading.Lock()
+
+        def get_provider_lock(asset_type):
+            with global_lock:
+                if asset_type not in provider_locks:
+                    provider_locks[asset_type] = threading.Lock()
+                    provider_last_times[asset_type] = 0.0
+                return provider_locks[asset_type], provider_last_times
 
         def process_asset(asset):
             symbol = asset['symbol']
@@ -54,13 +62,14 @@ class DataLoader:
             
             if fetcher:
                 try:
-                    # 防封控 - 保证每次请求之间至少有0.5秒间隔
-                    with rate_limit_lock:
+                    # 防封控 - 按提供商类型分别限流，保证同类型接口至少有0.5秒间隔
+                    lock, last_times = get_provider_lock(asset_type)
+                    with lock:
                         now = time.time()
-                        time_since_last = now - last_request_time[0]
+                        time_since_last = now - last_times[asset_type]
                         if time_since_last < 0.5:
                             time.sleep(0.5 - time_since_last)
-                        last_request_time[0] = time.time()
+                        last_times[asset_type] = time.time()
 
                     data = fetcher.fetch(symbol, self.start_date, self.end_date)
                     if data is not None and not data.empty:
