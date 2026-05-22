@@ -1,6 +1,8 @@
 # src/data_loader.py
 import pandas as pd
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from src.data_core.fetchers import get_factory, get_fetcher
 from src.data_core.validator import DataValidator
 from src.data_core.storage import DataStorage
@@ -34,7 +36,27 @@ class DataLoader:
         
         raw_data_buffer = {}
         
-        for asset in self.assets:
+        provider_locks = {}
+        provider_last_times = {}
+        provider_state_lock = threading.Lock()
+
+        def get_provider_state(asset_type):
+            with provider_state_lock:
+                if asset_type not in provider_locks:
+                    provider_locks[asset_type] = threading.Lock()
+                    provider_last_times[asset_type] = 0.0
+                return provider_locks[asset_type]
+
+        def throttle_provider(asset_type):
+            lock = get_provider_state(asset_type)
+            with lock:
+                now = time.time()
+                elapsed = now - provider_last_times[asset_type]
+                if elapsed < 0.5:
+                    time.sleep(0.5 - elapsed)
+                provider_last_times[asset_type] = time.time()
+
+        def process_asset(asset):
             symbol = asset['symbol']
             asset_type = asset['type']
             name = asset.get('name', symbol)
@@ -48,6 +70,8 @@ class DataLoader:
             
             if fetcher:
                 try:
+                    # 防封控：同一资产类型串行限流，不同类型可以并发抓取。
+                    throttle_provider(asset_type)
                     data = fetcher.fetch(symbol, self.start_date, self.end_date)
                     if data is not None and not data.empty:
                         print(f"        [成功] 获取到 {len(data)} 行数据")
@@ -104,12 +128,19 @@ class DataLoader:
                 
                 # 保存原始数据，默认频率为daily
                 self.storage.save_raw(symbol, series, frequency='daily')
-                raw_data_buffer[symbol] = series
+                return symbol, series
             else:
                 print(f"        [×] 废弃 ({msg})")
+                return None
 
-            # 防封控
-            time.sleep(0.5)
+        max_workers = min(10, len(self.assets) if self.assets else 1)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(process_asset, self.assets))
+
+        for result in results:
+            if result:
+                symbol, series = result
+                raw_data_buffer[symbol] = series
 
         # --- 4. 加工 (Processing) ---
         print(f"    [加工] 使用策略: {self.processor.strategy}")
