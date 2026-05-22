@@ -39,6 +39,7 @@ class DatabaseManager:
         self.db_path.parent.mkdir(exist_ok=True)
         self._migrate_legacy_database_file()
         self.conn = None
+        self._conn_lock = __import__('threading').Lock()
         self._init_database()
 
     def _migrate_legacy_database_file(self) -> None:
@@ -131,23 +132,26 @@ class DatabaseManager:
     def _connect(self) -> None:
         """连接到数据库"""
         if self.conn is None:
-            self.conn = sqlite3.connect(str(self.db_path))
+            self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
     
     def _execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
         """执行SQL查询"""
         self._connect()
-        return self.conn.execute(query, params)
+        with self._conn_lock:
+            return self.conn.execute(query, params)
     
     def _executemany(self, query: str, params_list: list) -> None:
         """批量执行SQL查询"""
         self._connect()
-        self.conn.executemany(query, params_list)
+        with self._conn_lock:
+            self.conn.executemany(query, params_list)
     
     def _commit(self) -> None:
         """提交事务"""
         if self.conn:
-            self.conn.commit()
+            with self._conn_lock:
+                self.conn.commit()
     
     def close(self) -> None:
         """关闭数据库连接"""

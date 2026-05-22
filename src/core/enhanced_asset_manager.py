@@ -10,6 +10,9 @@
 
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 import pandas as pd
 import numpy as np
 
@@ -241,19 +244,49 @@ class EnhancedAssetManager(IAssetManager):
         """批量导入资产"""
         results = {}
         
-        for i, symbol in enumerate(symbols):
+        # 针对每个数据提供商的请求限流锁
+        provider_locks = {}
+        provider_last_times = {}
+        provider_state_lock = threading.Lock()
+
+        def get_provider_state(asset_type_key: str):
+            with provider_state_lock:
+                if asset_type_key not in provider_locks:
+                    provider_locks[asset_type_key] = threading.Lock()
+                    provider_last_times[asset_type_key] = 0.0
+                return provider_locks[asset_type_key]
+
+        def _import_single(i: int, symbol: str) -> Tuple[str, Dict[str, Any]]:
             asset_type = asset_types[i] if asset_types and i < len(asset_types) else None
-            
             print(f"[批量导入] ({i+1}/{len(symbols)}) {symbol}")
-            result = self.import_asset(symbol, asset_type)
-            results[symbol] = result
             
-            # 添加延迟，避免请求过频繁
-            import time
-            time.sleep(0.5)
-        
+            # 简单的限流：基于资产类型区分不同的数据源
+            asset_type_key = asset_type if asset_type else "default"
+            lock = get_provider_state(asset_type_key)
+            with lock:
+                now = time.time()
+                elapsed = now - provider_last_times[asset_type_key]
+                if elapsed < 0.5:
+                    time.sleep(0.5 - elapsed)
+                provider_last_times[asset_type_key] = time.time()
+
+            result = self.import_asset(symbol, asset_type)
+            return symbol, result
+
+        # 保持并发执行，max_workers 考虑到可能的API限流
+        max_workers = min(10, len(symbols) if symbols else 1)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(_import_single, i, symbol) for i, symbol in enumerate(symbols)]
+            for future in as_completed(futures):
+                try:
+                    symbol, result = future.result()
+                    results[symbol] = result
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+
         # 统计结果
-        success_count = sum(1 for r in results.values() if r.get("success"))
+        success_count = sum(1 for r in results.values() if r and r.get("success"))
         
         return {
             "results": results,
