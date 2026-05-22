@@ -38,15 +38,14 @@ class BocFetcher(AsyncBaseFetcher):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-    async def fetch_usd_products(self) -> List[str]:
+    async def fetch_all_products(self) -> List[str]:
         """
-        Query all active USD wealth management products from BOCWM portal.
+        Query all active wealth management products (RMB & Foreign currencies) from BOCWM portal.
         """
-        print("    [BOC] Discovering active USD products...")
+        print("    [BOC] Discovering all active products...")
         payload = {
             "pageNo": 1,
-            "pageSize": 1000,
-            "currency": "美元"
+            "pageSize": 5000
         }
         
         async with httpx.AsyncClient() as client:
@@ -61,11 +60,38 @@ class BocFetcher(AsyncBaseFetcher):
                     
                 rows = data.get("data", {}).get("rows", [])
                 product_codes = [r.get("productCode") for r in rows if r.get("productCode")]
-                print(f"    [BOC] Discovered {len(product_codes)} active USD products.")
+                print(f"    [BOC] Discovered {len(product_codes)} active products.")
                 return product_codes
             except Exception as e:
-                print(f"    [BOC] Request error during USD product discovery: {e}")
+                print(f"    [BOC] Request error during product discovery: {e}")
                 return []
+
+    async def fetch_structural_deposits(self) -> List[str]:
+        """
+        Fetch BOC structural deposits data by scraping the public pages.
+        Includes both RMB and Foreign Currency.
+        """
+        print("    [BOC] Fetching structural deposits from bill page...")
+        url = "https://www.boc.cn/sdbapp/pbsd4/"
+        struct_codes = []
+        try:
+            from bs4 import BeautifulSoup
+            async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
+                res = await client.get(url, headers=self.headers, timeout=15)
+                res.raise_for_status()
+                soup = BeautifulSoup(res.text, "html.parser")
+                for link in soup.find_all("a"):
+                    text = link.text.strip()
+                    # A valid structural deposit code is uppercase alphanumeric, usually starting with CS, GR, etc.
+                    # We can use a regex to be strict.
+                    import re
+                    if re.match(r'^[A-Z0-9]{8,15}$', text) and text.isupper():
+                        struct_codes.append(text)
+        except Exception as e:
+            print(f"    [BOC] Error fetching structural deposits: {e}")
+
+        print(f"    [BOC] Discovered {len(struct_codes)} structural deposits.")
+        return list(set(struct_codes))
 
     async def fetch(
         self, 
@@ -149,15 +175,15 @@ class BocFetcher(AsyncBaseFetcher):
     async def sync(self, symbols: Optional[List[str]] = None):
         """Trigger update for a list of products. If None, performs auto-discovery."""
         if symbols is None:
-            # 1. First, check already processed products in files
-            symbols = [f.name.replace("boc_net_value_", "").replace(".parquet", "") 
-                       for f in self.processed_dir.glob("boc_net_value_*.parquet")]
+            # 1. Query the API to discover all active products
+            symbols = await self.fetch_all_products()
             
-            # 2. If nothing is in processed_dir, query the API to discover active USD products
-            if not symbols:
-                symbols = await self.fetch_usd_products()
-                
-            print(f"    [BOC] Syncing {len(symbols)} products: {symbols}")
+            # 2. Add structural deposits codes
+            struct_codes = await self.fetch_structural_deposits()
+            symbols.extend(struct_codes)
+            symbols = list(set(symbols))
+
+            print(f"    [BOC] Auto-discovered {len(symbols)} products to sync.")
 
         if not symbols:
             print("    [BOC] No products to sync.")

@@ -150,10 +150,16 @@ class IcbcFetcher(AsyncBaseFetcher):
         return df.loc[start_date:end_date][["open", "high", "low", "close", "volume"]]
 
     async def sync(self, symbols: Optional[List[str]] = None):
-        """Trigger update for a list of products. If None, syncs all found in processed_dir."""
+        """Trigger update for a list of products. If None, syncs all found in processed_dir and some default codes."""
         if symbols is None:
             # Auto-discover from processed_dir
             symbols = [f.name.replace("icbc_net_value_", "").replace(".parquet", "") for f in self.processed_dir.glob("icbc_net_value_*.parquet")]
+
+            # Since no public discovery API is available without login, we append some default test codes covering RMB and Foreign Currency products
+            default_codes = ["23GS8125", "23GS8123"]
+            symbols.extend(default_codes)
+            symbols = list(set(symbols))
+
             print(f"    [ICBC] Auto-discovered {len(symbols)} products: {symbols}")
 
         if not symbols:
