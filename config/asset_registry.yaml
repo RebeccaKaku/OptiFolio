@@ -3,7 +3,7 @@ assets:
   attributes:
     exchange: SZ
   currency: CNY
-  last_updated: '2026-05-22T03:45:08.840789'
+  last_updated: '2026-05-22T03:58:08.118695'
   name: 贵州茅台
   source: akshare_stock_info
   symbol: '600519'
@@ -18,7 +18,7 @@ assets:
     pair_type: unknown
     quote_currency: UNKNOWN
   currency: USD
-  last_updated: '2026-05-22T03:38:43.599231'
+  last_updated: '2026-05-22T03:43:51.816844'
   name: EUR/USD
   source: currency_detector
   symbol: EUR/USD
@@ -59,7 +59,7 @@ assets:
   attributes:
     exchange: SH
   currency: CNY
-  last_updated: '2026-05-22T03:38:43.593877'
+  last_updated: '2026-05-22T03:43:51.811457'
   name: 平安银行
   source: akshare_stock_info
   symbol: sh000001
@@ -75,5 +75,5 @@ assets:
   source: akshare_stock_info
   symbol: sh600519
 description: 资产注册表 (自动前缀+智能币种)
-last_updated: '2026-05-22T03:45:08.840862'
+last_updated: '2026-05-22T03:58:08.118755'
 version: '2.0'
