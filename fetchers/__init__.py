@@ -14,6 +14,7 @@ from .yahoo_fetcher import YahooFinanceFetcher
 from .cn_fund import CnFundFetcher
 from .icbc import IcbcFetcher
 from .boc import BocFetcher
+from .bosc import BoscFetcher
 
 # 别名，方便使用
 YFinanceFetcher = YahooFinanceFetcher
@@ -28,6 +29,7 @@ __all__ = [
     'CnFundFetcher',
     'IcbcFetcher',
     'BocFetcher',
+    'BoscFetcher',
     # 别名
     'YFinanceFetcher',
     'AkshareFetcher',

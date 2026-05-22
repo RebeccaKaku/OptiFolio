@@ -146,14 +146,14 @@ class BoscFetcher(AsyncBaseFetcher):
 
             processed_file = self.processed_dir / f"bosc_net_value_{symbol}.parquet"
 
-            # Determine best value to use: nav (净值) or unitRate (份额净值) or yield
+            # Determine best value to use: nav (净值) or unitRate (份额净值)
             val = product.get("nav")
             if not val or val == "None" or val == "":
                 val = product.get("unitRate")
 
             if not val or val == "None" or val == "":
-                # Fallback to rate or yield if no nav is present
-                val = product.get("rate") or product.get("yield") or 1.0
+                # Default to 1.0
+                val = 1.0
 
             try:
                 close_val = float(val)

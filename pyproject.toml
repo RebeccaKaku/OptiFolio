@@ -30,6 +30,10 @@ dependencies = [
     "pyyaml>=6.0",
     "pyarrow>=14.0.0",  # Parquet support
     
+    # 网络抓取
+    "httpx>=0.23.0",
+    "beautifulsoup4>=4.11.0",
+
     # 缓存和优化
     "cachetools>=5.3.0",
 ]
