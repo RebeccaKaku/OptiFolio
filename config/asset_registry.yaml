@@ -1,22 +1,24 @@
 assets:
-- asset_type: us_equity
+- asset_type: cn_stock_sh
   attributes:
-    attributes:
-      exchange: NMS
-      sector: Technology
+    exchange: SZ
+  currency: CNY
+  last_updated: '2026-05-22T03:45:08.840789'
+  name: 贵州茅台
+  source: akshare_stock_info
+  symbol: '600519'
+- asset_type: us_equity
+  attributes: {}
   currency: USD
-  last_updated: '2026-02-18T00:23:25.962855'
-  name: Apple Inc.
-  source: yfinance
+  name: AAPL
   symbol: AAPL
 - asset_type: currency
   attributes:
-    attributes:
-      base_currency: USD
-      pair_type: unknown
-      quote_currency: UNKNOWN
+    base_currency: USD
+    pair_type: unknown
+    quote_currency: UNKNOWN
   currency: USD
-  last_updated: '2026-02-18T00:23:24.448992'
+  last_updated: '2026-05-22T03:38:43.599231'
   name: EUR/USD
   source: currency_detector
   symbol: EUR/USD
@@ -55,10 +57,9 @@ assets:
   symbol: USDCAD
 - asset_type: cn_stock
   attributes:
-    attributes:
-      exchange: SH
+    exchange: SH
   currency: CNY
-  last_updated: '2026-02-18T00:23:24.444044'
+  last_updated: '2026-05-22T03:38:43.593877'
   name: 平安银行
   source: akshare_stock_info
   symbol: sh000001
@@ -74,5 +75,5 @@ assets:
   source: akshare_stock_info
   symbol: sh600519
 description: 资产注册表 (自动前缀+智能币种)
-last_updated: '2026-02-18T00:25:30.188552'
+last_updated: '2026-05-22T03:45:08.840862'
 version: '2.0'

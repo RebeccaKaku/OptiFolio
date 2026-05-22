@@ -42,6 +42,7 @@ class PortfolioOptimizer:
     """
     
     VALID_METHODS = ('mean_variance', 'black_litterman')
+    VALID_OBJECTIVES = ('max_sharpe', 'min_volatility')
     
     def __init__(
         self,

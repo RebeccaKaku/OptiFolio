@@ -106,14 +106,49 @@ class ResearchService:
         risk_free_rate: float = 0.02,
     ) -> Dict[str, Any]:
         try:
+            from portfolio.optimizer import PortfolioOptimizer
+
+            # 1. Validate method and objective values
+            if method not in PortfolioOptimizer.VALID_METHODS:
+                return failure(
+                    f"Unknown method '{method}'. Valid methods: {PortfolioOptimizer.VALID_METHODS}",
+                    "INVALID_OPTIMIZATION_METHOD",
+                )
+
+            if objective not in PortfolioOptimizer.VALID_OBJECTIVES:
+                return failure(
+                    f"Invalid objective '{objective}'. Supported objectives: {PortfolioOptimizer.VALID_OBJECTIVES}",
+                    "INVALID_OPTIMIZATION_OBJECTIVE",
+                )
+
+            # 2. Fetch price data
             prices = self.market_data.get_prices(assets, start=start, end=end)
+
+            # 3. Validate price data quality
             if prices.empty:
                 return failure("No price data available for requested assets", "OPTIMIZATION_NO_DATA")
 
-            from portfolio.optimizer import PortfolioOptimizer
+            missing_assets = [a for a in assets if a not in prices.columns or prices[a].isna().all()]
+            if missing_assets:
+                return failure(
+                    f"Insufficient data for assets: {missing_assets}",
+                    "OPTIMIZATION_INSUFFICIENT_ASSETS",
+                    {"missing_assets": missing_assets},
+                )
 
-            optimizer = PortfolioOptimizer(method=method, risk_free_rate=risk_free_rate)
-            result = optimizer.run(prices, optimization_method=objective)
+            if len(prices) < 2:
+                return failure(
+                    f"Insufficient price history for optimization (need at least 2 points, got {len(prices)})",
+                    "OPTIMIZATION_INSUFFICIENT_HISTORY",
+                )
+
+            # 4. Execute optimization with error handling
+            try:
+                optimizer = PortfolioOptimizer(method=method, risk_free_rate=risk_free_rate)
+                result = optimizer.run(prices, optimization_method=objective)
+            except Exception as exc:
+                return failure(f"Optimizer failed: {str(exc)}", "OPTIMIZER_EXECUTION_ERROR")
+
             return success(
                 {
                     "weights": result.weights,
