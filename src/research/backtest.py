@@ -8,6 +8,12 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
+try:
+    import vectorbt as vbt
+    VECTORBT_AVAILABLE = True
+except ImportError:
+    VECTORBT_AVAILABLE = False
+
 
 @dataclass(frozen=True)
 class BacktestRequest:
@@ -25,7 +31,7 @@ class BacktestResult:
     returns: pd.Series
     metrics: Dict[str, float]
     asset_contribution: Dict[str, float]
-    engine: str = "vectorbt-compatible"
+    engine: str = "pandas-fallback"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -51,21 +57,109 @@ class BacktestEngine:
     def run(self, request: BacktestRequest) -> BacktestResult:
         prices = self._validate_prices(request.prices)
         weights = self._normalize_weights(request.target_weights, prices.columns)
+
+        if VECTORBT_AVAILABLE:
+            try:
+                return self._run_vectorbt(request, prices, weights)
+            except Exception:
+                # Fallback if vectorbt fails during execution
+                pass
+
+        return self._run_pandas(request, prices, weights)
+
+    def _run_pandas(
+        self, request: BacktestRequest, prices: pd.DataFrame, weights: Dict[str, float]
+    ) -> BacktestResult:
         returns = prices.pct_change().fillna(0.0)
 
         portfolio_returns = returns.dot(pd.Series(weights))
-        fee_drag = self._fee_drag(returns.index, weights, request.rebalance_frequency, request.fee_rate)
+        fee_drag = self._fee_drag(
+            returns.index, weights, request.rebalance_frequency, request.fee_rate
+        )
         net_returns = portfolio_returns - fee_drag
         equity_curve = (1.0 + net_returns).cumprod() * request.initial_cash
 
         asset_contribution = (returns.mul(pd.Series(weights), axis=1)).sum().to_dict()
-        metrics = self._calculate_metrics(equity_curve, net_returns, request.risk_free_rate)
+        metrics = self._calculate_metrics(
+            equity_curve, net_returns, request.risk_free_rate
+        )
 
         return BacktestResult(
             equity_curve=equity_curve,
             returns=net_returns,
             metrics=metrics,
-            asset_contribution={asset: float(value) for asset, value in asset_contribution.items()},
+            asset_contribution={
+                asset: float(value) for asset, value in asset_contribution.items()
+            },
+            engine="pandas-fallback",
+            metadata={
+                "weights": weights,
+                "rebalance_frequency": request.rebalance_frequency,
+                "fee_rate": request.fee_rate,
+            },
+        )
+
+    def _run_vectorbt(
+        self, request: BacktestRequest, prices: pd.DataFrame, weights: Dict[str, float]
+    ) -> BacktestResult:
+        # Create rebalancing signals
+        rebalance_dates = (
+            pd.Series(index=prices.index, data=1)
+            .resample(request.rebalance_frequency)
+            .first()
+            .dropna()
+            .index
+        )
+
+        size = pd.DataFrame(np.nan, index=prices.index, columns=prices.columns)
+        weight_series = pd.Series(weights)
+
+        # Ensure first date is always a rebalance date
+        size.loc[prices.index[0], weight_series.index] = weight_series
+
+        for date in rebalance_dates:
+            # Find the actual date in prices index that is nearest to the rebalance date
+            idx = prices.index.get_indexer([date], method="nearest")[0]
+            actual_date = prices.index[idx]
+            size.loc[actual_date, weight_series.index] = weight_series
+
+        portfolio = vbt.Portfolio.from_orders(
+            prices,
+            size=size,
+            size_type="targetpercent",
+            group_by=True,
+            init_cash=request.initial_cash,
+            fees=request.fee_rate,
+            cash_sharing=True,
+        )
+
+        equity_curve = portfolio.value()
+        returns = portfolio.returns()
+
+        # vectorbt metrics
+        vbt_stats = portfolio.stats(settings=dict(risk_free=request.risk_free_rate))
+
+        # Map to our standard metrics
+        metrics = {
+            "total_return": float(vbt_stats.get("Total Return [%]", 0) / 100.0),
+            "annualized_return": float(vbt_stats.get("Annualized Return [%]", 0) / 100.0),
+            "volatility": float(vbt_stats.get("Annualized Volatility [%]", 0) / 100.0),
+            "sharpe_ratio": float(vbt_stats.get("Sharpe Ratio", 0)),
+            "max_drawdown": float(vbt_stats.get("Max Drawdown [%]", 0) / -100.0),
+        }
+
+        # Calculate asset contribution (simple version: weights * total asset returns)
+        asset_returns = prices.pct_change().fillna(0.0)
+        asset_contribution = (asset_returns.mul(weight_series, axis=1)).sum().to_dict()
+
+        return BacktestResult(
+            equity_curve=equity_curve,
+            returns=returns,
+            metrics=metrics,
+            asset_contribution={
+                asset: float(value) for asset, value in asset_contribution.items()
+            },
+            engine="vectorbt",
             metadata={
                 "weights": weights,
                 "rebalance_frequency": request.rebalance_frequency,
