@@ -88,7 +88,7 @@ async def fetch_fund_data(
     
     data = {}
     
-    for code, name in fund_codes.items():
+    async def fetch_single(code: str, name: str):
         print(f"\nFetching {code} - {name}...")
         try:
             df = await fetcher.fetch(
@@ -100,16 +100,29 @@ async def fetch_fund_data(
             
             if df.empty:
                 print(f"  [!] No data returned for {code}")
-                continue
+                return code, None
             
-            data[code] = df
-            print(f"  [OK] Successfully fetched {len(df)} records")
+            print(f"  [OK] Successfully fetched {len(df)} records for {code}")
             print(f"       Date range: {df.index.min().date()} to {df.index.max().date()}")
+            return code, df
             
         except Exception as e:
             print(f"  [ERROR] Error fetching {code}: {e}")
-            continue
+            return code, None
+
+    # Run fetches concurrently
+    tasks = [fetch_single(code, name) for code, name in fund_codes.items()]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     
+    for res in results:
+        if isinstance(res, Exception):
+            print(f"  [ERROR] Unexpected exception during fetch: {res}")
+            continue
+
+        code, df = res
+        if df is not None:
+            data[code] = df
+
     print(f"\n[OK] Successfully fetched data for {len(data)}/{len(fund_codes)} funds")
     return data
 
