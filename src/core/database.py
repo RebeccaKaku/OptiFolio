@@ -712,11 +712,42 @@ class DatabaseManager:
                             continue
                         self.add_or_update_asset(asset_data)
                         migrated_count += 1
-            
-            # TODO: 迁移价格数据（从data/raw目录）
-            # 这需要更复杂的逻辑，因为需要解析CSV/Parquet文件
-            
+            # 迁移价格数据（从data/raw目录）
+            raw_dir = Path("data/raw")
+            if raw_dir.exists() and raw_dir.is_dir():
+                import pandas as pd
+                price_migrated_count = 0
+                for file_path in raw_dir.iterdir():
+                    if file_path.suffix in ['.csv', '.parquet']:
+                        symbol = file_path.stem
+                        if not self.get_asset(symbol):
+                            print(f"[Database] 跳过价格数据迁移: 资产 {symbol} 未注册")
+                            continue
+
+                        try:
+                            if file_path.suffix == '.csv':
+                                df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                            else:
+                                df = pd.read_parquet(file_path)
+                                # Ensure index is datetime if it isn't already
+                                if not isinstance(df.index, pd.DatetimeIndex):
+                                    if 'date' in df.columns:
+                                        df.set_index('date', inplace=True)
+                                    elif 'Date' in df.columns:
+                                        df.set_index('Date', inplace=True)
+                                    df.index = pd.to_datetime(df.index)
+
+                            added_records = self.add_price_history(symbol, df)
+                            print(f"[Database] 从 {file_path.name} 迁移了 {added_records} 条价格记录")
+                            price_migrated_count += 1
+                        except Exception as e:
+                            print(f"[Database] 解析价格数据失败 {file_path.name}: {e}")
+
+                if price_migrated_count > 0:
+                    print(f"[Database] 成功迁移了 {price_migrated_count} 个资产的价格数据")
+
             print(f"[Database] 从文件系统迁移了 {migrated_count} 个资产")
+
             
         except Exception as e:
             print(f"[Database] 迁移数据失败: {e}")
