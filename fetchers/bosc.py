@@ -160,11 +160,9 @@ class BoscFetcher(AsyncBaseFetcher):
             except (ValueError, TypeError):
                 continue
 
-            # Date field logic
-            # Try to get the latest update date if possible. If missing, use today.
-            date_val = product.get("currNetCycleBeginDate") or today_str
-            if not date_val or date_val.strip() == "":
-                date_val = today_str
+            # Since the API provides a live snapshot of current product rates without an explicit update date,
+            # we use the current fetch date (today_str) as the date for this net value snapshot.
+            date_val = today_str
 
             try:
                 date_obj = pd.to_datetime(date_val).strftime("%Y-%m-%d")
