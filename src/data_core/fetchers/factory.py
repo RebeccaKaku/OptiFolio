@@ -4,13 +4,11 @@ Fetcher工厂类，根据资产类型创建对应的Fetcher实例。
 支持注册自定义的Fetcher类。
 """
 
-from typing import Dict, Type, Optional
+from typing import Dict, Type, Optional, Union, Tuple
 from src.data_core.interface import BaseFetcher
-from .us_equity import UsEquityFetcher
-from .open_end_fund import CnFundFetcher
-from .cn_stock import CnStockFetcher
-from .currency import CurrencyFetcher
 import importlib
+
+FetcherSpec = Union[Type[BaseFetcher], Tuple[str, str]]
 
 
 class FetcherFactory:
@@ -19,45 +17,45 @@ class FetcherFactory:
     """
     
     # 默认映射：资产类型 -> Fetcher类
-    _default_mappings = {
+    _default_mappings: Dict[str, FetcherSpec] = {
         # 简化类型（新配置使用）
-        'cn_stock': CnStockFetcher,
-        'cn_fund': CnFundFetcher,
-        'us_equity': UsEquityFetcher,
+        'cn_stock': ('.cn_stock', 'CnStockFetcher'),
+        'cn_fund': ('.open_end_fund', 'CnFundFetcher'),
+        'us_equity': ('.us_equity', 'UsEquityFetcher'),
         
         # 中国股票（旧类型，向后兼容）
-        'cn_stock_sh': CnStockFetcher,
-        'cn_stock_sz': CnStockFetcher,
+        'cn_stock_sh': ('.cn_stock', 'CnStockFetcher'),
+        'cn_stock_sz': ('.cn_stock', 'CnStockFetcher'),
         
         # 港股
-        'hk_stock': CnStockFetcher,  # 暂时用CnStockFetcher
+        'hk_stock': ('.cn_stock', 'CnStockFetcher'),  # 暂时用CnStockFetcher
         
         # 中国基金（旧类型，向后兼容）
-        'cn_fund_open': CnFundFetcher,
-        'cn_fund_etf': CnFundFetcher,
-        'cn_fund_qdii': CnFundFetcher,
-        'cn_fund_money': CnFundFetcher,
-        'cn_fund_lof': CnFundFetcher,
-        'cn_fund_index': CnFundFetcher,
+        'cn_fund_open': ('.open_end_fund', 'CnFundFetcher'),
+        'cn_fund_etf': ('.open_end_fund', 'CnFundFetcher'),
+        'cn_fund_qdii': ('.open_end_fund', 'CnFundFetcher'),
+        'cn_fund_money': ('.open_end_fund', 'CnFundFetcher'),
+        'cn_fund_lof': ('.open_end_fund', 'CnFundFetcher'),
+        'cn_fund_index': ('.open_end_fund', 'CnFundFetcher'),
         
         # 货币
-        'currency': CurrencyFetcher,
+        'currency': ('.currency', 'CurrencyFetcher'),
         
         # 指数
-        'cn_index': CnStockFetcher,  # 暂时用CnStockFetcher
+        'cn_index': ('.cn_stock', 'CnStockFetcher'),  # 暂时用CnStockFetcher
         
         # 向后兼容映射（其他旧类型）
-        'cn_equity': CnStockFetcher,
-        'a_share': CnStockFetcher,
-        'cn_etf': CnFundFetcher,
-        'us_stock': UsEquityFetcher,
-        'cn_stock_a': CnStockFetcher,
-        'cn_a_stock': CnStockFetcher,
+        'cn_equity': ('.cn_stock', 'CnStockFetcher'),
+        'a_share': ('.cn_stock', 'CnStockFetcher'),
+        'cn_etf': ('.open_end_fund', 'CnFundFetcher'),
+        'us_stock': ('.us_equity', 'UsEquityFetcher'),
+        'cn_stock_a': ('.cn_stock', 'CnStockFetcher'),
+        'cn_a_stock': ('.cn_stock', 'CnStockFetcher'),
     }
     
     def __init__(self):
         # 从默认映射开始，允许后续注册覆盖
-        self._mappings = self._default_mappings.copy()
+        self._mappings: Dict[str, FetcherSpec] = self._default_mappings.copy()
         
         # 缓存已创建的Fetcher实例 (singleton模式)
         self._fetcher_cache: Dict[str, BaseFetcher] = {}
@@ -109,7 +107,9 @@ class FetcherFactory:
             print(f"    [Factory Error] 未注册的资产类型: {asset_type}")
             return None
         
-        fetcher_class = self._mappings[asset_type]
+        fetcher_class = self._resolve_fetcher_class(self._mappings[asset_type])
+        if fetcher_class is None:
+            return None
         
         try:
             # 创建实例并缓存
@@ -119,6 +119,19 @@ class FetcherFactory:
         except Exception as e:
             print(f"    [Factory Error] 无法创建 {fetcher_class.__name__} 实例: {e}")
             return None
+
+    def _resolve_fetcher_class(self, spec: FetcherSpec) -> Optional[Type[BaseFetcher]]:
+        """延迟导入Fetcher类，避免缺少某个数据源依赖时拖垮整个工厂。"""
+        if isinstance(spec, tuple):
+            module_path, class_name = spec
+            try:
+                module = importlib.import_module(module_path, package=__package__)
+                return getattr(module, class_name)
+            except Exception as e:
+                print(f"    [Factory Error] 无法导入 {class_name}: {e}")
+                return None
+
+        return spec
     
     def get_fetcher_for_asset(self, asset_config: dict) -> Optional[BaseFetcher]:
         """

@@ -38,7 +38,7 @@ def load_config():
     return config
 
 def run():
-    print(">>> [System] FM (Financial Manager) 初始化...")
+    print(">>> [System] OptiFolio 初始化...")
     print(">>> [Version] 2.0 - 增强工厂模式 + 多货币支持")
     
     # 1. 加载配置 (The Law) - 使用深度合并

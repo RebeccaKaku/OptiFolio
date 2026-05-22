@@ -13,6 +13,7 @@ import numpy as np
 
 from .interfaces import IPortfolioManager
 from .cache import get_cache, CacheKeys, cached
+from .paths import get_portfolio_config_path
 
 # 导入现有模块
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,11 +23,20 @@ if project_root not in sys.path:
 
 try:
     from src.data_core.fetchers.factory import get_factory
+except ImportError as e:
+    print(f"[PortfolioCore] 数据获取器工厂不可用: {e}")
+    get_factory = None
+
+try:
     from src.data_core.fetchers.currency import CurrencyFetcher
+except ImportError as e:
+    print(f"[PortfolioCore] 汇率数据获取器不可用: {e}")
+    CurrencyFetcher = None
+
+try:
     from src.math_engine import MathEngine
 except ImportError as e:
-    print(f"[PortfolioCore] 导入依赖失败: {e}")
-    # 创建简单的替代类
+    print(f"[PortfolioCore] 数学引擎不可用，使用简化实现: {e}")
     class MathEngine:
         @staticmethod
         def get_stats(returns):
@@ -53,12 +63,13 @@ class PortfolioCore(IPortfolioManager):
         初始化组合管理核心
         
         Args:
-            config_path: 组合配置文件路径，默认为 config/portfolio.yaml
+            config_path: 组合配置文件路径。默认优先读取 local/portfolio.yaml，
+                兼容旧的 config/portfolio.yaml，也可用 OPTIFOLIO_PORTFOLIO_PATH 覆盖。
             base_currency: 基准货币
             enable_cache: 是否启用缓存
         """
         if config_path is None:
-            config_path = os.path.join(project_root, "config", "portfolio.yaml")
+            config_path = str(get_portfolio_config_path())
         
         self.config_path = config_path
         self.base_currency = base_currency
@@ -77,8 +88,8 @@ class PortfolioCore(IPortfolioManager):
         
         # 数据获取器
         try:
-            self.factory = get_factory()
-            self.fx_fetcher = CurrencyFetcher()
+            self.factory = get_factory() if get_factory else None
+            self.fx_fetcher = CurrencyFetcher() if CurrencyFetcher else None
         except Exception as e:
             print(f"[PortfolioCore] 初始化数据获取器失败: {e}")
             self.factory = None
@@ -192,21 +203,8 @@ class PortfolioCore(IPortfolioManager):
             cached_rate = self.cache.get(cache_key, "fx")
             if cached_rate is not None:
                 return cached_rate
-        
-        # 使用 CurrencyFetcher 获取汇率
-        if self.fx_fetcher:
-            try:
-                rate = self.fx_fetcher.get_realtime_rate(from_currency, to_currency)
-                
-                if self.enable_cache:
-                    # 汇率缓存时间较短（5分钟）
-                    self.cache.set(cache_key, rate, 300, "fx")
-                
-                return rate
-            except Exception as e:
-                print(f"[PortfolioCore] 获取汇率失败 {from_currency}/{to_currency}: {e}")
-        
-        # 回退：使用简单映射
+
+        # 优先使用本地手工汇率，保证离线和网络受限环境下估值稳定。
         simple_rates = {
             ("USD", "CNY"): 7.2,
             ("CNY", "USD"): 1/7.2,
@@ -215,8 +213,35 @@ class PortfolioCore(IPortfolioManager):
             ("USD", "JPY"): 150,
             ("JPY", "USD"): 1/150,
         }
+
+        rate = simple_rates.get((from_currency, to_currency))
+        if rate is None:
+            from_usd = simple_rates.get((from_currency, "USD"))
+            usd_to_target = simple_rates.get(("USD", to_currency))
+            if from_usd is not None and usd_to_target is not None:
+                rate = from_usd * usd_to_target
+
+        if rate is not None:
+            if self.enable_cache:
+                self.cache.set(cache_key, rate, 300, "fx")
+            return rate
         
-        rate = simple_rates.get((from_currency, to_currency), 1.0)
+        # 使用 CurrencyFetcher 获取汇率
+        if self.fx_fetcher:
+            try:
+                rate = self.fx_fetcher.get_realtime_rate(from_currency, to_currency)
+                if from_currency != to_currency and rate == 1.0:
+                    raise ValueError("FX fetcher returned fallback 1.0 for different currencies")
+                
+                if self.enable_cache:
+                    # 汇率缓存时间较短（5分钟）
+                    self.cache.set(cache_key, rate, 300, "fx")
+                
+                return rate
+            except Exception as e:
+                print(f"[PortfolioCore] 获取汇率失败 {from_currency}/{to_currency}: {e}")
+
+        rate = 1.0
         
         if self.enable_cache:
             self.cache.set(cache_key, rate, 300, "fx")
@@ -231,6 +256,12 @@ class PortfolioCore(IPortfolioManager):
             cached_price = self.cache.get(cache_key, "prices")
             if cached_price is not None:
                 return cached_price
+
+        local_price = self._get_local_asset_price(symbol)
+        if local_price is not None:
+            if self.enable_cache:
+                self.cache.set(cache_key, local_price, 600, "prices")
+            return local_price
         
         if not self.factory:
             print(f"[PortfolioCore] 无法获取价格：数据获取器工厂未初始化")
@@ -273,6 +304,39 @@ class PortfolioCore(IPortfolioManager):
         except Exception as e:
             print(f"[PortfolioCore] 获取 {symbol} 价格失败: {e}")
             return None
+
+    def _get_local_asset_price(self, symbol: str) -> Optional[float]:
+        """优先从本地Parquet缓存读取最新价格，避免启动时依赖外部数据源。"""
+        candidate_paths = [
+            os.path.join(project_root, "data", "raw", "daily", f"{symbol}.parquet"),
+            os.path.join(project_root, "data", "raw", f"{symbol}.parquet"),
+        ]
+
+        for path in candidate_paths:
+            if not os.path.exists(path):
+                continue
+
+            try:
+                df = pd.read_parquet(path)
+                if df.empty:
+                    continue
+
+                if "Close" in df.columns:
+                    series = df["Close"]
+                elif "close" in df.columns:
+                    series = df["close"]
+                else:
+                    series = df.iloc[:, -1]
+
+                series = pd.to_numeric(series, errors="coerce").dropna()
+                if series.empty:
+                    continue
+
+                return float(series.iloc[-1])
+            except Exception as e:
+                print(f"[PortfolioCore] 读取本地价格缓存失败 {symbol}: {e}")
+
+        return None
     
     # 添加调试方法
     def debug_asset_mapping(self, symbol: str) -> Dict[str, Any]:
@@ -333,19 +397,12 @@ class PortfolioCore(IPortfolioManager):
     @cached(ttl=300, namespace="portfolio", key_prefix="portfolio_value")
     def get_portfolio_value(self, base_currency: str = "CNY") -> Dict[str, float]:
         """获取组合价值（多货币支持）"""
-        print(f"[PortfolioCore] DEBUG: 开始计算组合价值，基准货币: {base_currency}")
-        print(f"[PortfolioCore] DEBUG: 持仓数量: {len(self.holdings)}，现金货币数量: {len(self.cash)}")
-        
         portfolio_value = 0.0
         position_values = {}
         
         for symbol, shares in self.holdings.items():
-            # 获取资产类型和货币
             asset_currency = self.asset_meta.get(symbol, "USD")
             asset_type = self.asset_type_meta.get(symbol, "us_equity")
-            
-            # 详细调试输出
-            print(f"[PortfolioCore] DEBUG: 处理资产: {symbol} (股数: {shares}) -> 类型: {asset_type}, 货币: {asset_currency}")
             
             # 检查元数据
             if symbol not in self.asset_meta:
@@ -354,31 +411,25 @@ class PortfolioCore(IPortfolioManager):
                 print(f"[PortfolioCore] WARNING: 资产 {symbol} 没有资产类型元数据")
             
             # 获取价格
-            print(f"[PortfolioCore] DEBUG: 获取 {symbol} 价格 (类型: {asset_type})...")
             price = self._get_asset_price(symbol, asset_type)
             
             if price is None:
                 print(f"[PortfolioCore] ERROR: 无法获取 {symbol} 的价格")
-                print(f"[PortfolioCore] DEBUG: 资产元数据: 货币={asset_currency}, 类型={asset_type}")
                 
                 # 尝试调试资产映射
                 if hasattr(self, 'debug_asset_mapping'):
                     debug_info = self.debug_asset_mapping(symbol)
-                    print(f"[PortfolioCore] DEBUG: 资产映射调试信息: {debug_info}")
+                    print(f"[PortfolioCore] 资产映射调试信息: {debug_info}")
                 
                 # 尝试使用默认价格作为回退
                 default_price = 1.0
                 print(f"[PortfolioCore] WARNING: 使用默认价格 {default_price} 作为回退")
                 price = default_price
             
-            print(f"[PortfolioCore] DEBUG: {symbol} 价格: {price}")
-            
             # 汇率换算
             fx_rate = self._get_fx_rate(asset_currency, base_currency)
-            print(f"[PortfolioCore] DEBUG: {asset_currency}/{base_currency} 汇率: {fx_rate}")
             
             position_value = shares * price * fx_rate
-            print(f"[PortfolioCore] DEBUG: {symbol} 价值: {shares} * {price} * {fx_rate} = {position_value}")
             
             position_values[symbol] = {
                 "shares": shares,
@@ -389,17 +440,12 @@ class PortfolioCore(IPortfolioManager):
             }
             
             portfolio_value += position_value
-            print(f"[PortfolioCore] DEBUG: 累计组合价值: {portfolio_value}")
-        
-        print(f"[PortfolioCore] DEBUG: 持仓总价值: {portfolio_value}")
         
         # 现金价值
         cash_value = 0.0
         cash_details = {}
         
         for currency, amount in self.cash.items():
-            print(f"[PortfolioCore] DEBUG: 处理现金: {currency} {amount}")
-            
             if currency == base_currency:
                 fx_rate = 1.0
             else:
@@ -413,13 +459,8 @@ class PortfolioCore(IPortfolioManager):
                 "fx_rate": fx_rate,
                 "value": cash_amount
             }
-            
-            print(f"[PortfolioCore] DEBUG: {currency} 现金价值: {cash_amount}")
-        
-        print(f"[PortfolioCore] DEBUG: 现金总价值: {cash_value}")
         
         total_value = portfolio_value + cash_value
-        print(f"[PortfolioCore] DEBUG: 组合总价值: {total_value}")
         
         # 返回结果
         result = {
@@ -431,12 +472,39 @@ class PortfolioCore(IPortfolioManager):
             "cash": cash_details
         }
         
-        print(f"[PortfolioCore] DEBUG: 组合价值计算完成，持仓数量: {len(position_values)}")
         return result
     
     def get_cash_balances(self) -> Dict[str, float]:
         """获取现金余额（按货币）"""
         return self.cash.copy()
+
+    def get_cash_value(self, base_currency: Optional[str] = None) -> Dict[str, Any]:
+        """获取现金余额并按基准货币折算。"""
+        if base_currency is None:
+            base_currency = self.base_currency
+
+        cash_details = {}
+        total_value = 0.0
+
+        for currency, amount in self.cash.items():
+            amount_float = float(amount)
+            fx_rate = 1.0 if currency == base_currency else self._get_fx_rate(currency, base_currency)
+            value = amount_float * fx_rate
+            total_value += value
+
+            cash_details[currency] = {
+                "amount": amount_float,
+                "fx_rate": fx_rate,
+                "value": value
+            }
+
+        return {
+            "cash": self.cash.copy(),
+            "cash_details": cash_details,
+            "total": total_value,
+            "base_currency": base_currency,
+            "currencies": list(self.cash.keys())
+        }
     
     # ==================== IPortfolioAnalytics 接口实现 ====================
     
@@ -761,26 +829,20 @@ class PortfolioCore(IPortfolioManager):
     
     def _supplement_missing_metadata(self):
         """为持仓中的资产补充缺失的元数据"""
-        print(f"[PortfolioCore] DEBUG: 开始补充缺失的元数据")
-        
         for symbol in self.holdings.keys():
             # 检查是否缺少元数据
             needs_supplement = False
             
             if symbol not in self.asset_meta:
-                print(f"[PortfolioCore] DEBUG: 资产 {symbol} 缺少货币元数据")
                 needs_supplement = True
             
             if symbol not in self.asset_type_meta:
-                print(f"[PortfolioCore] DEBUG: 资产 {symbol} 缺少资产类型元数据")
                 needs_supplement = True
             
             if needs_supplement:
                 # 根据符号模式推断资产类型和货币
                 asset_type = self._infer_asset_type(symbol)
                 currency = self._get_default_currency(asset_type)
-                
-                print(f"[PortfolioCore] DEBUG: 推断 {symbol} -> 类型: {asset_type}, 货币: {currency}")
                 
                 # 设置元数据
                 self.asset_meta[symbol] = currency

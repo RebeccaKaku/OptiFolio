@@ -240,17 +240,19 @@ class PortfolioAPI:
             现金余额信息
         """
         try:
-            cash = self.portfolio_core.get_cash_balances()
-            
-            total_cash = sum(cash.values())
+            cash_value = self.portfolio_core.get_cash_value(self.portfolio_core.base_currency)
+            total_cash = cash_value["total"]
+            base_currency = cash_value["base_currency"]
             
             return self._success_response(
                 data={
-                    "cash": cash,
+                    "cash": cash_value["cash"],
+                    "cash_details": cash_value["cash_details"],
                     "total": total_cash,
-                    "currencies": list(cash.keys())
+                    "base_currency": base_currency,
+                    "currencies": cash_value["currencies"]
                 },
-                message=f"现金余额: {total_cash:,.2f} ({len(cash)}种货币)"
+                message=f"现金余额: {total_cash:,.2f} {base_currency} ({len(cash_value['currencies'])}种货币)"
             )
             
         except Exception as e:

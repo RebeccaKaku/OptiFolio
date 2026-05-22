@@ -341,28 +341,14 @@ class DashboardEngine(IAnalyticsEngine):
     def get_asset_type_distribution(self) -> Dict[str, Any]:
         """获取资产类型分布（用于饼图）"""
         try:
-            print(f"[DashboardEngine] DEBUG: 开始获取资产类型分布")
-            
             # 获取组合价值
             portfolio_value = self.portfolio_core.get_portfolio_value()
-            print(f"[DashboardEngine] DEBUG: 获取到组合价值: {portfolio_value.get('total_value', 0):.2f}")
             
             # 获取持仓摘要
             position_summary = self.portfolio_core.get_position_summary()
-            print(f"[DashboardEngine] DEBUG: 获取到持仓摘要: {position_summary.get('total_positions', 0)}个持仓")
-            
-            # 调试输出持仓详情
-            positions = position_summary.get("positions", [])
-            if positions:
-                print(f"[DashboardEngine] DEBUG: 持仓列表:")
-                for pos in positions[:5]:  # 只显示前5个
-                    print(f"  - {pos.get('symbol', 'N/A')}: {pos.get('value', 0):.2f} ({pos.get('weight', 0):.2%})")
-                if len(positions) > 5:
-                    print(f"  ... 还有{len(positions)-5}个持仓")
             
             # 资产类型分组
             by_type = position_summary.get("by_type", {})
-            print(f"[DashboardEngine] DEBUG: 资产类型分组: {by_type}")
             
             distribution = {
                 "by_asset_type": by_type,
@@ -376,7 +362,6 @@ class DashboardEngine(IAnalyticsEngine):
                 "currency_breakdown": self._get_currency_breakdown()
             }
             
-            print(f"[DashboardEngine] DEBUG: 资产类型分布计算完成")
             return distribution
             
         except Exception as e:
@@ -477,9 +462,13 @@ class DashboardEngine(IAnalyticsEngine):
     def _get_asset_price_info(self, symbol: str, asset_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """获取资产价格信息"""
         try:
-            # 使用 AssetManager 的价格获取逻辑
-            asset_info = self.asset_manager.get_asset_info(symbol)
-            return asset_info.get("price_info")
+            local_price = self.portfolio_core._get_local_asset_price(symbol)
+            if local_price is not None:
+                return {
+                    "latest": local_price,
+                    "source": "local_cache"
+                }
+            return None
         except:
             return None
     

@@ -1,6 +1,6 @@
 # fetchers/__init__.py
 """
-NeoFM 数据抓取模块
+OptiFolio 数据抓取模块
 
 提供统一的数据抓取接口，支持多种数据源：
 - CryptoFetcher: 加密货币数据 (基于 CCXT)

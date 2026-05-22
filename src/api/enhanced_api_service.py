@@ -47,7 +47,23 @@ class EnhancedAPIService:
         """
         批量导入资产（保存到数据库）
         """
-        return self.asset_manager.batch_import(symbols, asset_types)
+        try:
+            result = self.asset_manager.batch_import(symbols, asset_types)
+            summary = result.get("summary", {})
+            return {
+                "success": True,
+                "data": result,
+                "message": (
+                    f"批量导入完成: {summary.get('success', 0)}/"
+                    f"{summary.get('total', len(symbols))} 个资产成功"
+                )
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"批量导入资产失败: {str(e)}",
+                "symbols": symbols
+            }
     
     def get_asset_info(self, symbol: str) -> Dict[str, Any]:
         """
@@ -57,6 +73,14 @@ class EnhancedAPIService:
         """
         try:
             asset_info = self.asset_manager.get_asset_info(symbol)
+            if asset_info.get("exists") is False or asset_info.get("error"):
+                return {
+                    "success": False,
+                    "error": asset_info.get("error", f"资产 {symbol} 不存在"),
+                    "data": asset_info,
+                    "symbol": symbol
+                }
+
             # 包装成统一响应格式
             return {
                 "success": True,
@@ -348,19 +372,31 @@ class EnhancedAPIService:
         try:
             from src.core.database import get_database
             
-            # 获取原有系统状态
-            original_status = self._get_original_system_status()
-            
             # 获取数据库统计
             db = get_database()
             db_stats = db.get_database_stats()
+
+            holdings_count = len(self.portfolio_api.portfolio_core.get_current_holdings())
+            cash_count = len(self.portfolio_api.portfolio_core.get_cash_balances())
             
-            # 合并状态
-            enhanced_status = original_status.get("data", {})
+            enhanced_status = {
+                "asset_system": {
+                    "status": "OK",
+                    "total_assets": db_stats.get("total_assets", 0)
+                },
+                "portfolio_system": {
+                    "status": "OK",
+                    "positions_count": holdings_count,
+                    "cash_currencies": cash_count
+                },
+                "dashboard_system": {"status": "OK"},
+                "overall_status": "OK",
+                "version": "2.0.0"
+            }
             enhanced_status["database"] = {
                 "status": "OK",
                 "stats": db_stats,
-                "file_path": "data/fm_database.db"
+                "file_path": db_stats.get("database_file", str(db.db_path))
             }
             
             return {

@@ -10,10 +10,12 @@
 
 import sqlite3
 import json
+import shutil
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 from pathlib import Path
+from .paths import get_database_path, get_legacy_database_candidates
 
 class DatabaseManager:
     """
@@ -26,17 +28,32 @@ class DatabaseManager:
     4. calculated_metrics - 计算指标表
     """
     
-    def __init__(self, db_path: str = "data/fm_database.db"):
+    def __init__(self, db_path: Optional[str] = None):
         """
         初始化数据库管理器
         
         Args:
             db_path: SQLite数据库文件路径
         """
-        self.db_path = Path(db_path)
+        self.db_path = Path(db_path) if db_path is not None else get_database_path()
         self.db_path.parent.mkdir(exist_ok=True)
+        self._migrate_legacy_database_file()
         self.conn = None
         self._init_database()
+
+    def _migrate_legacy_database_file(self) -> None:
+        """Copy the old FM database file to the OptiFolio path once, if needed."""
+        if self.db_path.exists():
+            return
+
+        same_dir_legacy = self.db_path.parent / "fm_database.db"
+        candidates = [same_dir_legacy, *get_legacy_database_candidates()]
+        for legacy_path in candidates:
+            if legacy_path == self.db_path:
+                continue
+            if legacy_path.exists():
+                shutil.copy2(legacy_path, self.db_path)
+                return
     
     def _init_database(self) -> None:
         """初始化数据库表结构"""
@@ -690,6 +707,9 @@ class DatabaseManager:
                 
                 if config and 'assets' in config:
                     for asset_data in config['assets']:
+                        symbol = asset_data.get('symbol')
+                        if symbol and self.get_asset(symbol):
+                            continue
                         self.add_or_update_asset(asset_data)
                         migrated_count += 1
             

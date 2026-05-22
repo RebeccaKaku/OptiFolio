@@ -1,8 +1,8 @@
-# NeoFM Module Architecture Design
+# OptiFolio Module Architecture Design
 
 ## Executive Summary
 
-This document outlines the architecture design for three new modules to extend the NeoFM financial data framework:
+This document outlines the architecture design for three new modules to extend the OptiFolio financial data framework:
 
 1. **Downloader Module** - Raw data download with batch processing and caching
 2. **Processor Module** - Data cleaning, alignment, and standardization
@@ -1261,7 +1261,7 @@ graph BT
 
 ```python
 @dataclass
-class NeoFMConfig:
+class OptiFolioConfig:
     """Global configuration for NeoFM modules"""
     
     # Downloader settings
@@ -1283,7 +1283,7 @@ class NeoFMConfig:
     max_position_weight: float = 0.2
     
     @classmethod
-    def from_yaml(cls, path: str) -> 'NeoFMConfig':
+    def from_yaml(cls, path: str) -> 'OptiFolioConfig':
         """Load configuration from YAML file"""
         pass
     
@@ -1300,12 +1300,12 @@ import asyncio
 from neofm import (
     DownloadManager, ProcessingPipeline, PortfolioOptimizer,
     YahooFinanceFetcher, CryptoFetcher, CnFundFetcher,
-    ProcessingConfig, NeoFMConfig
+    ProcessingConfig, OptiFolioConfig
 )
 
 async def main():
     # 1. Setup
-    config = NeoFMConfig.from_yaml("config.yaml")
+    config = OptiFolioConfig.from_yaml("config.yaml")
     
     downloader = DownloadManager(
         cache_dir=config.cache_dir,
@@ -1365,7 +1365,7 @@ asyncio.run(main())
 ### 7.1 Complete Project Structure
 
 ```
-NeoFM/
+OptiFolio/
 ├── config.yaml                   # Global configuration
 ├── requirements.txt              # Dependencies
 ├── README.md                     # Documentation
@@ -1415,7 +1415,7 @@ NeoFM/
 │
 ├── core/                         # Shared utilities
 │   ├── __init__.py
-│   ├── config.py                # NeoFMConfig
+│   ├── config.py                # OptiFolioConfig
 │   ├── exceptions.py            # Custom exceptions
 │   └── utils.py                 # Helper functions
 │

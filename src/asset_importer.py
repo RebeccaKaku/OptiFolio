@@ -61,6 +61,32 @@ except ImportError:
         print("[Warning] src.fund_currency_detector not found. Currency detection will be basic.")
 
 
+OFFLINE_ASSET_FALLBACKS: Dict[str, Dict[str, Any]] = {
+    "cn_stock_sh:600519": {
+        "name": "贵州茅台",
+        "currency": "CNY",
+        "exchange": "SH",
+        "source": "offline_fallback",
+    },
+    "cn_stock_sz:000001": {
+        "name": "平安银行",
+        "currency": "CNY",
+        "exchange": "SZ",
+        "source": "offline_fallback",
+    },
+    "cn_fund_qdii:002892": {
+        "name": "华夏移动互联混合",
+        "currency": "USD",
+        "source": "offline_fallback",
+    },
+    "cn_fund_etf:510300": {
+        "name": "沪深300ETF",
+        "currency": "CNY",
+        "source": "offline_fallback",
+    },
+}
+
+
 class AssetDefinition:
     """资产定义类 - 表示一个具体的资产配置"""
     
@@ -71,8 +97,7 @@ class AssetDefinition:
         
         # 必需属性
         self.name = name or symbol
-        # 如果未指定币种，暂定为None，稍后由Importer统一推断
-        self.currency = currency 
+        self.currency = currency if currency else self.infer_default_currency()
         
         # 扩展属性
         self.attributes = kwargs
@@ -100,6 +125,7 @@ class AssetDefinition:
             'cn_fund_index': 'CNY',
             'us_stock': 'USD',
             'hk_stock': 'HKD',
+            'currency': 'USD',
         }
         return type_currency_map.get(self.asset_type, 'CNY')
     
@@ -142,10 +168,16 @@ class AssetDefinition:
         asset_type = data['asset_type']
         name = data.get('name', symbol)
         currency = data.get('currency')
-        
-        kwargs = {k: v for k, v in data.items() 
-                 if k not in ['symbol', 'asset_type', 'name', 'currency', 'source', 'last_updated']}
-        
+
+        # If data already has an explicit 'attributes' key (e.g. from to_dict),
+        # use it directly to avoid double-nesting.
+        if 'attributes' in data and isinstance(data['attributes'], dict):
+            kwargs = data['attributes']
+        else:
+            kwargs = {k: v for k, v in data.items()
+                     if k not in ['symbol', 'asset_type', 'name', 'currency',
+                                  'source', 'last_updated', 'attributes']}
+
         instance = cls(symbol, asset_type, name, currency, **kwargs)
         if 'source' in data:
             instance.source = data['source']
@@ -225,6 +257,13 @@ class AssetRegistry:
     
     def get_asset(self, symbol: str) -> Optional[AssetDefinition]:
         return self.assets.get(symbol)
+
+    def remove_asset(self, symbol: str) -> bool:
+        """移除资产。成功返回 True，资产不存在返回 False。"""
+        if symbol in self.assets:
+            del self.assets[symbol]
+            return True
+        return False
         
     def list_all_assets(self) -> List[AssetDefinition]:
         return list(self.assets.values())
@@ -450,22 +489,34 @@ class AssetImporter:
         # 3. 创建对象
         asset_def = AssetDefinition(normalized_symbol, asset_type, name, currency, **kwargs)
         
-        # 4. 尝试从API获取/更新信息（如果需要刷新，或者缺少关键信息，或者缓存未命中）
-        if refresh or (not api_data and (not asset_def.name or not asset_def.currency)):
+        # 4. 尝试从API获取/更新信息
+        # 当未手动提供名称时，需要从API获取
+        needs_api_fetch = name is None
+        if refresh or (not api_data and needs_api_fetch):
             print(f"[API] 从API获取信息: {normalized_symbol}")
             api_data = self._fetch_asset_info_with_priority(normalized_symbol, asset_type)
+            if not api_data:
+                api_data = self._get_offline_fallback(normalized_symbol, asset_type)
             
             # 如果成功获取到API数据，存入缓存
             if api_data:
                 self._set_cached_asset_info(normalized_symbol, asset_type, api_data)
         
-        # 5. 使用API数据更新资产信息
+        # 5. 使用API数据更新资产信息（但保留手动提供的 name / currency）
+        manual_name = name
+        manual_currency = currency
         if api_data:
             asset_def.update_from_api(api_data)
-        
-        # 6. 智能币种补全
+        if manual_name:
+            asset_def.name = manual_name
+        if manual_currency:
+            asset_def.currency = manual_currency
+
+        # 6. 智能币种补全（仅在未手动指定币种时）
         # 如果API没返回币种，或者当前是默认CNY，尝试用名称再检测一次（防止API漏掉QDII信息）
-        if (not asset_def.currency or asset_def.currency == 'CNY') and asset_def.name:
+        if manual_currency:
+            pass  # 手动指定的币种优先，不做自动补全
+        elif (not asset_def.currency or asset_def.currency == 'CNY') and asset_def.name:
             detected = self.registry.detect_currency(asset_def.name)
             if detected != 'CNY':
                 asset_def.currency = detected
@@ -482,6 +533,15 @@ class AssetImporter:
         else:
             print(f"[Error] 注册失败")
             return None
+
+    def _get_offline_fallback(self, symbol: str, asset_type: str) -> Optional[Dict[str, Any]]:
+        """Return stable metadata for core demo assets when public APIs are unavailable."""
+        key = f"{asset_type}:{symbol}"
+        fallback = OFFLINE_ASSET_FALLBACKS.get(key)
+        if fallback:
+            print(f"[Offline] 使用内置资产元数据: {symbol}")
+            return fallback.copy()
+        return None
     
     def _fetch_asset_info_with_priority(self, symbol: str, asset_type: str) -> Optional[Dict[str, Any]]:
         """根据接口优先级获取资产信息"""
@@ -707,6 +767,12 @@ class AssetImporter:
 # 便捷入口
 def import_asset(symbol: str, asset_type: str, **kwargs):
     return AssetImporter().import_asset(symbol, asset_type, **kwargs)
+
+
+def get_asset(symbol: str):
+    """获取已注册的资产。"""
+    registry = AssetRegistry()
+    return registry.get_asset(symbol)
 
 if __name__ == "__main__":
     print("=== AssetImporter Test (Smart Currency + Prefix + Cache) ===")

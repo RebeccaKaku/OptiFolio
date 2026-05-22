@@ -4,11 +4,18 @@ Dashboard API - 仪表板相关功能实现
 
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-from src.api.network_tester import NetworkTester, run_network_test
 from src.core.logger import get_logger
 from src.core.dashboard_engine import DashboardEngine
 from src.core.cache import get_cache, cached
 import pandas as pd
+
+try:
+    from src.api.network_tester import NetworkTester, run_network_test
+    NETWORK_TESTER_IMPORT_ERROR = None
+except ImportError as e:
+    NetworkTester = None
+    run_network_test = None
+    NETWORK_TESTER_IMPORT_ERROR = e
 
 logger = get_logger(__name__)
 
@@ -19,8 +26,17 @@ class DashboardAPI:
     def __init__(self):
         """初始化仪表板API"""
         self.dashboard_engine = DashboardEngine()
-        self.network_tester = NetworkTester()
+        self.network_tester = NetworkTester() if NetworkTester else None
         self.cache = get_cache()
+
+    def _run_network_test(self) -> Dict[str, Any]:
+        """运行网络测试；依赖缺失时返回业务错误而不是导入失败。"""
+        if run_network_test is None:
+            return {
+                "error": f"网络测试依赖不可用: {NETWORK_TESTER_IMPORT_ERROR}",
+                "error_code": "NETWORK_TESTER_UNAVAILABLE"
+            }
+        return run_network_test()
     
     def get_asset_overview(self) -> Dict[str, Any]:
         """获取资产概览"""
@@ -144,14 +160,14 @@ class DashboardAPI:
         """测试网络API接口连通性"""
         try:
             if async_mode:
-                report = run_network_test()
+                report = self._run_network_test()
             else:
                 # 同步模式，使用缓存
                 cache_key = 'network_test_report'
                 report = self.cache.get(cache_key)
                 
                 if report is None:
-                    report = run_network_test()
+                    report = self._run_network_test()
                     # 缓存10分钟
                     self.cache.set(cache_key, report, ttl=600)
             
@@ -173,7 +189,7 @@ class DashboardAPI:
             
             if status is None:
                 # 运行快速测试
-                report = run_network_test()
+                report = self._run_network_test()
                 
                 if 'error' in report:
                     status = {
@@ -215,7 +231,7 @@ class DashboardAPI:
         """获取失败的API列表"""
         try:
             # 运行测试获取失败列表
-            report = run_network_test()
+            report = self._run_network_test()
             
             if 'error' in report:
                 return {"success": False, "error": report['error']}
@@ -241,7 +257,7 @@ class DashboardAPI:
         """导出网络测试结果"""
         try:
             # 运行完整测试
-            report = run_network_test()
+            report = self._run_network_test()
             
             if 'error' in report:
                 return {"success": False, "error": report['error']}

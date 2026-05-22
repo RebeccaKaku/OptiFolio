@@ -157,6 +157,11 @@ cython_debug/
 
 # cache directory (for cn_fund)
 .cache/
+.safe_export/
+
+# Private local workspace
+local/*
+!local/README.md
 
 # Temporary and backup files
 *~
@@ -168,3 +173,10 @@ cython_debug/
 *.csv
 *.xlsx
 *.json
+*.parquet
+*.db
+*.db-journal
+
+# Secrets and local config
+config/secrets.yaml
+config/portfolio.yaml

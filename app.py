@@ -1,5 +1,8 @@
 """
-FM Dashboard - 基于Streamlit的可视化界面
+OptiFolio Dashboard - legacy Streamlit visualization shell
+
+This file is frozen while the project moves toward FastAPI + React. Keep new
+business logic in src/services/ and expose it through src/api/fastapi_app.py.
 
 功能特性：
 1. 资产导入功能（sh000001, AAPL, GBP等）
@@ -27,7 +30,7 @@ from src.api.enhanced_api_service import get_enhanced_api_service
 
 # 页面配置
 st.set_page_config(
-    page_title="FM 金融管理仪表板（增强版）",
+    page_title="OptiFolio 投资组合仪表板（增强版）",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -96,7 +99,7 @@ st.markdown("""
 
 # 侧边栏导航
 with st.sidebar:
-    st.markdown("## 📊 FM 金融管理")
+    st.markdown("## 📊 OptiFolio")
     st.markdown("---")
     
     # 导航菜单
@@ -170,7 +173,7 @@ with st.sidebar:
 
 # ==================== 仪表板页面 ====================
 if page == "🏠 仪表板":
-    st.markdown('<div class="main-header">🏠 FM 金融管理仪表板</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🏠 OptiFolio 投资组合仪表板</div>', unsafe_allow_html=True)
     
     # 快速统计行
     col1, col2, col3, col4 = st.columns(4)
@@ -203,7 +206,8 @@ if page == "🏠 仪表板":
             cash_balances = api_service.get_cash_balances()
             if cash_balances["success"]:
                 total_cash = cash_balances["data"]["total"]
-                st.metric("现金余额", f"¥{total_cash:,.2f}")
+                base_currency = cash_balances["data"].get("base_currency", "CNY")
+                st.metric("现金余额", f"{base_currency} {total_cash:,.2f}")
     
     st.markdown("---")
     
@@ -1371,7 +1375,7 @@ elif page == "⚙️ 系统设置":
                 st.download_button(
                     label="下载导出文件",
                     data=export_data["content"],
-                    file_name=f"fm_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{export_format}",
+                    file_name=f"optifolio_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{export_format}",
                     mime="application/json" if export_format == "json" else "text/csv"
                 )
             else:
@@ -1550,7 +1554,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align: center; color: #6B7280; font-size: 0.9rem;">
-        FM 金融管理系统 | 版本 1.0.0 | © 2025 版权所有
+        OptiFolio | 版本 1.0.0 | © 2025 版权所有
     </div>
     """,
     unsafe_allow_html=True

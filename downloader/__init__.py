@@ -1,6 +1,6 @@
 # downloader/__init__.py
 """
-NeoFM Downloader Module
+OptiFolio Downloader Module
 
 Provides raw data download with batch processing and caching capabilities.
 
