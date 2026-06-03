@@ -18,6 +18,7 @@ CANONICAL_MARKET_COLUMNS = [
     "volume",
     "currency",
     "source",
+    "timezone",
 ]
 
 
@@ -44,8 +45,25 @@ def normalize_market_frame(
     asset_id: Optional[str] = None,
     source: str = "manual",
     currency: Optional[str] = None,
+    timezone: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Convert provider output into the canonical market-data schema."""
+    """Convert provider output into the canonical market-data schema.
+
+    Args:
+        frame: Raw provider DataFrame.
+        asset_id: Asset identifier (e.g. 'AAPL').
+        source: Data source label (e.g. 'yahoo', 'akshare').
+        currency: ISO 4217 currency code.
+        timezone: IANA timezone for the exchange (e.g. 'America/New_York').
+                  Used to convert timestamps to exchange-local calendar dates.
+                  When None, dates are kept as-is (backward compatibility).
+
+    Date normalization:
+        All timestamps are converted to the exchange's local calendar date
+        (date-only, no time component). This ensures "Monday's close" is
+        always tagged as Monday in the exchange's timezone, regardless of
+        the UTC equivalent.
+    """
     if frame is None or frame.empty:
         return pd.DataFrame(columns=CANONICAL_MARKET_COLUMNS)
 
@@ -70,7 +88,7 @@ def normalize_market_frame(
             raise ValueError("market data requires either close or adj_close")
         df["adj_close"] = df["close"]
 
-    for column in ("open", "high", "low", "volume"):
+    for column in ("open", "high", "low", "volume", "timezone"):
         if column not in df.columns:
             df[column] = pd.NA
 
@@ -81,8 +99,26 @@ def normalize_market_frame(
 
     df = df[CANONICAL_MARKET_COLUMNS].copy()
     df["asset_id"] = df["asset_id"].astype(str).str.strip()
-    df["date"] = pd.to_datetime(df["date"], errors="raise").dt.tz_localize(None)
+
+    # ── Date normalization: exchange-local calendar date ──────────────
+    dates = pd.to_datetime(df["date"], errors="raise")
+    if timezone is not None:
+        # Convert to exchange-local calendar date
+        if dates.dt.tz is None:
+            # Naive → assume the data is already in exchange-local time
+            # (common for akshare and bank APIs that return date-only strings)
+            pass
+        else:
+            # Tz-aware → convert to exchange timezone
+            dates = dates.dt.tz_convert(timezone)
+        # Store as date-only (no time component)
+        df["date"] = dates.dt.normalize()
+    else:
+        # Backward compatibility: strip timezone, keep as-is
+        df["date"] = dates.dt.tz_localize(None)
+
     df["source"] = df["source"].fillna(source).astype(str)
+    df["timezone"] = df["timezone"].fillna(timezone or "UTC")
     if currency is not None:
         df["currency"] = df["currency"].fillna(currency)
 
@@ -113,6 +149,7 @@ def validate_market_frame(frame: pd.DataFrame) -> pd.DataFrame:
             "volume": pa.Column(float, Check.ge(0), nullable=True, coerce=True),
             "currency": pa.Column(str, nullable=True),
             "source": pa.Column(str, nullable=False),
+            "timezone": pa.Column(str, nullable=True),
         },
         checks=[
             Check(lambda df: ~df[["asset_id", "date", "source"]].duplicated().any()),

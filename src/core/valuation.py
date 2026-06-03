@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """ValuationEngine — date-aware portfolio valuation using MarketDataRepository.
 
 The ValuationEngine is the central innovation over the legacy PortfolioCore:
@@ -9,14 +11,14 @@ If no price exists on T, walks backward up to 5 business days.
 Raises NoPriceDataError if no price is found.
 """
 
-from __future__ import annotations
-
 from datetime import date, timedelta
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING
 
 import pandas as pd
 
-from src.data_foundation.repository import MarketDataRepository
+if TYPE_CHECKING:
+    from src.data_foundation.repository import MarketDataRepository
+
 from src.domain import (
     CashHolding,
     PositionValue,
@@ -140,11 +142,14 @@ class ValuationEngine:
 
     def __init__(
         self,
-        market_data: Optional[MarketDataRepository] = None,
+        market_data: Optional["MarketDataRepository"] = None,
         fx_provider: Optional[FxRateProvider] = None,
         max_lookback_days: int = 5,
     ):
-        self.market_data = market_data or MarketDataRepository()
+        if market_data is None:
+            from src.data_foundation.repository import MarketDataRepository
+            market_data = MarketDataRepository()
+        self.market_data = market_data
         self.fx_provider = fx_provider or FxRateProvider()
         self.max_lookback_days = max_lookback_days
 
