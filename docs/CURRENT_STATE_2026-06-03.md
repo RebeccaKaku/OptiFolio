@@ -1,8 +1,9 @@
 # OptiFolio 当前状态与推进路线
 
 **日期**: 2026-06-03
-**分支**: master
+**分支**: master（fix-bank-apis / feat-bosc / debug-branch 已合并并删除）
 **版本**: 0.1.0 (架构重构中)
+**测试**: 77 passed, 12 skipped, 0 failures
 
 ---
 
@@ -29,44 +30,63 @@ portfolio/           # 优化算法（Markowitz、Black-Litterman）
 
 ## ✅ 已完成
 
-### Jules Cloud Tasks（5/5 全部完成）
+### Jules Cloud Tasks（5/5）
 
 | # | 任务 | 状态 | 提交 |
 |---|------|------|------|
 | 1 | Ingestion Adapter → MarketDataRepository | ✅ | `06beec4` |
-| 2 | 优化端点加固（参数校验、错误处理） | ✅ | `55b881f` |
+| 2 | 优化端点加固 | ✅ | `55b881f` |
 | 3 | Vectorbt 回测适配器 | ✅ | `98df050` |
 | 4 | 测试卫生清理 | ✅ | `c1d836d` |
 | 5 | 开发者启动脚本 + Python 版本文档 | ✅ | `1840dac` |
 
-### 额外完成
+### Portfolio Management 系统（新完成）
 
-- 并发数据加载（从 remote PR 移植）: `9e1e591`
-- BOSC 历史净值抓取升级: `a5a4da7`
-- BOSC 净值日期解析修复: `d03c314`
-- CORS 安全修复 + 重复代码清理: `e785b07`
-- 模块化架构重构: `5797f67`
+| # | 模块 | 说明 |
+|---|------|------|
+| — | `src/domain/models.py` | 新增 ValuationRequest, ValuationResult, PositionValue, CashHolding |
+| — | `src/domain/corporate_actions.py` | DividendAction, StockSplitAction, MergerAction |
+| — | `src/domain/fees.py` | TransactionFee, ManagementFee, TaxRule, FeeSchedule |
+| — | `src/core/valuation.py` | **ValuationEngine** — 日期感知定价，使用 MarketDataRepository |
+| — | `src/core/corporate_actions.py` | CorporateActionProcessor — YAML 持久化 |
+| — | `src/core/fees.py` | FeeProcessor |
+| — | `src/core/portfolio_history.py` | PortfolioHistoryTracker — Parquet 存储 + 绩效指标 |
+| — | `src/services/portfolio_service_v2.py` | **PortfolioServiceV2** — 一站式服务入口 |
+| — | `src/api/fastapi_app.py` | 10 个新 V2 路由 |
+
+### 银行 Fetcher 修复
+
+| 数据源 | 状态 | 测试 |
+|--------|------|------|
+| BOSC | ✅ 接口修复，mock 测试完整 | 8 assertions |
+| BOC | ✅ 接口正常 | 3 assertions |
+| ICBC | ✅ 接口正常 | 8 assertions |
+
+### 其他
+
+- 并发数据加载（从 remote PR 移植）
+- BOSC 历史净值抓取升级
+- 分支合并：fix-bank-apis / feat-bosc / debug-branch → master
 
 ---
 
-## 🔴 当前阻塞：3 个测试失败
+## 🔴 当前阻塞：时间对齐（新）
 
-运行 `python -m pytest tests/ -q` 的结果：
+详见 `docs/TIME_ALIGNMENT_DESIGN.md`。
 
-```
-FAILED tests/test_data_foundation.py — duckdb module missing
-FAILED tests/test_fetchers.py::test_bosc_fetcher_sync — BOSC fetch 返回空 DataFrame
-FAILED tests/test_ingestion_adapter.py — duckdb module missing
-43 passed, 12 skipped, 3 failed
-```
+**核心问题：** 跨时区资产（美股 / A股 / 港股 / 加密货币）的价格时间戳在系统内不一致。
 
-### 根因
+- `normalize_market_frame()` 无条件抹除所有时区信息（`schemas.py:84`）
+- 不同 fetcher 对同一美股收盘事件产生不同的 naive 时间戳
+- 对含美股+A股的组合调用 `value_on(T)` 时，无"可知道性"（knowability）约束
 
-| 失败 | 原因 | 修复方案 |
-|------|------|----------|
-| `test_data_foundation.py` | `duckdb` 包未安装在当前环境 | `pip install duckdb` |
-| `test_ingestion_adapter.py` | 同上 | 同上 |
-| `test_bosc_fetcher_sync` | Mock 只覆盖了产品发现 API（`PRODUCT_LIST_URL`），未覆盖净值历史 API（`NET_WORTH_URL`），导致 `fetch()` 返回空 DataFrame | 扩展 mock，为 `NET_WORTH_URL` 的 POST 请求返回 `{"dates": [...], "rates": [...]}` |
+**状态：** 设计完成，待开始实施 Phase A（基础设施）。
+
+### ~~旧阻塞：3 个测试失败~~ ✅ 已修复
+
+- ~~duckdb 未安装~~ → `pip install duckdb`
+- ~~BOSC fetcher test mock 不完整~~ → 扩展 mock 覆盖 NET_WORTH_URL
+- ~~ICBC test 无 assertion~~ → 8 个 assertions
 
 ---
 
@@ -88,21 +108,34 @@ FAILED tests/test_ingestion_adapter.py — duckdb module missing
 
 ## 📋 推进路线
 
-### 第一优先级：修复构建（目标：全部测试通过）
+### 🔴 当前：时间对齐
 
-- [ ] **安装 duckdb**: `pip install duckdb`
-- [ ] **修复 BOSC fetcher 测试 mock**: 为 `NET_WORTH_URL` 添加 mock 返回
-- [ ] **加固 ICBC fetcher 测试**: 添加有意义的 assertion
+- [ ] **Phase A: 基础设施** — 创建 ExchangeCalendar 注册表，扩展 canonical schema
+- [ ] **Phase B: Fetcher 改造** — 统一所有 fetcher 到交易所当地日期
+- [ ] **Phase C: 估值引擎增强** — 可知道性检查、多日历回看
+- [ ] **Phase D: 回测加固** — 多日历重采样
 
-### 第二优先级：完成 BOSC/BOC/ICBC Fetcher PR
+### 第一优先级：修复构建 ✅ 已完成
 
-- [ ] 将 `verify=False` 改为可配置参数，添加注释说明原因
-- [ ] 确认 BOSC `fetch()` 返回标准 OHLCV DataFrame
-- [ ] 强化测试：验证 DataFrame schema、index 类型、close 值、空数据/错误场景
-- [ ] 确保不修改共享 config 文件
-- [ ] 从当前 `origin/main` rebase，重新提交 PR
+- [x] 安装 duckdb
+- [x] 修复 BOSC fetcher 测试 mock
+- [x] 加固 ICBC fetcher 测试
 
-### 第三优先级：架构推进
+### 第二优先级：BOSC/BOC/ICBC Fetcher PR ✅ 已完成
+
+- [x] 合并到 master
+- [x] 测试完整（BOSC 8 assertions, ICBC 8 assertions, BOC 3 assertions）
+
+### 第三优先级：Portfolio Management ✅ 已完成
+
+- [x] Domain 模型扩展
+- [x] ValuationEngine（日期感知定价）
+- [x] CorporateActionProcessor + FeeProcessor（接口桩）
+- [x] PortfolioHistoryTracker
+- [x] PortfolioServiceV2 + 10 个 API 路由
+- [x] FastAPI 集成
+
+### 第四优先级：架构推进
 
 - [ ] **Phase 1: 前端建设** — 创建 `frontend/` React + Vite 项目
 - [ ] **Phase 3: Portfolio/Pricing 加固** — 替换 print 为 logger、离线确定性估值
