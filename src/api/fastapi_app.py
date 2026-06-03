@@ -186,6 +186,143 @@ def create_app() -> FastAPI:
             )
         )
 
+    # ── Portfolio V2 routes (date-aware valuation) ────────────────────
+
+    class DividendPayload(BaseModel):
+        asset_id: str = Field(min_length=1)
+        ex_date: str  # YYYY-MM-DD
+        amount_per_share: float = Field(gt=0)
+        currency: str = "USD"
+        effective_date: Optional[str] = None
+        withholding_tax_rate: float = 0.0
+
+    class SplitPayload(BaseModel):
+        asset_id: str = Field(min_length=1)
+        ex_date: str  # YYYY-MM-DD
+        ratio: float = Field(gt=0)
+        effective_date: Optional[str] = None
+
+    class MergerPayload(BaseModel):
+        asset_id: str = Field(min_length=1)
+        target_asset_id: str = Field(min_length=1)
+        ex_date: str
+        exchange_ratio: float = Field(gt=0)
+        cash_per_share: float = 0.0
+        cash_currency: str = "USD"
+        effective_date: Optional[str] = None
+
+    @app.get("/api/portfolio/v2/value", tags=["portfolio"])
+    def portfolio_v2_value(
+        as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+    ) -> JSONResponse:
+        """Date-aware portfolio valuation (next-day NAV)."""
+        from datetime import date as date_cls
+        as_of_date = date_cls.fromisoformat(as_of) if as_of else None
+        return _json_response(
+            get_application_services().portfolio_v2.get_value(
+                as_of=as_of_date, base_currency=base_currency,
+            )
+        )
+
+    @app.get("/api/portfolio/v2/history", tags=["portfolio"])
+    def portfolio_v2_history(
+        start: str = Query(pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        end: str = Query(pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+    ) -> JSONResponse:
+        """Daily portfolio valuation over a date range."""
+        from datetime import date as date_cls
+        return _json_response(
+            get_application_services().portfolio_v2.get_value_history(
+                start=date_cls.fromisoformat(start),
+                end=date_cls.fromisoformat(end),
+                base_currency=base_currency,
+            )
+        )
+
+    @app.get("/api/portfolio/v2/holdings", tags=["portfolio"])
+    def portfolio_v2_holdings() -> JSONResponse:
+        return _json_response(
+            get_application_services().portfolio_v2.get_current_holdings()
+        )
+
+    @app.get("/api/portfolio/v2/cash", tags=["portfolio"])
+    def portfolio_v2_cash() -> JSONResponse:
+        return _json_response(
+            get_application_services().portfolio_v2.get_cash_balances()
+        )
+
+    @app.get("/api/portfolio/v2/corporate-actions", tags=["portfolio"])
+    def portfolio_v2_corporate_actions(
+        asset_id: Optional[str] = None,
+    ) -> JSONResponse:
+        return _json_response(
+            get_application_services().portfolio_v2.get_corporate_actions(
+                asset_id=asset_id,
+            )
+        )
+
+    @app.post("/api/portfolio/v2/corporate-actions/dividend", tags=["portfolio"])
+    def portfolio_v2_record_dividend(payload: DividendPayload) -> JSONResponse:
+        from datetime import date as date_cls
+        return _json_response(
+            get_application_services().portfolio_v2.record_dividend(
+                asset_id=payload.asset_id,
+                ex_date=date_cls.fromisoformat(payload.ex_date),
+                amount_per_share=payload.amount_per_share,
+                currency=payload.currency,
+                effective_date=date_cls.fromisoformat(payload.effective_date) if payload.effective_date else None,
+                withholding_tax_rate=payload.withholding_tax_rate,
+            )
+        )
+
+    @app.post("/api/portfolio/v2/corporate-actions/split", tags=["portfolio"])
+    def portfolio_v2_record_split(payload: SplitPayload) -> JSONResponse:
+        from datetime import date as date_cls
+        return _json_response(
+            get_application_services().portfolio_v2.record_split(
+                asset_id=payload.asset_id,
+                ex_date=date_cls.fromisoformat(payload.ex_date),
+                ratio=payload.ratio,
+                effective_date=date_cls.fromisoformat(payload.effective_date) if payload.effective_date else None,
+            )
+        )
+
+    @app.post("/api/portfolio/v2/corporate-actions/merger", tags=["portfolio"])
+    def portfolio_v2_record_merger(payload: MergerPayload) -> JSONResponse:
+        from datetime import date as date_cls
+        return _json_response(
+            get_application_services().portfolio_v2.record_merger(
+                asset_id=payload.asset_id,
+                target_asset_id=payload.target_asset_id,
+                ex_date=date_cls.fromisoformat(payload.ex_date),
+                exchange_ratio=payload.exchange_ratio,
+                cash_per_share=payload.cash_per_share,
+                cash_currency=payload.cash_currency,
+                effective_date=date_cls.fromisoformat(payload.effective_date) if payload.effective_date else None,
+            )
+        )
+
+    @app.get("/api/portfolio/v2/metrics", tags=["portfolio"])
+    def portfolio_v2_metrics() -> JSONResponse:
+        return _json_response(
+            get_application_services().portfolio_v2.compute_metrics()
+        )
+
+    @app.get("/api/portfolio/v2/history-entries", tags=["portfolio"])
+    def portfolio_v2_history_entries(
+        start: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        end: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    ) -> JSONResponse:
+        from datetime import date as date_cls
+        return _json_response(
+            get_application_services().portfolio_v2.get_history(
+                start=date_cls.fromisoformat(start) if start else None,
+                end=date_cls.fromisoformat(end) if end else None,
+            )
+        )
+
     return app
 
 

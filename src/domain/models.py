@@ -104,3 +104,96 @@ class RebalancePlan:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+# ── Portfolio valuation types ──────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ValuationRequest:
+    """Request to value a portfolio on a specific date.
+
+    Convention: value_on(T) uses close prices from date <= T (next-day NAV).
+    """
+
+    as_of: date
+    base_currency: str = "CNY"
+
+
+@dataclass(frozen=True)
+class PositionValue:
+    """Valuation breakdown for a single holding."""
+
+    asset_id: str
+    quantity: float
+    price: float
+    currency: str
+    fx_rate: float
+    value_base: float  # value in base currency
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class CashHolding:
+    """Valuation breakdown for a single cash balance."""
+
+    currency: str
+    amount: float
+    fx_rate: float
+    value_base: float  # value in base currency
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ValuationResult:
+    """Result of a date-specific portfolio valuation."""
+
+    as_of: date
+    total_value: float
+    holdings_value: float
+    cash_value: float
+    base_currency: str
+    positions: Dict[str, PositionValue] = field(default_factory=dict)
+    cash_breakdown: Dict[str, CashHolding] = field(default_factory=dict)
+    fx_rates: Dict[str, float] = field(default_factory=dict)
+    price_date: Optional[date] = None  # actual date of prices used
+    corporate_action_adjustments: float = 0.0
+    fee_adjustments: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "as_of": self.as_of.isoformat(),
+            "total_value": self.total_value,
+            "holdings_value": self.holdings_value,
+            "cash_value": self.cash_value,
+            "base_currency": self.base_currency,
+            "positions": {
+                asset_id: pos.to_dict() for asset_id, pos in self.positions.items()
+            },
+            "cash_breakdown": {
+                curr: ch.to_dict() for curr, ch in self.cash_breakdown.items()
+            },
+            "fx_rates": dict(self.fx_rates),
+            "price_date": self.price_date.isoformat() if self.price_date else None,
+            "corporate_action_adjustments": self.corporate_action_adjustments,
+            "fee_adjustments": self.fee_adjustments,
+        }
+
+
+@dataclass(frozen=True)
+class PortfolioHistoryEntry:
+    """A single point in the portfolio's equity curve."""
+
+    date: date
+    total_value: float
+    holdings_value: float
+    cash_value: float
+    base_currency: str
+    num_positions: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)

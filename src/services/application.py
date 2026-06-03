@@ -8,6 +8,7 @@ from src.api.enhanced_api_service import get_enhanced_api_service
 from .asset_service import AssetService
 from .dashboard_service import DashboardService
 from .portfolio_service import PortfolioService
+from .portfolio_service_v2 import PortfolioServiceV2
 from .research_service import ResearchService
 from .system_service import SystemService
 
@@ -16,7 +17,8 @@ from .system_service import SystemService
 class ApplicationServices:
     system: SystemService
     dashboard: DashboardService
-    portfolio: PortfolioService
+    portfolio: PortfolioService      # legacy
+    portfolio_v2: PortfolioServiceV2  # NEW — date-aware valuation
     assets: AssetService
     research: ResearchService
 
@@ -28,6 +30,7 @@ def get_application_services() -> ApplicationServices:
         system=SystemService(api_service),
         dashboard=DashboardService(api_service),
         portfolio=PortfolioService(api_service),
+        portfolio_v2=PortfolioServiceV2(),
         assets=AssetService(api_service),
         research=ResearchService(),
     )

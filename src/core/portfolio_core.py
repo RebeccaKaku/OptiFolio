@@ -1,6 +1,12 @@
 """
-组合管理核心 - 实现 IPortfolioManager 接口
+组合管理核心 — 实现 IPortfolioManager 接口
 集成现有 PortfolioManager 功能，添加分析和扩展性支持
+
+.. deprecated::
+    New work should use ``src.core.ValuationEngine`` for date-aware pricing
+    and ``src.services.PortfolioServiceV2`` as the service facade.
+    This module is retained for backward compatibility with existing API routes.
+    See docs/CURRENT_STATE_2026-06-03.md for migration guidance.
 """
 
 import os

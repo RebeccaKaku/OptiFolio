@@ -32,7 +32,10 @@ class IcbcFetcher(AsyncBaseFetcher):
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
         
-        # SSL context to allow legacy renegotiation for ICBC servers
+        # SSL context workaround: ICBC servers utilize legacy TLS renegotiation.
+        # Modern OpenSSL versions (3.0+) disable unsafe legacy renegotiation by default,
+        # which throws `ssl.SSLError: [SSL: UNSAFE_LEGACY_RENEGOTIATION_DISABLED]` during handshake.
+        # Setting OP_LEGACY_SERVER_CONNECT (0x4) enables legacy connections safely.
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
         
@@ -42,6 +45,57 @@ class IcbcFetcher(AsyncBaseFetcher):
             "Referer": "https://www.icbc.com.cn/",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+
+    async def fetch_all_products(self) -> List[str]:
+        """
+        Query all active wealth management products from ICBC personal banking.
+        """
+        print("    [ICBC] Discovering all active products via session-less personal banking...")
+        url = "https://mybank.icbc.com.cn/servlet/ICBCBaseReqServletNoSession"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+        
+        import re
+        all_codes = set()
+        page = 1
+        
+        async with httpx.AsyncClient(verify=self.ssl_context) as client:
+            while True:
+                page_flag = "0" if page == 1 else "2"
+                condition = f"$$$$$$$${page_flag}${page}$$1"
+                
+                payload = {
+                    "dse_operationName": "per_FinanceCurProListP3NSOp",
+                    "nowPageNum_turn": str(page),
+                    "pageFlag_turn": page_flag,
+                    "Area_code": "0200",
+                    "useFinanceSolrFlag": "1",
+                    "financeQueryCondition": condition
+                }
+                
+                try:
+                    response = await client.post(url, headers=headers, data=payload, timeout=20)
+                    response.raise_for_status()
+                    
+                    codes = set(re.findall(r"buySubmit\('([^']+)'", response.text))
+                    if not codes:
+                        break
+                        
+                    new_codes = codes.difference(all_codes)
+                    if not new_codes:
+                        break
+                        
+                    all_codes.update(codes)
+                    page += 1
+                    await asyncio.sleep(0.1)  # brief delay
+                except Exception as e:
+                    print(f"    [ICBC] Error during product discovery page {page}: {e}")
+                    break
+                    
+        print(f"    [ICBC] Discovered {len(all_codes)} active product codes.")
+        return sorted(list(all_codes))
 
     async def fetch(
         self, 
@@ -150,54 +204,85 @@ class IcbcFetcher(AsyncBaseFetcher):
         return df.loc[start_date:end_date][["open", "high", "low", "close", "volume"]]
 
     async def sync(self, symbols: Optional[List[str]] = None):
-        """Trigger update for a list of products. If None, syncs all found in processed_dir and some default codes."""
+        """Trigger update for a list of products. If None, performs dynamic auto-discovery merged with config and local files."""
         if symbols is None:
-            # Auto-discover from processed_dir
-            symbols = [f.name.replace("icbc_net_value_", "").replace(".parquet", "") for f in self.processed_dir.glob("icbc_net_value_*.parquet")]
+            # 1. Try to discover active products dynamically
+            discovered_symbols = []
+            try:
+                discovered_symbols = await self.fetch_all_products()
+            except Exception as e:
+                print(f"    [ICBC] Dynamic discovery failed: {e}.")
 
-            # Since no public discovery API is available without login, we append some default test codes covering RMB and Foreign Currency products
-            default_codes = ["23GS8125", "23GS8123"]
-            symbols.extend(default_codes)
-            symbols = list(set(symbols))
+            # 2. Get local processed symbols
+            local_symbols = [f.name.replace("icbc_net_value_", "").replace(".parquet", "") for f in self.processed_dir.glob("icbc_net_value_*.parquet")]
+            
+            # 3. Get config symbols
+            config_symbols = []
+            config_path = Path("config/icbc_products.yaml")
+            if config_path.exists():
+                try:
+                    import yaml
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        config_data = yaml.safe_load(f)
+                        if config_data and "symbols" in config_data:
+                            config_symbols = config_data["symbols"]
+                            print(f"    [ICBC] Loaded product codes from {config_path}: {config_symbols}")
+                except Exception as e:
+                    print(f"    [ICBC] Error loading {config_path}: {e}.")
+            else:
+                config_symbols = ["23GS8125", "23GS8123"]
 
-            print(f"    [ICBC] Auto-discovered {len(symbols)} products: {symbols}")
+            # Merge all lists
+            symbols = list(set(discovered_symbols + local_symbols + config_symbols))
+            print(f"    [ICBC] Final list of {len(symbols)} products to sync.")
 
         if not symbols:
             print("    [ICBC] No products to sync.")
             return
 
-        for symbol in symbols:
-            # Check last date in existing processed file to determine start_date
-            processed_file = self.processed_dir / f"icbc_net_value_{symbol}.parquet"
-            start_date = "2000-01-01"
-            
-            if processed_file.exists():
-                try:
-                    existing_df = pd.read_parquet(processed_file)
-                    if not existing_df.empty:
-                        start_date = existing_df.index[-1].strftime("%Y-%m-%d")
-                except Exception:
-                    pass
-            
-            end_date = datetime.now().strftime("%Y-%m-%d")
-            
-            if start_date == end_date:
-                print(f"    [ICBC] {symbol} is already up to date ({start_date}).")
-                continue
+        semaphore = asyncio.Semaphore(5)
+
+        async def sync_symbol(symbol: str):
+            async with semaphore:
+                # Check last date in existing processed file to determine start_date
+                processed_file = self.processed_dir / f"icbc_net_value_{symbol}.parquet"
+                start_date = "2000-01-01"
                 
-            df = await self.fetch(symbol, start_date, end_date)
-            
-            if not df.empty:
-                # Merge and save
                 if processed_file.exists():
-                    existing_df = pd.read_parquet(processed_file)
-                    # Use combine_first to avoid duplicates and update with new data
-                    combined_df = df.combine_first(existing_df).sort_index()
-                else:
-                    combined_df = df
+                    try:
+                        existing_df = pd.read_parquet(processed_file)
+                        if not existing_df.empty:
+                            start_date = existing_df.index[-1].strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
+                
+                end_date = datetime.now().strftime("%Y-%m-%d")
+                
+                if start_date == end_date:
+                    print(f"    [ICBC] {symbol} is already up to date ({start_date}).")
+                    return
                     
-                combined_df.to_parquet(processed_file, compression='snappy')
-                print(f"    [ICBC] {symbol} updated. Total rows: {len(combined_df)}")
+                df = await self.fetch(symbol, start_date, end_date)
+                
+                if not df.empty:
+                    # Merge and save
+                    if processed_file.exists():
+                        try:
+                            existing_df = pd.read_parquet(processed_file)
+                            combined_df = df.combine_first(existing_df).sort_index()
+                        except Exception:
+                            combined_df = df
+                    else:
+                        combined_df = df
+                        
+                    combined_df.to_parquet(processed_file, compression='snappy')
+                    print(f"    [ICBC] {symbol} updated. Total rows: {len(combined_df)}")
+                else:
+                    print(f"    [ICBC] Fetch failed or no data for {symbol}.")
+
+        # Execute updates concurrently with the semaphore
+        tasks = [sync_symbol(s) for s in symbols]
+        await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
     # Test block

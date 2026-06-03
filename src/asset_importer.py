@@ -545,7 +545,49 @@ class AssetImporter:
     
     def _fetch_asset_info_with_priority(self, symbol: str, asset_type: str) -> Optional[Dict[str, Any]]:
         """根据接口优先级获取资产信息"""
-        # 处理简化类型
+        # 1. 尝试从本地银行理财快照中查找
+        # A. 工商银行
+        from pathlib import Path
+        import json
+        icbc_json_path = Path("config/icbc_currencies.json")
+        if icbc_json_path.exists():
+            try:
+                with open(icbc_json_path, "r", encoding="utf-8") as f:
+                    icbc_data = json.load(f)
+                    if symbol in icbc_data:
+                        item = icbc_data[symbol]
+                        raw_currency = item.get("currency", "元")
+                        currency_map = {"元": "CNY", "人民币": "CNY", "美元": "USD", "港币": "HKD", "港元": "HKD", "欧元": "EUR"}
+                        print(f"[Offline] 在工行本地映射中找到资产: {symbol}")
+                        return {
+                            "name": item.get("name"),
+                            "currency": currency_map.get(raw_currency, "CNY"),
+                            "source": "icbc_currencies_snapshot"
+                        }
+            except Exception as e:
+                print(f"[Warning] 读取工行本地映射失败: {e}")
+
+        # B. 上海银行
+        bosc_raw_dir = Path("data/bosc/raw")
+        if bosc_raw_dir.exists():
+            snapshot_files = sorted(bosc_raw_dir.glob("bosc_all_products_snapshot_*.json"))
+            if snapshot_files:
+                try:
+                    with open(snapshot_files[-1], "r", encoding="utf-8") as f:
+                        bosc_data = json.load(f)
+                        records = bosc_data.get("data", {}).get("records", [])
+                        for r in records:
+                            if r.get("prdCode") == symbol:
+                                print(f"[Offline] 在上行本地快照中找到资产: {symbol}")
+                                return {
+                                    "name": r.get("prdName"),
+                                    "currency": r.get("currType", "CNY"),
+                                    "source": "bosc_products_snapshot"
+                                }
+                except Exception as e:
+                    print(f"[Warning] 读取上行本地快照失败: {e}")
+
+        # 2. 处理标准类型
         if asset_type == 'cn_stock':
             return self._fetch_cn_stock_info_with_priority(symbol)
         elif asset_type == 'cn_fund':

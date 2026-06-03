@@ -130,6 +130,30 @@ class TestAssetImporter:
 
         assert asset is not None
         assert asset.name == '贵州茅台测试'  # 使用提供的名称
+
+    def test_import_bank_products_from_snapshots(self):
+        """测试从本地理财快照中导入工行和上银产品"""
+        # Test ICBC product from mapping
+        asset_icbc = self.importer.import_asset(
+            '23713A',
+            'cn_fund',
+            refresh=False
+        )
+        assert asset_icbc is not None
+        assert asset_icbc.symbol == '23713A'
+        assert asset_icbc.currency == 'USD'
+        assert '高盛工银理财' in asset_icbc.name
+        
+        # Test BOSC product from snapshot
+        asset_bosc = self.importer.import_asset(
+            'WH2025109A',
+            'cn_fund',
+            refresh=False
+        )
+        assert asset_bosc is not None
+        assert asset_bosc.symbol == 'WH2025109A'
+        assert asset_bosc.currency == 'CNY'
+        assert '慧精灵9号' in asset_bosc.name
     
     def test_import_refresh(self):
         """测试强制刷新API数据"""

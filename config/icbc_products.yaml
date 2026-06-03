@@ -1,0 +1,8 @@
+# ICBC Wealth Management Product Codes Catalog
+# You can add or remove product codes here.
+# These codes will be synced automatically during the ICBC data synchronization process.
+
+symbols:
+  - "23GS8125"
+  - "23GS8123"
+  - "23GS8689"

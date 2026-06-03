@@ -59,8 +59,9 @@ class BocFetcher(AsyncBaseFetcher):
                     return []
                     
                 rows = data.get("data", {}).get("rows", [])
-                product_codes = [r.get("productCode") for r in rows if r.get("productCode")]
-                print(f"    [BOC] Discovered {len(product_codes)} active products.")
+                # Only include products that have shareNetWorth published to avoid useless requests
+                product_codes = [r.get("productCode") for r in rows if r.get("productCode") and r.get("shareNetWorth") is not None]
+                print(f"    [BOC] Discovered {len(product_codes)} active products with net worth.")
                 return product_codes
             except Exception as e:
                 print(f"    [BOC] Request error during product discovery: {e}")
@@ -189,39 +190,48 @@ class BocFetcher(AsyncBaseFetcher):
             print("    [BOC] No products to sync.")
             return
 
-        for symbol in symbols:
-            processed_file = self.processed_dir / f"boc_net_value_{symbol}.parquet"
-            start_date = "2000-01-01"
-            
-            # Determine last date from existing file for incremental update
-            if processed_file.exists():
-                try:
-                    existing_df = pd.read_parquet(processed_file)
-                    if not existing_df.empty:
-                        start_date = existing_df.index[-1].strftime("%Y-%m-%d")
-                except Exception:
-                    pass
-            
-            end_date = datetime.now().strftime("%Y-%m-%d")
-            
-            if start_date == end_date:
-                print(f"    [BOC] {symbol} is already up to date ({start_date}).")
-                continue
+        semaphore = asyncio.Semaphore(5)
+
+        async def sync_symbol(symbol: str):
+            async with semaphore:
+                processed_file = self.processed_dir / f"boc_net_value_{symbol}.parquet"
+                start_date = "2000-01-01"
                 
-            df = await self.fetch(symbol, start_date, end_date)
-            
-            if not df.empty:
+                # Determine last date from existing file for incremental update
                 if processed_file.exists():
-                    existing_df = pd.read_parquet(processed_file)
-                    # Merge existing with new using combine_first
-                    combined_df = df.combine_first(existing_df).sort_index()
-                else:
-                    combined_df = df
+                    try:
+                        existing_df = pd.read_parquet(processed_file)
+                        if not existing_df.empty:
+                            start_date = existing_df.index[-1].strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
+                
+                end_date = datetime.now().strftime("%Y-%m-%d")
+                
+                if start_date == end_date:
+                    print(f"    [BOC] {symbol} is already up to date ({start_date}).")
+                    return
                     
-                combined_df.to_parquet(processed_file, compression='snappy')
-                print(f"    [BOC] {symbol} updated successfully. Total records: {len(combined_df)}")
-            else:
-                print(f"    [BOC] Fetch failed or no data for {symbol}.")
+                df = await self.fetch(symbol, start_date, end_date)
+                
+                if not df.empty:
+                    if processed_file.exists():
+                        try:
+                            existing_df = pd.read_parquet(processed_file)
+                            combined_df = df.combine_first(existing_df).sort_index()
+                        except Exception:
+                            combined_df = df
+                    else:
+                        combined_df = df
+                        
+                    combined_df.to_parquet(processed_file, compression='snappy')
+                    print(f"    [BOC] {symbol} updated successfully. Total records: {len(combined_df)}")
+                else:
+                    print(f"    [BOC] Fetch failed or no data for {symbol}.")
+
+        # Execute updates concurrently with the semaphore
+        tasks = [sync_symbol(s) for s in symbols]
+        await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
     async def main():

@@ -1,5 +1,6 @@
 import os
 import json
+import ssl
 import asyncio
 import pandas as pd
 import httpx
@@ -15,18 +16,20 @@ class BoscFetcher(AsyncBaseFetcher):
 
     Features:
     - Fetches product list from BOSC's PC API: qryPcFinanceProductZh.
-    - Extracts net values and unit rates to create an OHLCV snapshot.
-    - Appends daily snapshots to historical files if they exist.
+    - Fetches complete historical net values recursively via qryMCFinanceNetProHisValueForPersonPage.
+    - Supports incremental updates and raw JSON data archiving.
+    - Standardizes output to the OHLCV format.
     """
 
     PRODUCT_LIST_URL = "https://www.bosc.cn/apiQry/apiPCQry/qryPcFinanceProductZh"
-    NET_WORTH_URL = "https://ebanks.bankofshanghai.com/pweb/FinanceRateChartQuery.do"
+    NET_WORTH_HIST_URL = "https://www.bosc.cn/apiQry/apiPCQry/v2/qryMCFinanceNetProHisValueForPersonPage"
 
-    def __init__(self, data_dir: str = "data/bosc", save_raw: bool = True):
+    def __init__(self, data_dir: str = "data/bosc", save_raw: bool = True, verify_ssl: bool = True):
         self.data_dir = Path(data_dir)
         self.raw_dir = self.data_dir / "raw"
         self.processed_dir = self.data_dir / "processed"
         self.save_raw = save_raw
+        self.verify_ssl = verify_ssl
 
         # Ensure directories exist
         self.raw_dir.mkdir(parents=True, exist_ok=True)
@@ -39,20 +42,11 @@ class BoscFetcher(AsyncBaseFetcher):
 
     async def fetch_all_products(self) -> List[Dict]:
         """
-        Query all active wealth management products from BOSC portal across all categories.
-        Includes both the generic POST API and the specific GET APIs.
+        Query all active wealth management products from BOSC portal.
         """
-        print("    [BOSC] Discovering all products across categories...")
-        get_endpoints = [
-            "https://www.bosc.cn/apiQry/apiPCQry/v2/doPcD709QryPage",
-            "https://www.bosc.cn/apiQry/apiPCQry/v2/qryMCFinanceNetProHisValueForPersonPage",
-            "https://www.bosc.cn/apiQry/apiPCQry/v2/doPcD709CompanyQryPage",
-            "https://www.bosc.cn/apiQry/apiPCQry/qryMCFinanceNetProHisValueForCompanyPage"
-        ]
-        
+        print("    [BOSC] Discovering all products from portal...")
         all_rows = []
-        async with httpx.AsyncClient(verify=False) as client:
-            # 1. First fetch using the original comprehensive POST API
+        async with httpx.AsyncClient(verify=self.verify_ssl) as client:
             try:
                 post_payload = {"current": 1, "size": 1000}
                 post_resp = await client.post(self.PRODUCT_LIST_URL, headers=self.headers, json=post_payload, timeout=15)
@@ -64,20 +58,6 @@ class BoscFetcher(AsyncBaseFetcher):
             except Exception as e:
                 print(f"    [BOSC] Request error discovering products at POST {self.PRODUCT_LIST_URL}: {e}")
 
-            # 2. Then try the specific GET APIs (which might 502)
-            for url in get_endpoints:
-                try:
-                    params = {"size": 1000, "current": 1}
-                    response = await client.get(url, headers=self.headers, params=params, timeout=15)
-                    response.raise_for_status()
-                    data = response.json()
-                    
-                    if data.get("code") == 200 and data.get("success"):
-                        rows = data.get("data", {}).get("records", [])
-                        all_rows.extend(rows)
-                except Exception as e:
-                    print(f"    [BOSC] Request error discovering products at GET {url}: {e}")
-
         # Deduplicate by prdCode
         unique_products = {p.get("prdCode"): p for p in all_rows if p.get("prdCode")}.values()
         unique_products_list = list(unique_products)
@@ -85,8 +65,23 @@ class BoscFetcher(AsyncBaseFetcher):
         if self.save_raw and unique_products_list:
             self._save_raw("bosc_all_products_snapshot", {"data": {"records": unique_products_list}})
 
-        print(f"    [BOSC] Discovered {len(unique_products_list)} unique products across all categories.")
+        print(f"    [BOSC] Discovered {len(unique_products_list)} unique products.")
         return unique_products_list
+
+    def _get_product_metadata(self, symbol: str) -> Dict[str, Any]:
+        """Try to load product metadata from local raw snapshot files to resolve taCode and prodSeries."""
+        snapshot_files = sorted(self.raw_dir.glob("bosc_all_products_snapshot_*.json"))
+        if snapshot_files:
+            try:
+                with open(snapshot_files[-1], "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    records = data.get("data", {}).get("records", [])
+                    for r in records:
+                        if r.get("prdCode") == symbol:
+                            return r
+            except Exception as e:
+                print(f"    [BOSC] Error loading local product snapshot for metadata: {e}")
+        return {}
 
     async def fetch(
         self,
@@ -98,52 +93,114 @@ class BoscFetcher(AsyncBaseFetcher):
         **kwargs
     ) -> pd.DataFrame:
         """
-        Fetch historical net value data from BOSC ebanks system.
+        Fetch historical net value data from BOSC public GET API.
 
         Args:
-            symbol: BOSC product code
+            symbol: BOSC product code (e.g. 'WPXK24M1203A')
             start_date: YYYY-MM-DD
             end_date: YYYY-MM-DD
             timeframe: Only '1d' supported
-            kwargs: Must include 'prdTemplate', 'status', 'isDxFlag'
+            kwargs: Can explicitly include 'taCode', 'prodSeries'. Fallbacks to local snapshot lookup.
         """
         print(f"    [BOSC] Fetching history for: {symbol} | {start_date} -> {end_date}")
 
-        payload = {
-            "Month": "36",  # Try to grab up to 3 years of data
-            "CacheFlag": "0",
-            "PrdTemplate": kwargs.get("prdTemplate", ""),
-            "PrdCode": symbol,
-            "RateFlag": "1",  # 1 for Cumulative/10k yield
-            "Status": kwargs.get("status", "0"),
-            "IsDxFlag": kwargs.get("isDxFlag", "2")
+        # Resolve manager/series codes
+        ta_code = kwargs.get("taCode") or kwargs.get("tacode")
+        prod_series = kwargs.get("prodSeries")
+        if not ta_code or prod_series is None:
+            meta = self._get_product_metadata(symbol)
+            if not ta_code:
+                ta_code = meta.get("tacode") or "Y58"
+            if prod_series is None:
+                prod_series = meta.get("prodSeries") or ""
+
+        all_records = []
+        page_index = 1
+        page_size = 20  # Strict bank WAF rule: size must be <= 20
+        total_pages = 1
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-        # Need form-urlencoded headers for this specific API
-        headers = self.headers.copy()
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        async def make_request(client_to_use, current_page):
+            params = {
+                "prdCode": symbol,
+                "taCode": ta_code,
+                "prodSeries": prod_series,
+                "size": page_size,
+                "current": current_page
+            }
+            response = await client_to_use.get(self.NET_WORTH_HIST_URL, headers=headers, params=params, timeout=15)
+            response.raise_for_status()
+            return response.json()
 
-        async with httpx.AsyncClient(verify=False) as client:
+        # Run with initial verify_ssl context
+        verify_flag = self.verify_ssl
+        async with httpx.AsyncClient(verify=verify_flag) as client:
             try:
-                response = await client.post(self.NET_WORTH_URL, headers=headers, data=payload, timeout=20)
-                response.raise_for_status()
-                # Server returns JSON even for form requests
-                data = response.json()
-                
-                dates = data.get("dates", [])
-                rates = data.get("rates", [])
-                
-                if not dates or not rates:
-                    print(f"    [BOSC] No historical data returned for {symbol}.")
-                    return pd.DataFrame()
-                
-                # Dates are in YYYY.MM.DD format, convert them
-                dates = [d.replace(".", "-") for d in dates]
-                
-                return self._transform_to_ohlcv(dates, rates, start_date, end_date)
+                # 1. Fetch first page
+                try:
+                    data = await make_request(client, page_index)
+                except (httpx.ConnectError, httpx.SSLError, ssl.SSLError) as ssl_err:
+                    if verify_flag:
+                        print(f"    [BOSC] SSL verification failed for {symbol}. Retrying with verify=False... Error: {ssl_err}")
+                        async with httpx.AsyncClient(verify=False) as fallback_client:
+                            data = await make_request(fallback_client, page_index)
+                            verify_flag = False  # Keep using False for next requests
+                    else:
+                        raise ssl_err
+
+                if data.get("code") == 200 and data.get("success"):
+                    records = data.get("data", {}).get("records", [])
+                    all_records.extend(records)
+                    total_pages = data.get("data", {}).get("pages", 1)
+
+                    # 2. Fetch subsequent pages
+                    for page in range(2, total_pages + 1):
+                        # Optimization: if earliest date in all_records is already earlier than start_date, we can stop
+                        if all_records:
+                            earliest_date_str = all_records[-1].get("navDate")
+                            if earliest_date_str:
+                                earliest_date_clean = earliest_date_str.replace("/", "-")
+                                if earliest_date_clean < start_date:
+                                    break
+
+                        # Request next page
+                        try:
+                            if verify_flag:
+                                page_data = await make_request(client, page)
+                            else:
+                                async with httpx.AsyncClient(verify=False) as fallback_client:
+                                    page_data = await make_request(fallback_client, page)
+                        except Exception:
+                            # Final fallback
+                            async with httpx.AsyncClient(verify=False) as fallback_client:
+                                page_data = await make_request(fallback_client, page)
+
+                        if page_data.get("code") == 200 and page_data.get("success"):
+                            records = page_data.get("data", {}).get("records", [])
+                            if not records:
+                                break
+                            all_records.extend(records)
+                        else:
+                            break
             except Exception as e:
-                print(f"    [BOSC] Request error for {symbol} historical data: {e}")
-                return pd.DataFrame()
+                print(f"    [BOSC] Request error fetching historical net values for {symbol}: {e}")
+
+        if not all_records:
+            print(f"    [BOSC] No historical records found for {symbol}.")
+            return pd.DataFrame()
+
+        # Extract dates and worths, sort in ascending order (earliest first)
+        all_records_sorted = sorted(all_records, key=lambda x: x.get("navDate", ""))
+        dates = [r.get("navDate").replace("/", "-") for r in all_records_sorted if r.get("navDate")]
+        worths = [r.get("nav") for r in all_records_sorted if r.get("navDate")]
+
+        if self.save_raw:
+            self._save_raw(symbol + "_history", {"records": all_records})
+
+        return self._transform_to_ohlcv(dates, worths, start_date, end_date)
 
     def _save_raw(self, symbol: str, data: Dict):
         """Save raw JSON data file."""
@@ -172,7 +229,7 @@ class BoscFetcher(AsyncBaseFetcher):
 
         df = df.set_index("timestamp").sort_index()
 
-        # Filter by date range (though typically only 1 row)
+        # Filter by date range
         return df.loc[start_date:end_date][["open", "high", "low", "close", "volume"]]
 
     async def sync(self, symbols: Optional[List[str]] = None):
@@ -195,7 +252,11 @@ class BoscFetcher(AsyncBaseFetcher):
         for symbol in symbols:
             product = prod_map.get(symbol)
             if not product:
-                continue
+                # If product not found in active list, try to lookup local metadata
+                product = self._get_product_metadata(symbol)
+                if not product:
+                    print(f"    [BOSC] Warning: metadata for {symbol} not found. Skipping.")
+                    continue
 
             processed_file = self.processed_dir / f"bosc_net_value_{symbol}.parquet"
 
@@ -215,9 +276,8 @@ class BoscFetcher(AsyncBaseFetcher):
 
             # Pass necessary metadata to fetch
             kwargs = {
-                "prdTemplate": str(product.get("prdTemplate", "")),
-                "status": str(product.get("status", "0")),
-                "isDxFlag": str(product.get("isDxFlag", "2"))
+                "tacode": str(product.get("tacode", "Y58")),
+                "prodSeries": str(product.get("prodSeries", ""))
             }
 
             df = await self.fetch(symbol, start_date, "2099-12-31", **kwargs)
@@ -231,6 +291,7 @@ class BoscFetcher(AsyncBaseFetcher):
                     combined_df = df
 
                 combined_df.to_parquet(processed_file, compression='snappy')
+                print(f"    [BOSC] {symbol} sync complete. Total rows: {len(combined_df)}")
 
         print("    [BOSC] Sync complete.")
 
