@@ -14,6 +14,17 @@ from src.data_foundation import MarketDataRepository
 class MarketDataIngestionService:
     """Adapter that takes provider output and calls MarketDataRepository.save_raw."""
 
+    # Provider → IANA timezone mapping
+    PROVIDER_TIMEZONES: dict[str, str] = {
+        "yahoo": "America/New_York",
+        "akshare": "Asia/Shanghai",
+        "crypto": "UTC",
+        "bosc": "Asia/Shanghai",
+        "boc": "Asia/Shanghai",
+        "icbc": "Asia/Shanghai",
+        "manual": "UTC",
+    }
+
     def __init__(self, market_data: Optional[MarketDataRepository] = None) -> None:
         self.market_data = market_data or MarketDataRepository()
 
@@ -24,6 +35,7 @@ class MarketDataIngestionService:
         end_date: str,
         provider: str,
         currency: Optional[str] = None,
+        timezone: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Fetch data from a provider and save it to the repository.
@@ -34,6 +46,7 @@ class MarketDataIngestionService:
             end_date: End date for fetching.
             provider: Data provider key ('yahoo' or 'akshare').
             currency: Optional currency for the asset.
+            timezone: Optional IANA timezone. Auto-detected from provider if None.
 
         Returns:
             The canonicalized DataFrame that was saved.
@@ -49,4 +62,7 @@ class MarketDataIngestionService:
         if df.empty:
             return df
 
-        return self.market_data.save_raw(df, asset_id=symbol, source=provider, currency=currency)
+        tz = timezone or self.PROVIDER_TIMEZONES.get(provider, "UTC")
+        return self.market_data.save_raw(
+            df, asset_id=symbol, source=provider, currency=currency, timezone=tz,
+        )

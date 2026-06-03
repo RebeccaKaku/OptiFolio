@@ -39,9 +39,8 @@ class UsEquityFetcher(BaseFetcher):
             if df.empty:
                 return pd.DataFrame()
 
-            # 清洗时区
-            if df.index.tz is not None:
-                df.index = df.index.tz_localize(None)
+            # 保留 tz-aware 索引 — canonical 层会在已知 exchange timezone 时
+            # 转换为交易所当地日期，不再在此处剥离
 
             return df
 

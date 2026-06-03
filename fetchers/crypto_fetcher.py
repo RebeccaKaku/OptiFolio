@@ -91,8 +91,8 @@ class CryptoFetcher(AsyncBaseFetcher):
 
             df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
-            # 转换时间戳为 datetime 对象
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            # 转换 Unix ms 时间戳为 UTC datetime（CCXT 返回 UTC 时间戳）
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
             df.set_index('timestamp', inplace=True)
             
             # 截取用户需要的最终时间段

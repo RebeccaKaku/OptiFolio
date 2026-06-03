@@ -26,8 +26,9 @@ class MarketDataRepository:
         asset_id: str | None = None,
         source: str = "manual",
         currency: str | None = None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
-        canonical = normalize_market_frame(frame, asset_id=asset_id, source=source, currency=currency)
+        canonical = normalize_market_frame(frame, asset_id=asset_id, source=source, currency=currency, timezone=timezone)
         canonical = validate_market_frame(canonical)
         existing = self.load_canonical()
         combined = canonical if existing.empty else pd.concat([existing, canonical], ignore_index=True)

@@ -81,9 +81,8 @@ class YahooFinanceFetcher(AsyncBaseFetcher):
         # 统一索引名称
         df.index.name = 'timestamp'
         
-        # 将时区统一转换为无时区 (tz-naive) 或 UTC，避免不同数据源混合时报错
-        if df.index.tz is not None:
-            df.index = df.index.tz_convert('UTC').tz_localize(None)
+        # 保留 tz-aware 索引 — canonical normalization 层会在已知
+        # exchange timezone 时转换为交易所当地日期，不再在此处剥离
 
         print(f"[Yahoo] {fetch_symbol} 抓取完成！共 {len(df)} 条数据。")
         return df

@@ -83,9 +83,7 @@ class CurrencyFetcher(BaseFetcher):
                 print(f"    [Warning] 汇率数据为空: {symbol}")
                 return pd.DataFrame()
             
-            # Clean timezone
-            if df.index.tz is not None:
-                df.index = df.index.tz_localize(None)
+            # 保留 tz-aware 索引 — canonical 层统一处理
             
             # Ensure we have expected columns
             expected_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
