@@ -208,42 +208,38 @@ df = ak.fund_purchase_em()
 
 ## 3. 对 OptiFolio 的启示
 
-### 3.1 可以实现自动化的摩擦
+### 3.1 已实现 ✅
 
-| 摩擦 | 自动检测方案 | 优先级 |
-|------|-------------|--------|
-| **A 股分红/送转** | `stock_fhps_em` 全市场扫描 + `stock_fhps_detail_em` 逐股确认 | P0 |
-| **A 股配股** | `stock_history_dividend_detail(indicator='配股')` | P1 |
-| **复权因子** | `stock_zh_a_daily(adjust='qfq-factor')` — 综合调整 | P0 |
-| **基金申赎状态** | `fund_purchase_em()` 全表过滤 | P0 |
-| **基金赎回费** | `fund_fee_em(indicator='赎回费率')` — 阶梯费率 | P1 |
-| **印花税/过户费/分红税** | 硬编码 FeeRule | P1 |
+| 摩擦 | 实现方式 | 文件 |
+|------|----------|------|
+| **A 股印花税/过户费/规费** | 硬编码 FeeSchedule | `src/core/friction_data.py` |
+| **A 股分红税阶梯** | `get_dividend_tax_rate(holding_days)` | `src/core/friction_data.py` |
+| **基金管理费/托管费/申赎费** | 雪球 `fund_individual_detail_info_xq` | `src/services/fund_friction_service.py` |
+| **基金申赎状态/封闭期/限额** | `fund_purchase_em()` 全市场扫描 | `src/services/fund_friction_service.py` |
+| **A 股分红/送转自动检测** | `stock_fhps_em` 扫描 → `DividendAction` | `src/services/dividend_service.py` |
+| **复权因子同步** | `stock_zh_a_daily(adjust='qfq-factor')` | `tools/sync_adjustment_factors.py` |
 
-### 3.2 需要外部数据源的摩擦
+### 3.2 待补充 TODO
 
-| 摩擦 | 推荐数据源 |
-|------|-----------|
-| 美股拆股/分红 | `yfinance.Ticker.actions` 或 `yf.Ticker.splits` / `.dividends` |
-| 港股公司行为 | `stock_hk_fhps_detail_ths` |
-| 停牌 | 东方财富停牌页面 (爬虫) |
-| 限售股解禁 | 东方财富限售股页面 |
-| 基金管理费 | `fund_individual_basic_info_xq` (雪球) |
+| 摩擦 | 优先级 | 说明 |
+|------|--------|------|
+| **美股分红/拆股** | P0 | `yfinance.Ticker.actions` / `.dividends` / `.splits` — yfinance 自带，无需额外 API |
+| **港股分红/拆股** | P0 | `stock_hk_fhps_detail_ths` — akshare 已支持 |
+| **A 股配股** | P1 | `stock_history_dividend_detail(indicator='配股')` — 接口已有，未集成 |
+| **A 股停牌** | P1 | 东方财富停牌页爬虫 (akshare 无结构化接口) |
+| **限售股解禁** | P2 | 东方财富限售股页面 (akshare 无接口) |
+| **QDII 额度状态** | P2 | 外管局页面爬虫 (非 akshare 范围) |
+| **买卖价差 (bid-ask spread)** | P2 | `stock_zh_a_tick_tx` tick 级别数据计算 |
+| **ValuationEngine 集成复权因子** | P0 | 在估值时自动用 qfq_factor 调整历史价格 |
+| **PortfolioService 集成基金状态检查** | P0 | 估值/交易前检查申购/赎回状态和限额 |
 
-### 3.3 建议的 OptiFolio 集成路径
+### 3.3 雪球接口 (Xueqiu) 已解决 ✅
 
-```
-Phase 1: 硬编码监管费率 (印花税/过户费 — P0, 1 天)
-    └→ FeeRule config: A股印花税 0.05%, 分红税阶梯, 过户费
+通过 `fund_individual_detail_info_xq` + `fund_individual_basic_info_xq` 获得：
+- 管理费 (management fee) — e.g. 1.20%/年
+- 托管费 (custody fee) — e.g. 0.20%/年
+- 申购费阶梯 — 按购买金额分档
+- 赎回费阶梯 — 按持有天数分档
+- 基金全称、成立时间、最新规模、基金经理、投资策略
 
-Phase 2: 复权因子数据导入 (P0, 1 天)
-    └→ MarketDataRepository 存入复权因子 (qfq_factor 列)
-    └→ ValuationEngine 自动使用复权因子调整历史价格
-
-Phase 3: 基金申赎状态集成 (P0, 1 天)
-    └→ 定时拉取 fund_purchase_em(), 存入本地
-    └→ PortfolioService 在估值时检查申赎状态
-
-Phase 4: 分红自动检测 (P1, 2 天)
-    └→ 定期扫描 stock_fhps_em(date=today)
-    └→ 自动匹配 portfolio 持仓, 生成 DividendAction 提醒
-```
+雪球的费用名称与 East Money 不同，采用 Unicode 匹配同时兼容两套命名。
