@@ -171,3 +171,134 @@ class TestPortfolioServiceV2:
         holdings = svc.get_current_holdings()
         assert holdings["data"]["holdings"] == {}
         assert holdings["data"]["cash"] == {}
+
+    # ── history tracker & enhanced metrics ────────────────────────────────
+
+    def test_enhanced_metrics_all_fields_present(self, tmp_path):
+        """After recording valuations, compute_metrics returns all fields."""
+        svc = _make_service(tmp_path)
+        # Build a richer history: valuations every few days
+        for d in [
+            date(2025, 1, 5),
+            date(2025, 1, 10),
+            date(2025, 1, 20),
+            date(2025, 1, 30),
+            date(2025, 2, 5),
+            date(2025, 2, 15),
+            date(2025, 3, 1),
+            date(2025, 3, 15),
+        ]:
+            svc.get_value(as_of=d, base_currency="USD")
+
+        result = svc.compute_metrics()
+        assert result["success"]
+        data = result["data"]
+
+        # All expected keys present
+        expected_keys = {
+            "total_return", "annualized_return", "volatility",
+            "sharpe_ratio", "max_drawdown", "sortino_ratio",
+            "calmar_ratio", "win_rate", "best_day", "worst_day",
+            "avg_daily_return", "std_daily_return", "num_observations",
+        }
+        assert set(data.keys()) == expected_keys
+
+        assert data["num_observations"] >= 8
+        assert isinstance(data["total_return"], (int, float))
+        assert isinstance(data["sortino_ratio"], (int, float))
+        assert isinstance(data["calmar_ratio"], (int, float))
+        assert isinstance(data["win_rate"], (int, float))
+        assert isinstance(data["best_day"], (int, float))
+        assert isinstance(data["worst_day"], (int, float))
+        assert isinstance(data["avg_daily_return"], (int, float))
+        assert isinstance(data["std_daily_return"], (int, float))
+
+        # With strictly increasing prices, win_rate should be high
+        assert data["win_rate"] > 0.5
+
+    def test_rolling_metrics_with_sufficient_data(self, tmp_path):
+        """Rolling metrics return a DataFrame with expected columns and values."""
+        from src.domain import (
+            PortfolioHistoryEntry,
+            ValuationResult,
+        )
+
+        # Build a tracker with synthetic daily data over ~120 days
+        tracker = PortfolioHistoryTracker(
+            storage_path=tmp_path / "rolling_test.parquet",
+        )
+
+        dates = pd.date_range("2025-01-01", periods=120, freq="B")
+        import numpy as np
+        rng = np.random.default_rng(42)
+        # Random walk: starts at 100000, drifts up with noise
+        noise = rng.normal(0.0002, 0.01, len(dates))
+        values = 100000.0 * np.cumprod(1 + noise)
+
+        for i, d in enumerate(dates):
+            entry = PortfolioHistoryEntry(
+                date=d.date(),
+                total_value=float(values[i]),
+                holdings_value=float(values[i] * 0.8),
+                cash_value=float(values[i] * 0.2),
+                base_currency="USD",
+                num_positions=2,
+            )
+            row = pd.DataFrame([entry.to_dict()])
+            row["date"] = pd.to_datetime(row["date"])
+            if tracker._df.empty:
+                tracker._df = row
+            else:
+                tracker._df = pd.concat([tracker._df, row], ignore_index=True)
+
+        tracker._df = tracker._df.sort_values("date").reset_index(drop=True)
+
+        # Compute rolling metrics with 60-day window
+        result = tracker.compute_rolling_metrics(window_days=60)
+
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        expected_cols = {
+            "date", "rolling_sharpe", "rolling_volatility", "rolling_max_drawdown",
+        }
+        assert set(result.columns) == expected_cols
+        assert len(result) == 120
+
+        # Early windows (fewer than 3 data points) should have zeros
+        # Later windows should have meaningful (non-zero) volatility
+        later = result.iloc[-30:]
+        non_zero_vol = (later["rolling_volatility"] != 0).sum()
+        assert non_zero_vol > 0, "Expected non-zero rolling volatility in later windows"
+
+        # Max drawdown should be <= 0 (or 0)
+        assert (result["rolling_max_drawdown"] <= 0).all()
+
+    def test_empty_history_returns_zeros(self, tmp_path):
+        """compute_metrics on an empty tracker returns zeros for all fields."""
+        tracker = PortfolioHistoryTracker(
+            storage_path=tmp_path / "empty_test.parquet",
+        )
+        metrics = tracker.compute_metrics()
+
+        assert metrics["num_observations"] == 0
+        for key in [
+            "total_return", "annualized_return", "volatility",
+            "sharpe_ratio", "max_drawdown", "sortino_ratio",
+            "calmar_ratio", "win_rate", "best_day", "worst_day",
+            "avg_daily_return", "std_daily_return",
+        ]:
+            assert metrics[key] == 0.0, f"Expected {key}=0.0, got {metrics[key]}"
+
+    def test_rolling_metrics_empty_tracker(self, tmp_path):
+        """compute_rolling_metrics on an empty tracker returns empty DataFrame."""
+        tracker = PortfolioHistoryTracker(
+            storage_path=tmp_path / "empty_rolling.parquet",
+        )
+        result = tracker.compute_rolling_metrics(window_days=60)
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.empty
+        expected_cols = {
+            "date", "rolling_sharpe", "rolling_volatility", "rolling_max_drawdown",
+        }
+        assert set(result.columns) == expected_cols

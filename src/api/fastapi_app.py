@@ -45,6 +45,7 @@ _ERROR_CODE_STATUS = {
     "FX_EXPOSURE_ERROR": 500,
     "CONCENTRATION_ERROR": 500,
     "LIQUIDITY_ERROR": 500,
+    "GHOSTFOLIO_EXPORT_ERROR": 500,
 }
 
 
@@ -230,6 +231,69 @@ def create_app() -> FastAPI:
         cash_per_share: float = 0.0
         cash_currency: str = "USD"
         effective_date: Optional[str] = None
+
+    class GhostfolioExportPayload(BaseModel):
+        host: str = Field(default="http://localhost:3333", description="Ghostfolio instance URL")
+        token: str = Field(min_length=1, description="Ghostfolio JWT bearer token")
+        account_name: Optional[str] = Field(default="OptiFolio", description="Ghostfolio account name")
+        account_currency: Optional[str] = Field(default="USD", description="Ghostfolio account currency")
+        date: Optional[str] = Field(default=None, description="Date for activities in YYYY-MM-DD (default: today)")
+
+    @app.post("/api/portfolio/v2/export/ghostfolio", tags=["portfolio"])
+    def export_to_ghostfolio(payload: GhostfolioExportPayload) -> JSONResponse:
+        """Export current portfolio holdings to Ghostfolio as BUY activities.
+
+        Pushes a portfolio snapshot to Ghostfolio by creating one BUY activity
+        per holding at the current market price. Ghostfolio then tracks live
+        prices and computes valuations internally.
+
+        Returns ``{"success": true, "data": {"activities_imported": 12}}``.
+        """
+        from tools.export_to_ghostfolio import (
+            GhostfolioExporter,
+            load_latest_prices,
+            load_portfolio,
+        )
+        from src.data_foundation.repository import MarketDataRepository
+        from datetime import date
+
+        holdings, cash = load_portfolio()
+        if not holdings:
+            return _json_response({
+                "success": True,
+                "data": {"activities_imported": 0},
+                "message": "No holdings to export.",
+            })
+
+        repo = MarketDataRepository()
+        prices = load_latest_prices(holdings, repo)
+
+        exporter = GhostfolioExporter(payload.host, payload.token)
+        date_str = payload.date or date.today().isoformat()
+
+        try:
+            account_id = exporter.get_or_create_account(
+                payload.account_name or "OptiFolio",
+                payload.account_currency or "USD",
+            )
+            count = exporter.export_holdings(
+                holdings, cash, prices, date_str,
+                account_id=account_id,
+                account_name=payload.account_name or "OptiFolio",
+                account_currency=payload.account_currency or "USD",
+            )
+        except Exception as exc:
+            return _json_response({
+                "success": False,
+                "message": str(exc),
+                "error_code": "GHOSTFOLIO_EXPORT_ERROR",
+            })
+
+        return _json_response({
+            "success": True,
+            "data": {"activities_imported": count},
+            "message": f"{count} activities exported to Ghostfolio",
+        })
 
     @app.get("/api/portfolio/v2/value", tags=["portfolio"])
     def portfolio_v2_value(

@@ -46,8 +46,9 @@ class FxRateProvider:
 
     Priority order:
     1. Same currency → 1.0
-    2. Live CurrencyFetcher (yfinance)
-    3. Hardcoded fallback table (offline safety net)
+    2. MarketDataRepository (dated historical FX rates)
+    3. Live CurrencyFetcher (yfinance)
+    4. Hardcoded fallback table (offline safety net)
 
     Unlike the legacy PortfolioCore, live rates take priority over
     hardcoded rates when available.
@@ -61,7 +62,11 @@ class FxRateProvider:
         ("JPY", "USD"), ("USD", "JPY"),
     }
 
-    def __init__(self, fallback_rates: Optional[Dict[tuple, float]] = None):
+    def __init__(
+        self,
+        fallback_rates: Optional[Dict[tuple, float]] = None,
+        market_data: Optional["MarketDataRepository"] = None,
+    ):
         self._fallback = fallback_rates or {
             ("USD", "CNY"): 7.2,
             ("EUR", "USD"): 1.1,
@@ -70,6 +75,54 @@ class FxRateProvider:
             ("CNY", "USD"): 0.139,
         }
         self._cache: Dict[str, float] = {}
+        self.market_data = market_data
+
+    def get_rate_from_repository(
+        self,
+        from_currency: str,
+        to_currency: str,
+        as_of_date: date,
+        max_lookback_days: int = 5,
+    ) -> float:
+        """Resolve the conversion rate using dated FX data from the repository.
+
+        Queries MarketDataRepository for asset ``FX_{FROM}{TO}`` on or
+        before *as_of_date*, walking back up to *max_lookback_days*.
+        Falls back to :meth:`get_rate` when the repository is unavailable
+        or no matching data exists.
+
+        Args:
+            from_currency: Source currency code (e.g. "USD").
+            to_currency: Target currency code (e.g. "CNY").
+            as_of_date: The valuation date.
+            max_lookback_days: Maximum days to look back for a rate.
+        """
+        if from_currency == to_currency:
+            return 1.0
+
+        if self.market_data is None:
+            return self.get_rate(from_currency, to_currency)
+
+        asset_id = f"FX_{from_currency}{to_currency}"
+        lookback_start = as_of_date - timedelta(days=max_lookback_days + 3)
+
+        try:
+            prices = self.market_data.get_prices(
+                [asset_id],
+                start=lookback_start.isoformat(),
+                end=as_of_date.isoformat(),
+            )
+            if not prices.empty and asset_id in prices.columns:
+                col = prices[asset_id].dropna()
+                if not col.empty:
+                    rate = float(col.iloc[-1])
+                    if rate > 0:
+                        return rate
+        except Exception:
+            pass
+
+        # Fall back to existing logic (live fetcher / hardcoded table)
+        return self.get_rate(from_currency, to_currency)
 
     def get_rate(
         self, from_currency: str, to_currency: str, try_live: bool = False
