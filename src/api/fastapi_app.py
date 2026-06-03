@@ -42,6 +42,9 @@ _ERROR_CODE_STATUS = {
     "VALUATION_ERROR": 500,
     "BACKTEST_ERROR": 500,
     "OPTIMIZATION_ERROR": 500,
+    "FX_EXPOSURE_ERROR": 500,
+    "CONCENTRATION_ERROR": 500,
+    "LIQUIDITY_ERROR": 500,
 }
 
 
@@ -357,6 +360,102 @@ def create_app() -> FastAPI:
     def portfolio_v2_metrics() -> JSONResponse:
         return _json_response(
             get_application_services().portfolio_v2.compute_metrics()
+        )
+
+    @app.get("/api/portfolio/v2/risk/fx-exposure", tags=["portfolio"])
+    def portfolio_v2_fx_exposure(
+        as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+    ) -> JSONResponse:
+        """FX exposure analysis — per-currency breakdown with sensitivity estimates.
+
+        Returns each currency's share of total portfolio value, a net non-base
+        currency percentage, and warnings when thresholds are exceeded.
+
+        Sensitivity note format: ``USD/CNY ±1% → 净值波动约 ¥1,234.56``
+        """
+        from datetime import date as date_cls
+        as_of_date = date_cls.fromisoformat(as_of) if as_of else None
+        return _json_response(
+            get_application_services().portfolio_v2.get_fx_exposure_report(
+                as_of=as_of_date, base_currency=base_currency,
+            )
+        )
+
+    @app.get("/api/portfolio/v2/risk/concentration", tags=["portfolio"])
+    def portfolio_v2_concentration(
+        as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+    ) -> JSONResponse:
+        """Concentration risk analysis — breakdowns by currency, asset class, and issuer.
+
+        Returns percentage breakdowns of portfolio value along three axes:
+        - by_currency: value grouped by denomination currency
+        - by_asset_class: value grouped by mapped asset class (equity, fund, bond, etc.)
+        - by_issuer: value grouped by issuer/manager name
+
+        Includes warnings in Chinese when thresholds are breached:
+        - Single currency > 80%
+        - Single issuer > 30%
+        - Equity allocation > 70%
+        """
+        from datetime import date as date_cls
+        as_of_date = date_cls.fromisoformat(as_of) if as_of else None
+        return _json_response(
+            get_application_services().portfolio_v2.get_concentration_report(
+                as_of=as_of_date, base_currency=base_currency,
+            )
+        )
+
+    @app.get("/api/portfolio/v2/risk/liquidity", tags=["portfolio"])
+    def portfolio_v2_liquidity(
+        as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+    ) -> JSONResponse:
+        """Liquidity risk analysis — portfolio value by redemption timeline.
+
+        Classifies every position into a liquidity bucket (T+0, T+1, T+2~T+4,
+        7天内, 1个月内, 3个月内, 1年内, 锁仓) using product metadata, symbol-pattern
+        heuristics, and lockup dates.
+
+        Returns:
+        - buckets: ordered list with name, value, pct, asset_ids for each bucket
+        - available_7d_pct: percentage of portfolio available within 7 days
+        - locked_pct: percentage locked long-term (锁仓)
+        """
+        from datetime import date as date_cls
+        as_of_date = date_cls.fromisoformat(as_of) if as_of else None
+        return _json_response(
+            get_application_services().portfolio_v2.get_liquidity_report(
+                as_of=as_of_date, base_currency=base_currency,
+            )
+        )
+
+    class RiskRulesPayload(BaseModel):
+        """Request body for the risk rules endpoint — all fields are optional."""
+        user_targets: Optional[Dict[str, float]] = Field(
+            default=None,
+            description="User-configured thresholds. Keys: emergency_months, monthly_spending, fx_target_pct",
+        )
+
+    @app.post("/api/portfolio/v2/risk/rules", tags=["portfolio"])
+    def portfolio_v2_risk_rules(
+        payload: RiskRulesPayload = RiskRulesPayload(),
+    ) -> JSONResponse:
+        """Run the risk rule engine across all dimensions.
+
+        Accepts an optional user_targets dict to control thresholds:
+        - ``emergency_months``: months of spending to cover (default 6)
+        - ``monthly_spending``: monthly spending in base currency (default 0 = skip)
+        - ``fx_target_pct``: max non-base currency exposure % (default 20)
+
+        Returns each rule's result (pass/fail, severity, recommendation) plus
+        an aggregate summary with counts by severity and category.
+        """
+        return _json_response(
+            get_application_services().portfolio_v2.get_risk_rules(
+                user_targets=payload.user_targets,
+            )
         )
 
     @app.get("/api/portfolio/v2/history-entries", tags=["portfolio"])
