@@ -587,6 +587,41 @@ class AssetImporter:
                 except Exception as e:
                     print(f"[Warning] 读取上行本地快照失败: {e}")
 
+        # C. 中银理财（BOCWM）— boc_product_metadata.json
+        boc_meta_path = Path("config/boc_product_metadata.json")
+        if boc_meta_path.exists():
+            try:
+                with open(boc_meta_path, "r", encoding="utf-8") as f:
+                    boc_meta = json.load(f)
+                # Build a lookup dict on first use (cached via module-level variable)
+                if not hasattr(self, "_boc_meta_index"):
+                    self._boc_meta_index = {
+                        p["product_code"]: p
+                        for p in boc_meta.get("products", [])
+                        if p.get("product_code")
+                    }
+                product = self._boc_meta_index.get(symbol)
+                if product:
+                    print(f"[Offline] 在中银理财元数据中找到资产: {symbol}")
+                    return {
+                        "name":                 product.get("product_name"),
+                        "currency":             product.get("currency", "CNY"),
+                        "establishment_date":   product.get("establishment_date"),
+                        "maturity_date":        product.get("maturity_date"),
+                        "subscription_period":  product.get("subscription_period"),
+                        "next_open_date":       product.get("next_open_date"),
+                        "min_purchase_amount":  product.get("min_purchase_amount"),
+                        "term":                 product.get("term"),
+                        "min_hold_period":      product.get("min_hold_period"),
+                        "risk_level":           product.get("risk_level"),
+                        "detail_url":           product.get("detail_url"),
+                        "prospectus_pdfs":      product.get("prospectus_pdfs", []),
+                        "currency_source":      product.get("currency_source"),
+                        "source":               "boc_product_metadata",
+                    }
+            except Exception as e:
+                print(f"[Warning] 读取中银理财元数据失败: {e}")
+
         # 2. 处理标准类型
         if asset_type == 'cn_stock':
             return self._fetch_cn_stock_info_with_priority(symbol)

@@ -180,3 +180,6 @@ local/*
 # Secrets and local config
 config/secrets.yaml
 config/portfolio.yaml
+
+# Scratch / temp files
+scratch/

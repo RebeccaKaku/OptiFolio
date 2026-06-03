@@ -22,12 +22,14 @@ class BocFetcher(AsyncBaseFetcher):
     
     PRODUCT_LIST_URL = "https://www.bocwm.cn/webApi/cms/product/queryStaticProducts"
     NET_WORTH_URL = "https://www.bocwm.cn/webApi/cms/productNetWorth/getNetWorthImageByCode"
+    METADATA_PATH = Path("config/boc_product_metadata.json")
     
     def __init__(self, data_dir: str = "data/boc", save_raw: bool = True):
         self.data_dir = Path(data_dir)
         self.raw_dir = self.data_dir / "raw"
         self.processed_dir = self.data_dir / "processed"
         self.save_raw = save_raw
+        self._metadata_index: Optional[Dict[str, Any]] = None  # lazy loaded
         
         # Ensure directories exist
         self.raw_dir.mkdir(parents=True, exist_ok=True)
@@ -37,6 +39,39 @@ class BocFetcher(AsyncBaseFetcher):
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+
+    def load_metadata_index(self) -> Dict[str, Any]:
+        """
+        Load (and cache) the BOC product metadata JSON into a dict keyed by product_code.
+        Call scripts/fetch_boc_metadata.py first to generate the file.
+        """
+        if self._metadata_index is not None:
+            return self._metadata_index
+        if not self.METADATA_PATH.exists():
+            print(f"    [BOC] Metadata file not found: {self.METADATA_PATH}. Run scripts/fetch_boc_metadata.py first.")
+            self._metadata_index = {}
+            return self._metadata_index
+        with open(self.METADATA_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        self._metadata_index = {
+            p["product_code"]: p
+            for p in raw.get("products", [])
+            if p.get("product_code")
+        }
+        print(f"    [BOC] Loaded metadata for {len(self._metadata_index)} products.")
+        return self._metadata_index
+
+    def get_product_metadata(self, code: str) -> Optional[Dict[str, Any]]:
+        """
+        Return the enriched metadata dict for a product code, or None if not found.
+        Fields available:
+          product_name, currency, currency_source,
+          establishment_date, maturity_date, subscription_period,
+          next_open_date, min_purchase_amount, term, min_hold_period,
+          risk_level, detail_url, prospectus_pdfs, fetched_at
+        """
+        return self.load_metadata_index().get(code)
+
 
     async def fetch_all_products(self) -> List[str]:
         """
