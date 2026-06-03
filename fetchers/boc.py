@@ -112,9 +112,15 @@ class BocFetcher(AsyncBaseFetcher):
         struct_codes = []
         try:
             from bs4 import BeautifulSoup
-            async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
-                res = await client.get(url, headers=self.headers, timeout=15)
-                res.raise_for_status()
+            async with httpx.AsyncClient(follow_redirects=True) as client:
+                try:
+                    res = await client.get(url, headers=self.headers, timeout=15)
+                    res.raise_for_status()
+                except httpx.ConnectError:
+                    # Fallback: some BOC servers use legacy SSL
+                    async with httpx.AsyncClient(follow_redirects=True, verify=False) as fallback:
+                        res = await fallback.get(url, headers=self.headers, timeout=15)
+                        res.raise_for_status()
                 soup = BeautifulSoup(res.text, "html.parser")
                 for link in soup.find_all("a"):
                     text = link.text.strip()

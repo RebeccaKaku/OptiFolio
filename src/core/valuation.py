@@ -130,6 +130,54 @@ class FxRateProvider:
         return False
 
 
+# ── Currency resolution ────────────────────────────────────────────────
+
+
+def _resolve_currency(asset_id: str) -> str:
+    """Resolve an asset's native currency from config files.
+
+    Checks asset_registry.yaml first, then candidates.yaml,
+    then falls back to heuristic inference.
+    """
+    import yaml
+    from pathlib import Path
+    from src.core.paths import PROJECT_ROOT
+
+    # 1. asset_registry.yaml
+    registry_path = PROJECT_ROOT / "config" / "asset_registry.yaml"
+    if registry_path.exists():
+        with open(registry_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        for entry in data.get("assets", []):
+            if entry.get("symbol") == asset_id:
+                cur = entry.get("currency")
+                if cur:
+                    return str(cur)
+
+    # 2. candidates.yaml
+    candidates_path = PROJECT_ROOT / "config" / "candidates.yaml"
+    if candidates_path.exists():
+        with open(candidates_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        for entry in data.get("assets", []):
+            if entry.get("symbol") == asset_id:
+                cur = entry.get("currency")
+                if cur:
+                    return str(cur)
+
+    # 3. Heuristic
+    if asset_id.startswith(("sh", "sz")):
+        return "CNY"
+    if asset_id.isdigit() and len(asset_id) == 6:
+        return "CNY"
+    if asset_id.isupper() and any(c.isdigit() for c in asset_id) and len(asset_id) > 8:
+        return "USD"  # BOC-style codes like AMHQLXTTUSD01B
+    if asset_id.isdigit() and len(asset_id) == 8:
+        return "CNY"  # ICBC-style codes like 23GS8125
+
+    return "USD"
+
+
 # ── Valuation engine ───────────────────────────────────────────────────
 
 
@@ -185,20 +233,19 @@ class ValuationEngine:
                 f"No price data for {assets} up to {end_str}"
             )
 
-        # Find the last date with prices <= as_of
-        price_date, last_prices = self._get_last_prices(prices, request.as_of, assets)
+        # Find last available price for each asset (may differ by asset)
+        price_dates, last_prices = self._get_last_prices(prices, request.as_of, assets)
 
         # Build position values
         positions: Dict[str, PositionValue] = {}
         for asset_id, qty in holdings.items():
             if qty <= 0:
                 continue
-            if asset_id not in last_prices or pd.isna(last_prices[asset_id]):
+            if asset_id not in last_prices or pd.isna(last_prices.get(asset_id)):
                 raise NoPriceDataError(
                     f"No price for {asset_id} on or before {request.as_of}"
                 )
             price = float(last_prices[asset_id])
-            # Infer currency from repository metadata (default USD)
             asset_currency = self._get_asset_currency(asset_id)
             fx_rate = self.fx_provider.get_rate(asset_currency, request.base_currency)
             value_base = qty * price * fx_rate
@@ -210,6 +257,9 @@ class ValuationEngine:
                 fx_rate=fx_rate,
                 value_base=value_base,
             )
+
+        # Use the earliest price_date among all assets as the valuation date
+        price_date = min(price_dates.values()) if price_dates else request.as_of
 
         # Cash breakdown
         cash_breakdown: Dict[str, CashHolding] = {}
@@ -276,9 +326,12 @@ class ValuationEngine:
         prices: pd.DataFrame,
         as_of: date,
         assets: list[str],
-    ) -> tuple[date, pd.Series]:
-        """Walk backward from as_of to find the last available prices."""
-        # Filter to dates <= as_of
+    ) -> tuple[Dict[str, date], Dict[str, float]]:
+        """Get the last available price for each asset on or before as_of.
+
+        Each asset may have a different last-trading date.
+        Returns ({asset_id: price_date}, {asset_id: close_price}).
+        """
         as_of_ts = pd.Timestamp(as_of)
         valid = prices[prices.index <= as_of_ts]
         if valid.empty:
@@ -286,29 +339,37 @@ class ValuationEngine:
                 f"No prices on or before {as_of} for {assets}"
             )
 
-        # Take the most recent date
-        last_date_ts = valid.index[-1]
-        last_row = valid.iloc[-1]
+        price_dates: Dict[str, date] = {}
+        last_prices: Dict[str, float] = {}
 
-        # Check we're within lookback window
-        price_date = last_date_ts.date()
-        days_back = (as_of - price_date).days
-        if days_back > self.max_lookback_days:
+        for asset_id in assets:
+            if asset_id not in valid.columns:
+                continue
+            # Find last non-NaN row for this asset
+            asset_prices = valid[asset_id].dropna()
+            if asset_prices.empty:
+                continue
+            last_date_ts = asset_prices.index[-1]
+            price_date = last_date_ts.date()
+            days_back = (as_of - price_date).days
+            if days_back > self.max_lookback_days:
+                continue  # Too old
+            price_dates[asset_id] = price_date
+            last_prices[asset_id] = float(asset_prices.iloc[-1])
+
+        if not price_dates:
             raise NoPriceDataError(
-                f"Most recent price for {assets} is {price_date}, "
-                f"{days_back} days before {as_of} (max {self.max_lookback_days})"
+                f"No prices within {self.max_lookback_days} days of {as_of} for {assets}"
             )
 
-        return price_date, last_row
+        return price_dates, last_prices
 
     def _get_asset_currency(self, asset_id: str) -> str:
-        """Infer asset currency. Default USD.
+        """Resolve asset currency from asset_registry.yaml or candidates.yaml.
 
-        In the future this should query asset_registry or
-        MarketDataRepository metadata.
+        Falls back to heuristic inference, then USD.
         """
-        _ = asset_id
-        return "USD"
+        return _resolve_currency(asset_id)
 
     def _empty_result(
         self, request: ValuationRequest, cash: Dict[str, float]
