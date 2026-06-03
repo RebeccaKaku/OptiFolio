@@ -4,7 +4,9 @@
 
 注意: 部分测试因 AssetRegistry 当前未实现冲突管理、按类型过滤、
 币种名称检测、remove_asset 等功能而被标记为 skip。
-这些功能需要 Codex 在 src/asset_importer.py 中实现后再启用。
+这些功能已被推迟到 Asset Registry 重新设计阶段
+(Phase 2 of migration strategy, see docs/CURRENT_STATE_2026-06-03.md)。
+届时在 src/asset_importer.py 中实现这些功能后再启用测试。
 """
 
 import sys

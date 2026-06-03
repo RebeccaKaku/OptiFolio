@@ -1,3 +1,8 @@
+"""
+Legacy portfolio manager. DEPRECATED — use src/core/valuation.py
+(ValuationEngine) and src/services/portfolio_service_v2.py instead.
+"""
+
 import sys
 import os
 import yaml

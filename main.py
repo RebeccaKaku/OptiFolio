@@ -1,3 +1,6 @@
+# Legacy CLI entrypoint. DEPRECATED — use tools/start_app.py for FastAPI
+# or tools/ingest_portfolio_prices.py for data ingestion.
+
 import pandas as pd
 from src.utils import load_config_with_deep_merge, update_asset_names_in_config
 from src.data_loader import DataLoader

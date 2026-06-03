@@ -1,88 +1,89 @@
-# OptiFolio 文档目录
+# OptiFolio Documentation Index
 
-## 🚀 快速开始（给人类看的）
+**Last updated**: 2026-06-03
 
-| 文档 | 说明 | 阅读时间 |
-|------|------|----------|
-| [快速开发指南](快速开发指南.md) | **新手必读** - 5分钟上手开发 | 5分钟 |
-| [仪表板功能](../README_DASHBOARD.md) | 用户操作指南 - 如何使用系统 | 10分钟 |
-
-## 📚 技术文档（给AI和资深开发者）
-
-| 文档 | 说明 | 深度 |
-|------|------|------|
-| [系统架构设计](系统架构设计.md) | 完整的系统架构设计文档 | 🔥 高 |
-| [开发指南](开发指南.md) | 详细的开发者技术规范 | 🔥 高 |
-| [资产导入使用指南](资产导入使用指南.md) | 资产导入系统的技术说明 | 🔥 中 |
-
-## 🔧 功能模块文档
-
-| 文档 | 说明 | 状态 |
-|------|------|------|
-| [网络接口测试](网络接口测试.md) | API连通性测试和网络监控 | ✅ 新增 |
-| [最终完成报告](最终完成报告.md) | 系统开发总结报告 | ✅ 完成 |
-
-## 📋 已归档文档
-
-以下文档已被合并或替换，仅供参考：
-
-- `代码审查与改进_v2.md` → 已合并到系统架构设计
-- `代码审查与改进.md` → 已合并到开发指南  
-- `架构设计.md` → 已合并到系统架构设计
-- `资产导入重构版本使用指南.md` → 已更新为资产导入使用指南
-
-## 🎯 文档使用指南
-
-### 如果你是**新开发者**：
-1. **必读**：[快速开发指南](快速开发指南.md) - 5分钟上手
-2. **实践**：运行系统，导入几个资产
-3. **深入**：根据需要阅读技术文档
-
-### 如果你是**资深开发者**：
-1. **架构**：[系统架构设计](系统架构设计.md) - 了解整体设计
-2. **规范**：[开发指南](开发指南.md) - 遵循开发规范
-3. **模块**：[资产导入使用指南](资产导入使用指南.md) - 具体模块说明
-
-### 如果你是**用户**：
-1. **操作**：[仪表板功能](../README_DASHBOARD.md) - 如何使用系统
-2. **测试**：[网络接口测试](网络接口测试.md) - 检查系统状态
-
-## 🚀 快速开始（命令行）
-
-```bash
-# 1. 启动系统
-streamlit run app.py
-
-# 2. 测试网络接口
-python -m src.api.network_tester
-
-# 3. 导入测试资产
-python -c "
-from src.api.api_service import get_api_service
-api = get_api_service()
-print(api.import_asset('AAPL', 'us_equity'))
-"
-```
-
-## 📞 支持
-
-### 快速求助
-1. **查看错误信息** - 系统会显示具体错误
-2. **运行网络测试** - 检查API连通性
-3. **查看日志文件** - `logs/`目录下的日志
-4. **联系开发团队** - 复杂问题寻求帮助
-
-### 关键文件速查
-- `app.py` - 主程序入口
-- `src/api/api_service.py` - 所有API接口
-- `src/core/asset_manager.py` - 资产管理核心
-- `src/asset_importer.py` - 资产导入逻辑
-- `config/asset_registry.yaml` - 资产注册表
+This index points to the current docs first. Older Streamlit-era documents remain available for context, but they should not be treated as the implementation source of truth.
 
 ---
 
-**文档版本**: v2.0  
-**更新日期**: 2026年2月13日  
-**适用系统版本**: OptiFolio v1.0+  
+## Start Here
 
-*选择适合你的文档开始阅读，祝你开发顺利！*
+| Document | Purpose |
+|---|---|
+| [Current State And Code Review](CURRENT_STATE_2026-06-03.md) | Live project status, risks, standard test command, near-term and long-term roadmap. |
+| [Financial Logic And Module Design](FINANCIAL_LOGIC_AND_MODULE_DESIGN.md) | Top-level financial domain model, data contracts, algorithm interfaces, naming refactor, and AI-sized task slices. |
+| [Phase 0 Protection And Refactor Plan](PHASE0_AND_REFACTOR_PLAN.md) | Migration strategy from Streamlit-first app to FastAPI/services/frontend. |
+| [Time Alignment Design](TIME_ALIGNMENT_DESIGN.md) | Critical design for cross-market valuation and look-ahead-bias prevention. |
+| [AI Context](AI_CONTEXT.md) | Handoff context for AI coding agents. |
+
+## Developer Guides
+
+| Document | Purpose |
+|---|---|
+| [Quick Development Guide](快速开发指南.md) | Short local-development guide. Some sections may still be legacy-oriented. |
+| [Development Guide](开发指南.md) | Broader development notes and conventions. |
+| [Architecture Foundation](ARCHITECTURE_FOUNDATION.md) | Current architecture foundation notes. |
+| [System Architecture Design](系统架构设计文档.md) | Older architecture design document. Use with the current-state doc. |
+| [Asset Import Guide](资产导入使用指南.md) | Asset import workflow and registry details. |
+
+## Data And Fetcher Notes
+
+| Document | Purpose |
+|---|---|
+| [Fetcher Quality Analysis](FETCHER_QUALITY_ANALYSIS.md) | Fetcher quality notes and follow-ups. |
+| [AKShare Friction API Survey](AKSHARE_FRICTION_API_SURVEY.md) | Fund fee/friction API investigation. |
+| [BOC Data Investigation](boc_data_investigation_report.md) | BOC wealth-management data investigation. |
+| [Network Interface Tests](网络接口测试.md) | Network/API connectivity notes. |
+
+## Review And Handoff Notes
+
+| Document | Purpose |
+|---|---|
+| [Jules PR Review 2026-05-22](JULES_PR_REVIEW_2026-05-22.md) | Prior PR review notes for bank fetchers. |
+| [Jules Cloud Tasks](JULES_CLOUD_TASKS.md) | Prior cloud-task ledger. |
+| [DeepSeek To Codex](DEEPSEEK_TO_CODEX.md) | Handoff notes from earlier work. |
+| [Debug Handoff DeepSeek](DEBUG_HANDOFF_DEEPSEEK.md) | Debug handoff notes. |
+| [Financial Expert Review](FINANCIAL_EXPERT_REVIEW.md) | Financial-domain review notes. |
+
+## Legacy Or Stale Docs
+
+These files are retained for history, but current decisions should be checked against [Current State And Code Review](CURRENT_STATE_2026-06-03.md):
+
+- `代码审查与改进建议.md` - 2026-02 Streamlit-era review.
+- `最终完成报告.md` - historical completion report.
+- `改进总结.md` - historical improvement summary.
+- `USER_GUIDE.md` - may describe older UI behavior.
+- `运行流程文档.md` - may describe older run paths.
+
+---
+
+## Current Local Commands
+
+Start the API:
+
+```powershell
+python tools/start_app.py
+```
+
+Run the reliable test command on this Windows workspace:
+
+```powershell
+python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider
+```
+
+Run privacy scan before publishing:
+
+```powershell
+python tools/privacy_scan.py --strict --with-detect-secrets
+```
+
+## Current Implementation Source Of Truth
+
+- API entrypoint: `src/api/fastapi_app.py`
+- Service graph: `src/services/application.py`
+- Date-aware valuation: `src/core/valuation.py`
+- Portfolio V2 service: `src/services/portfolio_service_v2.py`
+- Canonical market data: `src/data_foundation/`
+- Legacy dashboard: `app.py`
+
+New feature work should use FastAPI/services/core paths. Do not add new product behavior to `app.py` unless the task is explicitly a legacy dashboard compatibility fix.

@@ -93,20 +93,32 @@ class PortfolioServiceV2:
         end: date,
         base_currency: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Daily valuation over a date range."""
-        currency = base_currency or self.base_currency
+        """Daily valuation over a date range.
 
-        # Apply corporate actions up to end date to get adjusted holdings
-        adj_holdings, adj_cash, _ = self.corp_actions.apply_to_holdings(
-            self._holdings, self._cash, up_to_date=end,
-        )
+        Corporate actions are applied incrementally: for each date in the
+        range, only actions with ex_date <= that date are applied. This
+        ensures holdings reflect the correct state at each point in time.
+        """
+        currency = base_currency or self.base_currency
 
         import pandas as pd
         dates = pd.bdate_range(start=start, end=end).tolist()
-        results = self.valuation_engine.value_history(
-            adj_holdings, adj_cash, [d.date() for d in dates],
-            base_currency=currency,
-        )
+        date_list = sorted([d.date() for d in dates])
+
+        results = []
+        for d in date_list:
+            # Apply corporate actions up to this specific date
+            adj_holdings, adj_cash, _ = self.corp_actions.apply_to_holdings(
+                self._holdings, self._cash, up_to_date=d,
+            )
+            try:
+                result = self.valuation_engine.value(
+                    adj_holdings, adj_cash,
+                    ValuationRequest(as_of=d, base_currency=currency),
+                )
+                results.append(result)
+            except NoPriceDataError:
+                continue
 
         return {
             "success": True,

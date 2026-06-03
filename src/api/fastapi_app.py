@@ -33,8 +33,24 @@ class OptimizationPayload(BaseModel):
     risk_free_rate: float = 0.02
 
 
+_ERROR_CODE_STATUS = {
+    "NO_PRICE_DATA": 422,
+    "INVALID_OPTIMIZATION_METHOD": 400,
+    "INVALID_OPTIMIZATION_OBJECTIVE": 400,
+    "OPTIMIZATION_NO_DATA": 422,
+    "OPTIMIZATION_INSUFFICIENT_ASSETS": 422,
+    "VALUATION_ERROR": 500,
+    "BACKTEST_ERROR": 500,
+    "OPTIMIZATION_ERROR": 500,
+}
+
+
 def _json_response(payload: dict) -> JSONResponse:
-    status_code = 200 if payload.get("success", True) else 500
+    if payload.get("success", True):
+        status_code = 200
+    else:
+        error_code = payload.get("error_code", "")
+        status_code = _ERROR_CODE_STATUS.get(error_code, 400)
     return JSONResponse(status_code=status_code, content=jsonable_encoder(payload))
 
 
@@ -55,7 +71,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=allow_origins,
         allow_credentials=True,
-        allow_methods=["GET", "OPTIONS"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "Accept"],
     )
 
@@ -189,12 +205,13 @@ def create_app() -> FastAPI:
     # ── Portfolio V2 routes (date-aware valuation) ────────────────────
 
     class DividendPayload(BaseModel):
-        asset_id: str = Field(min_length=1)
-        ex_date: str  # YYYY-MM-DD
-        amount_per_share: float = Field(gt=0)
-        currency: str = "USD"
-        effective_date: Optional[str] = None
-        withholding_tax_rate: float = 0.0
+        """Request payload for recording a dividend corporate action."""
+        asset_id: str = Field(min_length=1, description="Asset identifier (e.g. ticker symbol)")
+        ex_date: str = Field(description="Ex-dividend date in YYYY-MM-DD format")
+        amount_per_share: float = Field(gt=0, description="Dividend amount per share (must be > 0)")
+        currency: str = Field(default="USD", description="ISO 4217 currency code of the dividend")
+        effective_date: Optional[str] = Field(default=None, description="Date the dividend is effective in YYYY-MM-DD format; defaults to ex_date if omitted")
+        withholding_tax_rate: float = Field(default=0.0, description="Withholding tax rate applied to the dividend (0.0 to 1.0)")
 
     class SplitPayload(BaseModel):
         asset_id: str = Field(min_length=1)
@@ -216,7 +233,20 @@ def create_app() -> FastAPI:
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
     ) -> JSONResponse:
-        """Date-aware portfolio valuation (next-day NAV)."""
+        """Date-aware portfolio valuation (next-day NAV).
+
+        Returns the total portfolio value as of the requested date, along with
+        per-position and per-currency breakdowns.
+
+        Metadata in the response:
+        - ``price_date``: the actual date of the prices used for valuation (the most
+          recent available price on or before ``as_of``). This may differ from ``as_of``
+          when the latest market data is not yet available.
+        - ``stale_days``: the number of days between ``as_of`` and ``price_date``
+          (computed as ``as_of - price_date``). A value of 0 means prices are
+          up-to-date; larger values indicate stale data that the frontend should
+          surface to the user.
+        """
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
@@ -265,6 +295,12 @@ def create_app() -> FastAPI:
 
     @app.post("/api/portfolio/v2/corporate-actions/dividend", tags=["portfolio"])
     def portfolio_v2_record_dividend(payload: DividendPayload) -> JSONResponse:
+        """Record a dividend corporate action.
+
+        Example success response:
+        ``{"success": true, "data": {"asset_id": "AAPL", "ex_date": "2025-06-15",
+        "amount_per_share": 0.50, "action": "dividend"}, "message": "Dividend recorded"}``
+        """
         from datetime import date as date_cls
         return _json_response(
             get_application_services().portfolio_v2.record_dividend(
@@ -279,6 +315,12 @@ def create_app() -> FastAPI:
 
     @app.post("/api/portfolio/v2/corporate-actions/split", tags=["portfolio"])
     def portfolio_v2_record_split(payload: SplitPayload) -> JSONResponse:
+        """Record a stock split corporate action.
+
+        Example success response:
+        ``{"success": true, "data": {"asset_id": "AAPL", "ex_date": "2025-06-15",
+        "ratio": 4.0, "action": "split"}, "message": "Split recorded"}``
+        """
         from datetime import date as date_cls
         return _json_response(
             get_application_services().portfolio_v2.record_split(
@@ -291,6 +333,13 @@ def create_app() -> FastAPI:
 
     @app.post("/api/portfolio/v2/corporate-actions/merger", tags=["portfolio"])
     def portfolio_v2_record_merger(payload: MergerPayload) -> JSONResponse:
+        """Record a merger corporate action.
+
+        Example success response:
+        ``{"success": true, "data": {"asset_id": "AAPL", "target_asset_id": "GOOGL",
+        "ex_date": "2025-06-15", "exchange_ratio": 0.5, "action": "merger"},
+        "message": "Merger recorded"}``
+        """
         from datetime import date as date_cls
         return _json_response(
             get_application_services().portfolio_v2.record_merger(

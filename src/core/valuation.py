@@ -249,6 +249,8 @@ class ValuationEngine:
             asset_currency = self._get_asset_currency(asset_id)
             fx_rate = self.fx_provider.get_rate(asset_currency, request.base_currency)
             value_base = qty * price * fx_rate
+            asset_price_date = price_dates.get(asset_id)
+            asset_stale_days = (request.as_of - asset_price_date).days if asset_price_date else 0
             positions[asset_id] = PositionValue(
                 asset_id=asset_id,
                 quantity=qty,
@@ -256,10 +258,14 @@ class ValuationEngine:
                 currency=asset_currency,
                 fx_rate=fx_rate,
                 value_base=value_base,
+                price_date=asset_price_date,
+                stale_days=asset_stale_days,
             )
 
         # Use the earliest price_date among all assets as the valuation date
         price_date = min(price_dates.values()) if price_dates else request.as_of
+        # Max staleness across all positions
+        max_stale = max((p.stale_days for p in positions.values()), default=0)
 
         # Cash breakdown
         cash_breakdown: Dict[str, CashHolding] = {}
@@ -293,6 +299,7 @@ class ValuationEngine:
             cash_breakdown=cash_breakdown,
             fx_rates=fx_rates,
             price_date=price_date,
+            stale_days=max_stale,
         )
 
     def value_history(
@@ -376,7 +383,7 @@ class ValuationEngine:
     ) -> ValuationResult:
         """Return a zero-value result when there are no holdings."""
         cash_value = 0.0
-        breakdiown: Dict[str, CashHolding] = {}
+        breakdown: Dict[str, CashHolding] = {}
         for curr, amount in cash.items():
             rate = (
                 1.0
@@ -384,7 +391,7 @@ class ValuationEngine:
                 else self.fx_provider.get_rate(curr, request.base_currency)
             )
             val = amount * rate
-            breakdiown[curr] = CashHolding(
+            breakdown[curr] = CashHolding(
                 currency=curr, amount=amount, fx_rate=rate, value_base=val
             )
             cash_value += val
@@ -396,7 +403,7 @@ class ValuationEngine:
             cash_value=cash_value,
             base_currency=request.base_currency,
             positions={},
-            cash_breakdown=breakdiown,
+            cash_breakdown=breakdown,
             fx_rates={},
             price_date=request.as_of,
         )

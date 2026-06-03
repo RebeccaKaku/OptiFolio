@@ -130,9 +130,13 @@ class PositionValue:
     currency: str
     fx_rate: float
     value_base: float  # value in base currency
+    price_date: Optional[date] = None
+    stale_days: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["price_date"] = self.price_date.isoformat() if self.price_date else None
+        return d
 
 
 @dataclass(frozen=True)
@@ -161,6 +165,7 @@ class ValuationResult:
     cash_breakdown: Dict[str, CashHolding] = field(default_factory=dict)
     fx_rates: Dict[str, float] = field(default_factory=dict)
     price_date: Optional[date] = None  # actual date of prices used
+    stale_days: Optional[int] = None  # max staleness across positions
     corporate_action_adjustments: float = 0.0
     fee_adjustments: float = 0.0
 
@@ -179,6 +184,7 @@ class ValuationResult:
             },
             "fx_rates": dict(self.fx_rates),
             "price_date": self.price_date.isoformat() if self.price_date else None,
+            "stale_days": self.stale_days,
             "corporate_action_adjustments": self.corporate_action_adjustments,
             "fee_adjustments": self.fee_adjustments,
         }

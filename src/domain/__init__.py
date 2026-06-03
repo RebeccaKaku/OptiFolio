@@ -1,5 +1,6 @@
 """Domain models for OptiFolio's framework-independent core."""
 
+from .cashflows import CashflowEvent
 from .corporate_actions import (
     CorporateAction,
     DividendAction,
@@ -14,6 +15,7 @@ from .fees import (
     TaxRule,
     TransactionFee,
 )
+from .instruments import InstrumentDefinition
 from .models import (
     AllocationResult,
     CashHolding,
@@ -28,9 +30,20 @@ from .models import (
     ValuationRequest,
     ValuationResult,
 )
+from .observations import Observation
+from .positions import PositionSnapshot
+from .products import ProductDefinition
+from .relationships import (
+    ExposureDefinition,
+    PayoffDefinition,
+    PortfolioComponent,
+    PortfolioDefinition,
+    UnderlyingLink,
+)
+from .series import SeriesDefinition
 
 __all__ = [
-    # models
+    # models (existing)
     "AllocationResult",
     "CashHolding",
     "Holding",
@@ -55,4 +68,22 @@ __all__ = [
     "ManagementFee",
     "TaxRule",
     "TransactionFee",
+    # products
+    "ProductDefinition",
+    # positions
+    "PositionSnapshot",
+    # cashflows
+    "CashflowEvent",
+    # instruments
+    "InstrumentDefinition",
+    # series
+    "SeriesDefinition",
+    # observations
+    "Observation",
+    # relationships
+    "ExposureDefinition",
+    "PayoffDefinition",
+    "PortfolioComponent",
+    "PortfolioDefinition",
+    "UnderlyingLink",
 ]

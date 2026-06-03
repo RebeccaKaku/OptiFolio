@@ -1,184 +1,188 @@
-# OptiFolio 当前状态与推进路线
+# OptiFolio Current State And Code Review
 
-**日期**: 2026-06-03
-**分支**: master（fix-bank-apis / feat-bosc / debug-branch 已合并并删除）
-**版本**: 0.1.0 (架构重构中)
-**测试**: 77 passed, 12 skipped, 0 failures
+**Date**: 2026-06-03
+**Branch**: `master`
+**Package version**: `0.2.0` in `pyproject.toml`
+**Runtime target**: Python `>=3.11, <3.14` recommended for the quant stack; `pyproject.toml` currently allows `>=3.10,<3.14`
+**Verified tests**: `77 passed, 12 skipped`
+
+Use this document as the live project map until the next review pass.
 
 ---
 
-## 项目概述
+## One-Line Status
 
-OptiFolio 是一个量化投资组合优化与金融数据分析系统，支持多资产类型（股票、基金、理财、加密货币）、
-多数据源（akshare、yfinance、ccxt、BOSC/BOC/ICBC 银行理财 API），以及 Markowitz/Black-Litterman
-优化和向量化回测。
+OptiFolio has a useful FastAPI/service/data-foundation core, but it is mid-migration from a Streamlit-era monolith. The biggest risks are financial semantics, not syntax: cross-market time alignment, deterministic valuation, FX correctness, cashflow/risk-exposure modeling, and fetcher trust boundaries.
 
-系统正在从单体 Streamlit 应用重构为分层架构：
+The top-level target design for handling more asset types, indexes, macro data, product cashflows, look-through exposures, risk/advice engines, naming, module boundaries, and AI-sized implementation tasks is now documented in `docs/FINANCIAL_LOGIC_AND_MODULE_DESIGN.md`.
 
+---
+
+## Verified Commands
+
+The plain `pytest -q` command is not reliable on this Windows workspace because it may collect `scratch/pytest` and may try to use a restricted temp/cache path.
+
+Recommended local test command:
+
+```powershell
+python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider
 ```
-frontend/            # React + Vite UI（未开始）
-src/api/             # FastAPI HTTP API（已就绪）
-src/services/        # 业务服务层（已就绪）
-src/core/            # 组合、资产、定价核心
-src/data_foundation/ # 市场数据仓储（Parquet + DuckDB）
-src/research/        # 回测引擎（vectorbt + pandas）
-fetchers/            # 数据抓取器（7 个数据源）
-portfolio/           # 优化算法（Markowitz、Black-Litterman）
+
+Current result:
+
+```text
+77 passed, 12 skipped in 53.78s
+```
+
+Also useful:
+
+```powershell
+python tools/privacy_scan.py --strict --with-detect-secrets
 ```
 
 ---
 
-## ✅ 已完成
+## Current Architecture
 
-### Jules Cloud Tasks（5/5）
+```text
+app.py                  # legacy Streamlit dashboard, frozen for new work
+main.py                 # legacy command-line optimization entrypoint
+src/api/fastapi_app.py  # current HTTP API entrypoint, default port 8011
+src/services/           # business service facade for API/UI
+src/core/               # asset, portfolio, valuation, fee, database core
+src/data_foundation/    # canonical market data schema + Parquet/DuckDB repository
+src/research/           # backtest and research adapters
+fetchers/               # async provider-specific data fetchers
+portfolio/              # optimization and risk algorithms
+config/*.example.yaml   # safe templates
+local/                  # ignored private runtime state
+```
 
-| # | 任务 | 状态 | 提交 |
-|---|------|------|------|
-| 1 | Ingestion Adapter → MarketDataRepository | ✅ | `06beec4` |
-| 2 | 优化端点加固 | ✅ | `55b881f` |
-| 3 | Vectorbt 回测适配器 | ✅ | `98df050` |
-| 4 | 测试卫生清理 | ✅ | `c1d836d` |
-| 5 | 开发者启动脚本 + Python 版本文档 | ✅ | `1840dac` |
-
-### Portfolio Management 系统（新完成）
-
-| # | 模块 | 说明 |
-|---|------|------|
-| — | `src/domain/models.py` | 新增 ValuationRequest, ValuationResult, PositionValue, CashHolding |
-| — | `src/domain/corporate_actions.py` | DividendAction, StockSplitAction, MergerAction |
-| — | `src/domain/fees.py` | TransactionFee, ManagementFee, TaxRule, FeeSchedule |
-| — | `src/core/valuation.py` | **ValuationEngine** — 日期感知定价，使用 MarketDataRepository |
-| — | `src/core/corporate_actions.py` | CorporateActionProcessor — YAML 持久化 |
-| — | `src/core/fees.py` | FeeProcessor |
-| — | `src/core/portfolio_history.py` | PortfolioHistoryTracker — Parquet 存储 + 绩效指标 |
-| — | `src/services/portfolio_service_v2.py` | **PortfolioServiceV2** — 一站式服务入口 |
-| — | `src/api/fastapi_app.py` | 10 个新 V2 路由 |
-
-### 银行 Fetcher 修复
-
-| 数据源 | 状态 | 测试 |
-|--------|------|------|
-| BOSC | ✅ 接口修复，mock 测试完整 | 8 assertions |
-| BOC | ✅ 接口正常 | 3 assertions |
-| ICBC | ✅ 接口正常 | 8 assertions |
-
-### 其他
-
-- 并发数据加载（从 remote PR 移植）
-- BOSC 历史净值抓取升级
-- 分支合并：fix-bank-apis / feat-bosc / debug-branch → master
+Direction: keep new product work in `src/services/`, `src/api/fastapi_app.py`, `src/data_foundation/`, and future `frontend/`; treat `app.py`, old `src/api/api_service.py`, and old `src/core/portfolio_core.py` as compatibility surfaces unless a migration task explicitly touches them.
 
 ---
 
-## 🔴 当前阻塞：时间对齐（新）
+## Potential Hazards
 
-详见 `docs/TIME_ALIGNMENT_DESIGN.md`。
+### P0/P1 Financial Logic
 
-**核心问题：** 跨时区资产（美股 / A股 / 港股 / 加密货币）的价格时间戳在系统内不一致。
+| Area | Evidence | Risk | Plan |
+|---|---|---|---|
+| Cross-market time alignment | `src/data_foundation/schemas.py:103-121`, `docs/TIME_ALIGNMENT_DESIGN.md` | Daily prices are closer to exchange-local dates now, but `value_on(T)` still has no cutoff/knowability semantics. Mixed US/CN/crypto portfolios can still accidentally use not-yet-knowable closes. | Implement calendar registry + cutoff-aware valuation before serious backtests or live NAV decisions. |
+| Valuation date semantics | `src/core/valuation.py:262` uses the earliest price date across assets | A multi-asset valuation can report one `price_date` that hides per-asset staleness. A stale US asset and fresh CN asset collapse into one date. | Expose per-position `price_date` and staleness; keep portfolio-level `price_date` only as summary metadata. |
+| Personal-product semantics | `config/asset_registry.yaml` is flat `symbol/asset_type/currency/attributes` | Deposits, WMPs, structured deposits, funds, and FX positions need cashflows, liquidity, issuer, lockup, and exposure metadata. The current registry cannot express that cleanly. | Introduce Product/Position/Exposure/Cashflow contracts before adding more product logic. |
+| FX determinism | `src/core/valuation.py:64-111` | Fallback FX rates are hardcoded and live FX is off by default. This is useful offline, but dangerous if presented as production NAV. | Add explicit FX source metadata, configured manual rates, dated local FX history, and stale-rate warnings. |
+| Corporate actions in history | `src/services/portfolio_service_v2.py:98-104` | `get_value_history()` applies corporate actions up to the end date once, then values all prior dates with end-adjusted holdings. That can distort historical series before a dividend/split/merger. | Apply corporate actions incrementally per valuation date. |
 
-- `normalize_market_frame()` 无条件抹除所有时区信息（`schemas.py:84`）
-- 不同 fetcher 对同一美股收盘事件产生不同的 naive 时间戳
-- 对含美股+A股的组合调用 `value_on(T)` 时，无"可知道性"（knowability）约束
+### P1 API And Data Safety
 
-**状态：** 设计完成，待开始实施 Phase A（基础设施）。
+| Area | Evidence | Risk | Plan |
+|---|---|---|---|
+| CORS blocks write routes | `src/api/fastapi_app.py:58` allows only `GET` and `OPTIONS`, while POST routes exist at lines 161, 176, 266, 280, 292 | Browser frontend calls to backtest/optimize/corporate-action routes can fail preflight even though API tests pass. | Add `POST` to CORS methods, or configure allowed methods by environment. |
+| Failed service calls become HTTP 500 | `src/api/fastapi_app.py:36-38` | Expected domain failures such as no price data become server errors. Clients cannot distinguish bad input, missing data, and actual crashes. | Map service `error_code` values to 4xx/422/503 where appropriate. |
+| TLS verification fallback | `fetchers/bosc.py:147-178`, `fetchers/boc.py:121` | Fetchers retry with `verify=False`; useful for brittle bank portals, but this weakens transport trust and should not be silent. | Make insecure fallback opt-in/configured, log structured warnings, and record `transport_security` metadata in raw snapshots. |
+| Fetchers swallow provider errors | `fetchers/boc.py:101-184`, `fetchers/bosc.py:58-189` | Returning empty DataFrames on request errors makes "no data" indistinguishable from "provider failed." | Introduce typed fetch errors or response objects with `status`, `error`, and provider metadata. |
+| Data repository full rewrites | `src/data_foundation/repository.py:31-37` | Every save loads and rewrites the whole Parquet file. This is simple but fragile as data grows and unsafe under concurrent writers. | Move to partitioned Parquet by asset/source or a DuckDB table with transactional upserts. |
 
-### ~~旧阻塞：3 个测试失败~~ ✅ 已修复
+### P2 Maintainability
 
-- ~~duckdb 未安装~~ → `pip install duckdb`
-- ~~BOSC fetcher test mock 不完整~~ → 扩展 mock 覆盖 NET_WORTH_URL
-- ~~ICBC test 无 assertion~~ → 8 个 assertions
-
----
-
-## 🟡 Jules PR Review 待解决（BOSC/BOC/ICBC Fetchers）
-
-来源: `docs/JULES_PR_REVIEW_2026-05-22.md`
-
-| # | 问题 | 严重度 | 状态 |
-|---|------|--------|------|
-| 1 | `bosc.py:55` `httpx.AsyncClient(verify=False)` 全局禁用 TLS 验证 | 中 | 未修复 |
-| 2 | BOSC `fetch()` 总是返回空 DataFrame，未实现标准 OHLCV 数据路径 | 高 | 部分修复（`a5a4da7` 加了历史净值，但测试仍失败） |
-| 3 | `test_icbc_fetcher_sync_defaults` 无任何 assertion | 中 | 未修复 |
-| 4 | BOSC 测试只检查文件存在，不验证 schema/index/close 值 | 中 | 未修复 |
-| 5 | PR 不应修改 `config/asset_registry.yaml` | 低 | 需确认 |
-| 6 | 需要从当前 `origin/main` rebase | 低 | 需确认 |
-| 7 | 依赖更新需要对齐当前 `pyproject.toml` | 低 | 需确认 |
-
----
-
-## 📋 推进路线
-
-### 🔴 当前：时间对齐
-
-- [ ] **Phase A: 基础设施** — 创建 ExchangeCalendar 注册表，扩展 canonical schema
-- [ ] **Phase B: Fetcher 改造** — 统一所有 fetcher 到交易所当地日期
-- [ ] **Phase C: 估值引擎增强** — 可知道性检查、多日历回看
-- [ ] **Phase D: 回测加固** — 多日历重采样
-
-### 第一优先级：修复构建 ✅ 已完成
-
-- [x] 安装 duckdb
-- [x] 修复 BOSC fetcher 测试 mock
-- [x] 加固 ICBC fetcher 测试
-
-### 第二优先级：BOSC/BOC/ICBC Fetcher PR ✅ 已完成
-
-- [x] 合并到 master
-- [x] 测试完整（BOSC 8 assertions, ICBC 8 assertions, BOC 3 assertions）
-
-### 第三优先级：Portfolio Management ✅ 已完成
-
-- [x] Domain 模型扩展
-- [x] ValuationEngine（日期感知定价）
-- [x] CorporateActionProcessor + FeeProcessor（接口桩）
-- [x] PortfolioHistoryTracker
-- [x] PortfolioServiceV2 + 10 个 API 路由
-- [x] FastAPI 集成
-
-### 第四优先级：架构推进
-
-- [ ] **Phase 1: 前端建设** — 创建 `frontend/` React + Vite 项目
-- [ ] **Phase 3: Portfolio/Pricing 加固** — 替换 print 为 logger、离线确定性估值
-- [ ] **Phase 4: Asset Registry 决策** — 完成或删除跳过的测试
-- [ ] **Phase 6: 淘汰 Streamlit** — 在 FastAPI + React 覆盖功能后移除 `app.py`
-
-### 长期方向
-
-- [ ] Qlib 因子/ML 研究导出（`qlib_adapter.py` 仍是占位符）
-- [ ] 实时行情（WebSocket）
-- [ ] 多用户权限管理
-- [ ] 移动端支持
+| Area | Evidence | Risk | Plan |
+|---|---|---|---|
+| Streamlit monolith remains large | `app.py` is about 70 KB | Hard to review and easy to regress if new work goes there. | Freeze `app.py`; migrate only workflows needed by FastAPI + React. |
+| Duplicate legacy/new service paths | `src/services/portfolio_service.py`, `src/services/portfolio_service_v2.py`, `src/core/portfolio_core.py`, `src/core/valuation.py` | Developers may choose the wrong path and create behavior splits. | Define ownership: V2 valuation is canonical; legacy portfolio is adapter-only. |
+| Large mixed-responsibility modules | `src/asset_importer.py`, `src/core/enhanced_asset_manager.py`, `src/core/portfolio_core.py`, `src/core/dashboard_engine.py` | Each mixes IO, data shaping, logging, fallback, and business rules. | Extract pure domain functions first; keep public API stable. |
+| Logging is inconsistent | Many modules use `print()` and broad `except Exception` | Hard to debug batch fetches and services in production. | Replace with `src/core/logger.py` or standard `logging`, with source/symbol/date context. |
+| Skipped tests encode undecided features | `tests/test_asset_registry.py`, `tests/test_asset_importer.py` | 12 skipped tests include conflict assets, removal, validation, and `get_full_id`; they are product decisions, not just missing tests. | Decide which features matter, implement or delete the placeholder tests. |
+| Naming typo | `src/core/valuation.py:379-399` uses `breakdiown` | Low runtime risk, but confusing in a central file. | Rename to `breakdown` during the next valuation cleanup. |
 
 ---
 
-## 关键文件索引
+## Documentation Issues Fixed In This Pass
 
-| 文件 | 用途 |
-|------|------|
-| `src/api/fastapi_app.py` | FastAPI 入口（端口 8011） |
-| `src/services/application.py` | 服务依赖图 |
-| `src/services/research_service.py` | 优化 + 回测编排 |
-| `src/data_foundation/repository.py` | DuckDB 市场数据仓储 |
-| `src/data_foundation/schemas.py` | 标准市场数据 schema + Pandera 校验 |
-| `src/research/backtest.py` | 回测引擎（vectorbt + pandas fallback） |
-| `fetchers/bosc.py` | 上海银行理财抓取器 |
-| `fetchers/boc.py` | 中国银行理财抓取器 |
-| `fetchers/icbc.py` | 工商银行理财抓取器 |
-| `fetchers/cn_fund.py` | 中国公募基金抓取器 |
-| `portfolio/optimizer.py` | 组合优化器（Markowitz、Black-Litterman） |
-| `config/portfolio.yaml` | 持仓快照（不提交 git） |
-| `config/portfolio.example.yaml` | 持仓模板（安全提交） |
-| `tools/start_app.py` | 统一启动脚本 |
-| `docs/CURRENT_STATE_2026-06-03.md` | 本文档 |
+- Updated this current-state file from a task ledger into a live review baseline.
+- Updated `docs/README.md` to point to current docs and remove stale `README_DASHBOARD.md` references.
+- Added a current-state pointer and reliable test command to root `README.md`.
+
+Still stale and should be archived or rewritten later:
+
+- `docs/代码审查与改进建议.md` is a 2026-02 Streamlit-era review.
+- Several Chinese docs still describe the old dashboard-first architecture.
+- `README.md` still contains long legacy fetcher examples; useful as history, but no longer a concise onboarding guide.
 
 ---
 
-## 开发规范（来自 Jules Cloud Tasks）
+## Near-Term Plan
 
-1. **隐私边界**: 真实数据放 `local/`，不提交 git
-2. **PR 粒度**: 一个任务 = 一个 PR，小而聚焦
-3. **测试**: 提交前运行 `pytest -q` 必须全绿
-4. **隐私扫描**: `python tools/privacy_scan.py --strict --with-detect-secrets`
-5. **Python 版本**: `>=3.11, <3.14`（量化栈在 3.14 上不稳定）
-6. **默认端口**: FastAPI 使用 `8011`
-7. **不修改 Streamlit**: 除非任务明确要求迁移
+### 1. Make The Financial Core Safe
+
+- Use `docs/FINANCIAL_LOGIC_AND_MODULE_DESIGN.md` as the architecture target: position OptiFolio first as a personal asset risk engine and allocation-advice engine, then split products, positions, instruments, informational series, exposures, cashflows, and relationships.
+- Prioritize accounting/risk capabilities before prediction: cashflow ledger, IRR/TWR, base-currency return decomposition, liquidity buckets, concentration, credit/duration/equity/FX exposures, rule advice, product screening, and alerts.
+- Implement the remaining pieces of `docs/TIME_ALIGNMENT_DESIGN.md`: calendar registry, per-asset exchange timezone, cutoff-aware `value_on`, and cross-market tests.
+- Add per-position `price_date`, `price_source`, `fx_source`, and stale-data flags to valuation results.
+- Fix `PortfolioServiceV2.get_value_history()` so corporate actions are applied by each historical date.
+- Replace hardcoded FX-only behavior with configured manual rates plus dated local FX history.
+
+### 2. Make API Behavior Frontend-Ready
+
+- Add POST to CORS allowed methods.
+- Convert common domain failures to stable HTTP status codes.
+- Add V2 route tests for valuation history and corporate-action POST routes.
+- Document request/response schemas for the frontend.
+
+### 3. Make Tests Reproducible
+
+- Add pytest config for `testpaths = ["tests"]`.
+- Add a stable workspace-local temp/cache policy or document the required command in developer setup.
+- Resolve the 12 skipped tests by product decision: implement asset conflict support or delete the placeholders.
+- Run privacy scan before publishing.
+
+### 4. Reduce Migration Confusion
+
+- Mark legacy modules clearly in docstrings and docs.
+- Start the naming migration from broad terms to financial contracts: `instrument_id` for tradables, `series_id` for macro/index/factor data, `effective_date` and `known_at` for time semantics.
+- Define canonical paths:
+  - valuation: `src/core/valuation.py`
+  - portfolio service: `src/services/portfolio_service_v2.py`
+  - API: `src/api/fastapi_app.py`
+  - market data: `src/data_foundation/`
+- Avoid adding features to `app.py`.
+
+---
+
+## Long-Term Plan
+
+### Product
+
+- Build `frontend/` with React + Vite against FastAPI.
+- Support portfolio import/edit workflows from local templates without exposing private files.
+- Add explainable portfolio NAV: price source, FX source, corporate actions, and stale-data warnings visible in UI.
+
+### Quant And Research
+
+- Harden multi-calendar backtests against look-ahead bias.
+- Decide the role of Qlib: either implement `src/research/qlib_adapter.py` for factor/ML export, or remove it from the active roadmap.
+- Add benchmark comparison, risk attribution, and transaction-cost-aware rebalancing.
+
+### Data Platform
+
+- Partition market data by asset/source/date instead of rewriting one Parquet file.
+- Track provider provenance, request status, schema version, and fetch timestamp.
+- Add migration scripts for existing canonical data when schema changes.
+
+### Operations
+
+- Create a supported local dev environment for Python 3.11/3.12/3.13.
+- Add CI with tests, privacy scan, and package metadata checks.
+- Add structured logging for fetchers, services, and data writes.
+- Decide whether this remains single-user local software or needs multi-user auth and permissions.
+
+---
+
+## Definition Of Ready For New Feature Work
+
+Before large new features:
+
+- `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider` passes.
+- No private files appear in `git status --short`.
+- New logic lands in FastAPI/services/core, not `app.py`.
+- Financial outputs include enough metadata to explain price date, source, FX rate, and staleness.
