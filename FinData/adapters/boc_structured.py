@@ -75,40 +75,52 @@ class BocStructuredDepositFetcher:
 
     # ── Institutional structural deposits (机构结构性存款) ──────────────
 
-    async def fetch_institutional_list(self) -> List[Dict[str, str]]:
-        """Get currently-selling institutional structural deposits.
-        Returns list of {code, name, term_days, start_date}."""
+    async def fetch_institutional_list(self, max_pages: int = 5) -> List[Dict[str, str]]:
+        """Get institutional structural deposits from the prospectus listing page.
+
+        Scrapes https://www.bankofchina.com/cbservice/csdp/csdp3/ which has
+        paginated listings (50 pages total). Each page has ~20 products.
+
+        Args:
+            max_pages: Maximum pages to scrape (default 5 = ~100 recent products).
+        """
         print("    [BOC-SD] Fetching institutional structural deposit list...")
-        url = "https://www.bankofchina.com/cbservice/csdp/"
         results: List[Dict[str, str]] = []
+        seen_codes: set = set()
         try:
             async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
-                res = await client.get(url, headers=self.HEADERS, timeout=15)
-                res.raise_for_status()
-                soup = BeautifulSoup(res.text, "html.parser")
-                text = soup.get_text("\n", strip=True)
-                # Parse lines like: CSDPY202600226人民币结构性存款2026年6月4日起售53天
-                for line in text.split('\n'):
-                    line = line.strip()
-                    m = re.match(
-                        r'(CSDPY\d+)\s*'           # product code
-                        r'(人民币|美元)\s*'           # currency
-                        r'结构性存款\s*'              # fixed text
-                        r'(\d{4})年(\d{1,2})月(\d{1,2})日起售\s*'  # start date
-                        r'(\d+)天',                 # term
-                        line
-                    )
-                    if m:
-                        results.append({
-                            "code": m.group(1),
-                            "currency": "CNY" if "人民币" in m.group(2) else "USD",
-                            "name": f"{'人民币' if '人民币' in m.group(2) else '美元'}结构性存款{m.group(1)}",
-                            "start_date": f"{m.group(3)}-{m.group(4).zfill(2)}-{m.group(5).zfill(2)}",
-                            "term_days": int(m.group(6)),
-                        })
+                for page in range(1, max_pages + 1):
+                    url = f"https://www.bankofchina.com/cbservice/csdp/csdp3/index_{page}.html" if page > 1 else "https://www.bankofchina.com/cbservice/csdp/csdp3/"
+                    res = await client.get(url, headers=self.HEADERS, timeout=15)
+                    if res.status_code != 200:
+                        break
+                    text = BeautifulSoup(res.text, "html.parser").get_text("\n", strip=True)
+                    new_on_page = 0
+                    for line in text.split('\n'):
+                        line = line.strip()
+                        m = re.match(
+                            r'(CSDPY\d+)\s*'
+                            r'(人民币|美元)\s*'
+                            r'结构性存款\s*'
+                            r'(\d{4})年(\d{1,2})月(\d{1,2})日起售\s*'
+                            r'(\d+)天',
+                            line
+                        )
+                        if m and m.group(1) not in seen_codes:
+                            seen_codes.add(m.group(1))
+                            results.append({
+                                "code": m.group(1),
+                                "currency": "CNY" if "人民币" in m.group(2) else "USD",
+                                "name": f"{m.group(2)}结构性存款{m.group(1)}",
+                                "start_date": f"{m.group(3)}-{m.group(4).zfill(2)}-{m.group(5).zfill(2)}",
+                                "term_days": int(m.group(6)),
+                            })
+                            new_on_page += 1
+                    if new_on_page == 0:
+                        break
         except Exception as e:
             print(f"    [BOC-SD] Error: {e}")
-        print(f"    [BOC-SD] Found {len(results)} institutional products.")
+        print(f"    [BOC-SD] Found {len(results)} institutional products (scanned {max_pages} pages).")
         return results
 
     # ── Shared parser ──────────────────────────────────────────────────
