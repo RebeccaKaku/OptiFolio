@@ -1,3 +1,11 @@
+"""CN Fund fetcher — delegates to akshare for ETFs, open-end, and money market funds."""
+
+from . import FetcherProtocol, FetchResult
+import time
+import asyncio
+
+# ── Backend implementation ────────────────────────────────────────────
+
 # fetchers/cn_fund.py
 """
 中国公募基金抓取器
@@ -12,7 +20,12 @@ import pandas as pd
 from typing import Optional
 
 # 导入标准接口
-from .interfaces import AsyncBaseFetcher
+import asyncio, pandas as pd
+from typing import Optional
+
+class AsyncBaseFetcher:
+    async def fetch(self, symbol, start_date, end_date, timeframe="1d", exchange=None, **kwargs):
+        raise NotImplementedError
 
 
 class CnFundFetcher(AsyncBaseFetcher):
@@ -236,3 +249,23 @@ class CnFundFetcher(AsyncBaseFetcher):
         df['Volume'] = 0.0
         
         return df.loc[start_date:end_date][['Open', 'High', 'Low', 'Close', 'Volume']]
+
+
+# ── FinData adapter wrapper ───────────────────────────────────────────
+
+class CnFundFetcherAdapter(FetcherProtocol):
+    PROVIDER = "akshare-cn-fund"
+
+    def __init__(self):
+        self._fetcher = CnFundFetcher()
+
+    def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
+        t0 = time.time()
+        try:
+            df = asyncio.run(self._fetcher.fetch(symbol, start_date, end_date, **kwargs))
+            return FetchResult(symbol=symbol, provider=self.PROVIDER, data=df,
+                               success=True, latency_ms=(time.time() - t0) * 1000)
+        except Exception as e:
+            return FetchResult(symbol=symbol, provider=self.PROVIDER, data=None,
+                               success=False, latency_ms=(time.time() - t0) * 1000,
+                               errors=[str(e)])

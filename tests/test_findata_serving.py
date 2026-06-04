@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from FinData import fd as fd_import
-from FinData.storage_dept.store import CanonicalStore
+from FinData.store.repository import CanonicalStore
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ def _populated_provider(tmp_path, asset_id="AAPL", df=None):
     if df is None:
         df = _make_df()
     store.accept(df, asset_id=asset_id, source="unit", currency="USD")
-    from FinData.serving_dept.provider import DataProvider
+    from FinData.serving.provider import DataProvider
     return DataProvider(store=store), store
 
 
@@ -80,7 +80,7 @@ class TestDataProviderPanel:
             _make_df(close=np.linspace(50, 70, 60)),
             asset_id="BBB", source="unit", currency="USD",
         )
-        from FinData.serving_dept.provider import DataProvider
+        from FinData.serving.provider import DataProvider
         provider = DataProvider(store=store)
         panel = provider.panel(["AAA", "BBB"])
         assert isinstance(panel, pd.DataFrame)
@@ -100,7 +100,7 @@ class TestDataProviderReturns:
 
     def test_returns_empty_data_returns_empty_series(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
-        from FinData.serving_dept.provider import DataProvider
+        from FinData.serving.provider import DataProvider
         provider = DataProvider(store=store)
         returns = provider.returns("NONEXISTENT")
         assert isinstance(returns, pd.Series)
@@ -113,7 +113,7 @@ class TestDataProviderReturns:
             "close": [100.0],
         })
         store.accept(df, asset_id="SINGLE", source="unit", currency="USD")
-        from FinData.serving_dept.provider import DataProvider
+        from FinData.serving.provider import DataProvider
         provider = DataProvider(store=store)
         returns = provider.returns("SINGLE")
         assert len(returns) == 0
@@ -155,7 +155,7 @@ class TestDataProviderMetrics:
 
     def test_metrics_empty_data_returns_zeros(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
-        from FinData.serving_dept.provider import DataProvider
+        from FinData.serving.provider import DataProvider
         provider = DataProvider(store=store)
         result = provider.metrics("NONEXISTENT", "sharpe_ratio")
         assert result["sharpe_ratio"] == 0.0
@@ -167,7 +167,7 @@ class TestDataProviderMetrics:
             "close": [100.0],
         })
         store.accept(df, asset_id="SINGLE", source="unit", currency="USD")
-        from FinData.serving_dept.provider import DataProvider
+        from FinData.serving.provider import DataProvider
         provider = DataProvider(store=store)
         result = provider.metrics("SINGLE", "all")
         # max_drawdown is None when no data (distinguishes from zero drawdown)

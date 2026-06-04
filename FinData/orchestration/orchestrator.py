@@ -50,7 +50,7 @@ class Orchestrator:
 
     def __init__(self, store=None) -> None:
         # Lazy import — avoids circular dependency at module level
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
 
         self._store = store or CanonicalStore()
         self._task_log: list[dict] = []
@@ -124,7 +124,7 @@ class Orchestrator:
             ``{asset_id: FetchResult}`` for every asset that was
             successfully fetched and stored.
         """
-        from FinData.fetcher_dept.registry import get_fetcher
+        from FinData.adapters.registry import get_fetcher
 
         results: dict[str, object] = {}
 

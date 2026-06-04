@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 class TestFetchResult:
     def test_construction_minimal(self):
-        from FinData.fetcher_dept import FetchResult
+        from FinData.adapters import FetchResult
         r = FetchResult(symbol="AAPL", provider="test", data=None, success=True, latency_ms=1.5)
         assert r.symbol == "AAPL"
         assert r.provider == "test"
@@ -23,7 +23,7 @@ class TestFetchResult:
         assert r.metadata == {}
 
     def test_construction_with_errors_and_metadata(self):
-        from FinData.fetcher_dept import FetchResult
+        from FinData.adapters import FetchResult
         r = FetchResult(
             symbol="AAPL", provider="test", data=pd.DataFrame({"a": [1]}),
             success=False, latency_ms=200.0,
@@ -35,7 +35,7 @@ class TestFetchResult:
         assert not r.success
 
     def test_default_factories_are_distinct(self):
-        from FinData.fetcher_dept import FetchResult
+        from FinData.adapters import FetchResult
         a = FetchResult(symbol="A", provider="p", data=None, success=True, latency_ms=1.0)
         b = FetchResult(symbol="B", provider="p", data=None, success=True, latency_ms=1.0)
         a.errors.append("e1")
@@ -68,8 +68,8 @@ class MockUSDailyDF:
 
 class TestUsEquityFetcher:
     def test_returns_fetchresult_on_success(self):
-        from FinData.fetcher_dept.us_equity import UsEquityFetcher
-        from FinData.fetcher_dept import FetchResult
+        from FinData.adapters.us_equity import UsEquityFetcher
+        from FinData.adapters import FetchResult
 
         mock_df = pd.DataFrame({
             "date": ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"],
@@ -106,12 +106,12 @@ class TestUsEquityFetcher:
         assert len(result.data) >= 1  # at least one row in range
 
     def test_returns_fetchresult_on_failure(self):
-        from FinData.fetcher_dept.us_equity import UsEquityFetcher
+        from FinData.adapters.us_equity import UsEquityFetcher
 
         fetcher = UsEquityFetcher()
         result = fetcher.fetch("INVALID_SYMBOL_XYZ", "2024-01-01", "2024-01-05")
 
-        from FinData.fetcher_dept import FetchResult
+        from FinData.adapters import FetchResult
         assert isinstance(result, FetchResult)
         assert result.success is False
         assert result.data is None
@@ -124,10 +124,10 @@ class TestThinAdapterConstraints:
     """Ensure adapters do NOT add validation (.empty checks) or I/O."""
 
     ADAPTER_FILES = [
-        "FinData/fetcher_dept/cn_stock.py",
-        "FinData/fetcher_dept/cn_fund.py",
-        "FinData/fetcher_dept/forex.py",
-        "FinData/fetcher_dept/bank_wmp.py",
+        "FinData/adapters/cn_stock.py",
+        "FinData/adapters/cn_fund.py",
+        "FinData/adapters/forex.py",
+        "FinData/adapters/bank_wmp.py",
     ]
 
     @pytest.mark.parametrize("relpath", ADAPTER_FILES)
@@ -166,7 +166,7 @@ class TestThinAdapterConstraints:
 
 class TestRegistry:
     def test_get_fetcher_resolves_known_types(self):
-        from FinData.fetcher_dept.registry import get_fetcher, FETCHER_REGISTRY
+        from FinData.adapters import get_fetcher, FETCHER_REGISTRY
 
         # All registered keys should return something (even None for crypto/hk_equity)
         for key in FETCHER_REGISTRY:
@@ -177,11 +177,11 @@ class TestRegistry:
                 assert val is not None, f"get_fetcher({key!r}) returned None"
 
     def test_get_fetcher_unknown_type_returns_none(self):
-        from FinData.fetcher_dept.registry import get_fetcher
+        from FinData.adapters import get_fetcher
         assert get_fetcher("nonexistent_type_xyz") is None
 
     def test_registry_keys_are_expected(self):
-        from FinData.fetcher_dept.registry import FETCHER_REGISTRY
+        from FinData.adapters import FETCHER_REGISTRY
         expected = {
             "us_equity", "us_etf", "cn_stock", "cn_stock_sh", "cn_stock_sz",
             "cn_fund", "cn_fund_open", "cn_fund_etf", "cn_fund_money",
@@ -197,20 +197,20 @@ class TestRegistry:
 
 class TestProtocolConformance:
     def test_all_fetchers_implement_protocol(self):
-        from FinData.fetcher_dept import FetcherProtocol
-        from FinData.fetcher_dept.us_equity import UsEquityFetcher
-        from FinData.fetcher_dept.cn_stock import CnStockFetcherAdapter
-        from FinData.fetcher_dept.cn_fund import CnFundFetcherAdapter
-        from FinData.fetcher_dept.forex import ForexFetcher
-        from FinData.fetcher_dept.bank_wmp import BankWmpFetcher
+        from FinData.adapters import FetcherProtocol
+        from FinData.adapters.us_equity import UsEquityFetcher
+        from FinData.adapters.cn_stock import CnStockFetcherAdapter
+        from FinData.adapters.cn_fund import CnFundFetcherAdapter
+        from FinData.adapters.forex import ForexFetcher
+        from FinData.adapters.bank_wmp import BankWmpFetcher
 
         for cls in [UsEquityFetcher, CnStockFetcherAdapter,
                     CnFundFetcherAdapter, ForexFetcher, BankWmpFetcher]:
             assert issubclass(cls, FetcherProtocol), f"{cls.__name__} must subclass FetcherProtocol"
 
     def test_all_registry_instances_match_protocol(self):
-        from FinData.fetcher_dept import FetcherProtocol
-        from FinData.fetcher_dept.registry import FETCHER_REGISTRY
+        from FinData.adapters import FetcherProtocol
+        from FinData.adapters import FETCHER_REGISTRY
 
         for key, inst in FETCHER_REGISTRY.items():
             if inst is None:
@@ -224,26 +224,26 @@ class TestProtocolConformance:
 
 class TestBankWmpClassification:
     def test_classify_icbc(self):
-        from FinData.fetcher_dept.bank_wmp import BankWmpFetcher
+        from FinData.adapters.bank_wmp import BankWmpFetcher
         assert BankWmpFetcher._classify("23GS8125") == "icbc"
         assert BankWmpFetcher._classify("23GS8123") == "icbc"
 
     def test_classify_boc(self):
-        from FinData.fetcher_dept.bank_wmp import BankWmpFetcher
+        from FinData.adapters.bank_wmp import BankWmpFetcher
         assert BankWmpFetcher._classify("AMHQLXTTUSD01B") == "boc"
         assert BankWmpFetcher._classify("GRSDR260056") == "boc"
 
     def test_classify_bosc(self):
-        from FinData.fetcher_dept.bank_wmp import BankWmpFetcher
+        from FinData.adapters.bank_wmp import BankWmpFetcher
         assert BankWmpFetcher._classify("WPXK24M1203A") == "bosc"
 
     def test_classify_unknown(self):
-        from FinData.fetcher_dept.bank_wmp import BankWmpFetcher
+        from FinData.adapters.bank_wmp import BankWmpFetcher
         assert BankWmpFetcher._classify("???") == ""
         assert BankWmpFetcher._classify("123") == ""
 
     def test_fetch_unknown_pattern_returns_error(self):
-        from FinData.fetcher_dept.bank_wmp import BankWmpFetcher
+        from FinData.adapters.bank_wmp import BankWmpFetcher
         fetcher = BankWmpFetcher()
         result = fetcher.fetch("???", "2024-01-01", "2024-01-05")
         assert result.success is False
@@ -254,11 +254,11 @@ class TestBankWmpClassification:
 
 class TestImports:
     def test_init_imports(self):
-        from FinData.fetcher_dept import FetchResult, FetcherProtocol
+        from FinData.adapters import FetchResult, FetcherProtocol
         assert FetchResult is not None
         assert FetcherProtocol is not None
 
     def test_registry_imports(self):
-        from FinData.fetcher_dept.registry import get_fetcher, FETCHER_REGISTRY
+        from FinData.adapters import get_fetcher, FETCHER_REGISTRY
         assert callable(get_fetcher)
         assert isinstance(FETCHER_REGISTRY, dict)

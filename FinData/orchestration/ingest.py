@@ -12,8 +12,8 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import yaml
 
-from FinData.fetcher_dept.registry import get_fetcher
-from FinData.storage_dept.store import CanonicalStore
+from FinData.adapters.registry import get_fetcher
+from FinData.store.repository import CanonicalStore
 from src.core.calendars import get_calendar
 from src.core.paths import PROJECT_ROOT
 

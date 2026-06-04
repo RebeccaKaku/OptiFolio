@@ -16,7 +16,7 @@ class DataProvider:
     """
 
     def __init__(self, store=None):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         self._store = store or CanonicalStore()
 
     # ── raw data ──
@@ -204,6 +204,6 @@ class DataProvider:
 
     def _trigger_refresh(self, symbols):
         """Trigger live refresh via orchestrator. Stub — Phase 3 wires this."""
-        # TODO: wire to FinData.orchestrator.Orchestrator when orchestrator is stable
+        # TODO: wire to FinData.orchestration.Orchestrator when orchestrator is stable
         import warnings
         warnings.warn(f"Live refresh not yet wired — using cached data for {symbols}")

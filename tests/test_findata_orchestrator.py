@@ -8,15 +8,15 @@ from datetime import datetime, time as dtime, timezone, timedelta
 import pandas as pd
 import pytest
 
-from FinData.orchestrator.cadence import (
+from FinData.orchestration.cadence import (
     UpdateCadence,
     CADENCE_TABLE,
     get_cadence,
     is_update_due,
 )
-from FinData.orchestrator.rate_limiter import RateLimiter, PROVIDER_LIMITS
-from FinData.orchestrator.fallback import FALLBACK_CHAINS, get_fallback_chain
-from FinData.orchestrator.orchestrator import Orchestrator, FetchTask
+from FinData.orchestration.rate_limiter import RateLimiter, PROVIDER_LIMITS
+from FinData.orchestration.fallback import FALLBACK_CHAINS, get_fallback_chain
+from FinData.orchestration.orchestrator import Orchestrator, FetchTask
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -297,7 +297,7 @@ class TestFetchTask:
 
 class TestOrchestratorSchedule:
     def test_schedule_with_known_assets(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         # Store some assets
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
@@ -313,7 +313,7 @@ class TestOrchestratorSchedule:
         assert len(tasks) >= 0  # depends on _last_update resolution
 
     def test_schedule_uses_list_assets_when_no_ids(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
@@ -326,7 +326,7 @@ class TestOrchestratorSchedule:
             assert isinstance(t, FetchTask)
 
     def test_schedule_returns_sorted_by_priority(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         for aid in ["EURUSD", "AAPL", "CNYFUND"]:
             store.accept(_make_df(), asset_id=aid, source="unit", currency="USD")
@@ -347,14 +347,14 @@ class TestOrchestratorSchedule:
                 )
 
     def test_empty_store_returns_empty_tasks(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
         tasks = orch.schedule()
         assert tasks == []
 
     def test_schedule_skips_unknown_asset_type(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="WEIRD", source="unit", currency="USD")
 
@@ -373,14 +373,14 @@ class TestOrchestratorSchedule:
 
 class TestOrchestratorDispatch:
     def test_dispatch_empty_tasks(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
         results = orch.dispatch([])
         assert results == {}
 
     def test_dispatch_logs_failures(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
 
@@ -393,7 +393,7 @@ class TestOrchestratorDispatch:
         assert any(e["status"] == "no_fetcher" for e in log)
 
     def test_dispatch_with_real_fetcher_and_store(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
 
@@ -410,7 +410,7 @@ class TestOrchestratorDispatch:
         assert len(results) >= 0 or len(log) >= 0  # at least one side non-empty, or both empty is also fine
 
     def test_full_scan_on_empty_store(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
         results = orch.full_scan()
@@ -424,14 +424,14 @@ class TestOrchestratorDispatch:
 
 class TestOrchestratorHelpers:
     def test_last_update_returns_none_for_unknown_asset(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
         result = orch._last_update("NONEXISTENT")
         assert result is None
 
     def test_last_update_returns_datetime_for_known_asset(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
         orch = Orchestrator(store=store)
@@ -441,7 +441,7 @@ class TestOrchestratorHelpers:
         assert isinstance(result, datetime)
 
     def test_determine_start_date_uses_existing_data(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
         orch = Orchestrator(store=store)
@@ -451,7 +451,7 @@ class TestOrchestratorHelpers:
         assert "-" in start
 
     def test_determine_start_date_default_for_unknown(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
         start = orch._determine_start_date("NONEXISTENT")
@@ -468,7 +468,7 @@ class TestOrchestratorHelpers:
         assert Orchestrator._priority("unknown") == 0
 
     def test_task_log_records_entries(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
         assert orch.task_log() == []
@@ -489,11 +489,11 @@ class TestOrchestratorConstruction:
     def test_default_constructor_uses_canonical_store(self):
         orch = Orchestrator()
         assert orch._store is not None
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         assert isinstance(orch._store, CanonicalStore)
 
     def test_accepts_custom_store(self, tmp_path):
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         orch = Orchestrator(store=store)
         assert orch._store is store
@@ -513,15 +513,15 @@ class TestOrchestratorConstruction:
 class TestCrossDepartmentImports:
     def test_orchestrator_imports_storage_dept(self):
         """Orchestrator can import CanonicalStore at construction time."""
-        from FinData.orchestrator import Orchestrator
+        from FinData.orchestration import Orchestrator
         orch = Orchestrator()
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         assert isinstance(orch._store, CanonicalStore)
 
     def test_orchestrator_imports_fetcher_registry(self):
         """dispatch() can import the fetcher registry."""
-        from FinData.orchestrator import Orchestrator
-        from FinData.fetcher_dept.registry import get_fetcher, FETCHER_REGISTRY
+        from FinData.orchestration import Orchestrator
+        from FinData.adapters import get_fetcher, FETCHER_REGISTRY
         # Verify the registry has the keys the orchestrator expects
         assert "us_equity" in FETCHER_REGISTRY
         assert "cn_stock" in FETCHER_REGISTRY
@@ -529,8 +529,8 @@ class TestCrossDepartmentImports:
         assert callable(get_fetcher)
 
     def test_orchestrator_package_exports(self):
-        """All public symbols are importable from FinData.orchestrator."""
-        from FinData.orchestrator import (
+        """All public symbols are importable from FinData.orchestration."""
+        from FinData.orchestration import (
             Orchestrator,
             UpdateCadence,
             FetchTask,
@@ -561,13 +561,13 @@ class TestCrossDepartmentImports:
 class TestOrchestratorEndToEnd:
     def test_dispatch_success_path(self, tmp_path, monkeypatch):
         """Full path: schedule → dispatch → store, with a mock fetcher."""
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
 
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
         # Mock the fetcher to return a successful result
-        from FinData.fetcher_dept import FetchResult as FR
+        from FinData.adapters import FetchResult as FR
 
         class MockFetcher:
             PROVIDER = "akshare-sina"
@@ -585,7 +585,7 @@ class TestOrchestratorEndToEnd:
                           success=True, latency_ms=10.0)
 
         # Patch the registry to return our mock
-        import FinData.fetcher_dept.registry as reg
+        import FinData.adapters.registry as reg
         monkeypatch.setitem(reg.FETCHER_REGISTRY, "us_equity", MockFetcher())
 
         orch = Orchestrator(store=store)
@@ -598,11 +598,11 @@ class TestOrchestratorEndToEnd:
 
     def test_dispatch_fallback_on_quality_rejection(self, tmp_path, monkeypatch):
         """When quality gate rejects, orchestrator logs the rejection."""
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
 
         store = CanonicalStore(root_dir=str(tmp_path))
 
-        from FinData.fetcher_dept import FetchResult as FR
+        from FinData.adapters import FetchResult as FR
 
         class MockFetcherEmptyData:
             PROVIDER = "akshare-sina"
@@ -612,7 +612,7 @@ class TestOrchestratorEndToEnd:
                 return FR(symbol=symbol, provider=self.PROVIDER,
                           data=pd.DataFrame(), success=True, latency_ms=5.0)
 
-        import FinData.fetcher_dept.registry as reg
+        import FinData.adapters.registry as reg
         monkeypatch.setitem(reg.FETCHER_REGISTRY, "us_equity", MockFetcherEmptyData())
 
         orch = Orchestrator(store=store)
@@ -630,7 +630,7 @@ class TestOrchestratorEndToEnd:
 
     def test_schedule_with_explicit_ids(self, tmp_path):
         """schedule with explicit asset_ids generates tasks."""
-        from FinData.storage_dept.store import CanonicalStore
+        from FinData.store.repository import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
         store.accept(_make_df(), asset_id="GOOGL", source="unit", currency="USD")

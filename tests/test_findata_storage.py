@@ -6,9 +6,9 @@ import pandas as pd
 import pytest
 
 from FinData import fd as fd_import
-from FinData.storage_dept.quality import QualityGate, QualityReport
-from FinData.storage_dept.store import CanonicalStore
-from FinData.storage_dept.schemas import CANONICAL_COLUMNS, store_version
+from FinData.store.quality import QualityGate, QualityReport
+from FinData.store.repository import CanonicalStore
+from FinData.store.schemas import CANONICAL_COLUMNS, store_version
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
