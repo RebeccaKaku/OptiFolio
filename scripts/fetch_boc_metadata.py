@@ -8,7 +8,7 @@ scripts/fetch_boc_metadata.py
   - 下一开放申赎日 (next_open_date)
   - 产品说明书 PDF 链接 (prospectus_pdf_url / prospectus_pdf_title)
 
-输出：config/boc_product_metadata.json
+输出：data/boc/product_metadata.json
 用法：python scripts/fetch_boc_metadata.py [--max N]
 """
 
@@ -37,7 +37,7 @@ INSTRUCTIONS_URL     = "https://www.bocwm.cn/webApi/cms/productDynamicPage/getPr
 DETAIL_BASE_URL      = "https://www.bocwm.cn"
 PROSPECTUS_BASE_URL  = "https://www.bocwm.cn"   # PDF 路径前缀
 
-OUTPUT_PATH = Path("config/boc_product_metadata.json")
+OUTPUT_PATH = Path("data/boc/product_metadata.json")
 CONCURRENCY = 10   # 同时并发的产品数
 
 HEADERS = {

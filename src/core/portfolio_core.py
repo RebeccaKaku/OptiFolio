@@ -150,7 +150,7 @@ class PortfolioCore(IPortfolioManager):
                 for asset in data.get('candidates', {}).get('assets', []):
                     symbol = asset.get('symbol')
                     if symbol:
-                        asset_type = asset.get('type', 'us_equity')
+                        asset_type = asset.get('asset_type', 'us_equity')
                         currency = asset.get('currency')
                         
                         # 如果没有指定货币，根据资产类型设置默认货币
@@ -177,7 +177,7 @@ class PortfolioCore(IPortfolioManager):
                 for asset in data.get('universe', {}).get('assets', []):
                     symbol = asset.get('symbol')
                     if symbol:
-                        asset_type = asset.get('type', 'us_equity')
+                        asset_type = asset.get('asset_type', 'us_equity')
                         currency = asset.get('currency')
                         
                         # 如果没有指定货币，根据资产类型设置默认货币

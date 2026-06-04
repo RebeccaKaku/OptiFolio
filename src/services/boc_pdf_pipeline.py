@@ -57,8 +57,8 @@ class BocPdfPipeline:
         output_path: Optional[Path] = None,
         deepseek_api_key: Optional[str] = None,
     ):
-        self.metadata_path = metadata_path or PROJECT_ROOT / "config" / "boc_product_metadata.json"
-        self.output_path = output_path or PROJECT_ROOT / "config" / "boc_product_fees.json"
+        self.metadata_path = metadata_path or PROJECT_ROOT / "data" / "boc" / "product_metadata.json"
+        self.output_path = output_path or PROJECT_ROOT / "data" / "boc" / "product_fees.json"
         self.pdf_extractor = PdfExtractor()
         self.regex_extractor = RegexFeeExtractor()
         self.ai_extractor: Optional[DeepSeekExtractor] = None

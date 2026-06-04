@@ -186,4 +186,6 @@ class DataProvider:
 
     def _trigger_refresh(self, symbols):
         """Trigger live refresh via orchestrator. Stub — Phase 3 wires this."""
-        pass
+        # TODO: wire to FinData.orchestrator.Orchestrator when orchestrator is stable
+        import warnings
+        warnings.warn(f"Live refresh not yet wired — using cached data for {symbols}")

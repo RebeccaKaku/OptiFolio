@@ -185,16 +185,25 @@ class FxRateProvider:
 
 # ── Currency resolution ────────────────────────────────────────────────
 
+_currency_cache: Dict[str, str] = {}
+
 
 def _resolve_currency(asset_id: str) -> str:
     """Resolve an asset's native currency from config files.
 
     Checks asset_registry.yaml first, then candidates.yaml,
     then falls back to heuristic inference.
+
+    Results are cached in _currency_cache to avoid repeated YAML I/O.
     """
+    if asset_id in _currency_cache:
+        return _currency_cache[asset_id]
+
     import yaml
     from pathlib import Path
     from src.core.paths import PROJECT_ROOT
+
+    result: str = "USD"
 
     # 1. asset_registry.yaml
     registry_path = PROJECT_ROOT / "config" / "asset_registry.yaml"
@@ -205,7 +214,9 @@ def _resolve_currency(asset_id: str) -> str:
             if entry.get("symbol") == asset_id:
                 cur = entry.get("currency")
                 if cur:
-                    return str(cur)
+                    result = str(cur)
+                    _currency_cache[asset_id] = result
+                    return result
 
     # 2. candidates.yaml
     candidates_path = PROJECT_ROOT / "config" / "candidates.yaml"
@@ -216,19 +227,22 @@ def _resolve_currency(asset_id: str) -> str:
             if entry.get("symbol") == asset_id:
                 cur = entry.get("currency")
                 if cur:
-                    return str(cur)
+                    result = str(cur)
+                    _currency_cache[asset_id] = result
+                    return result
 
     # 3. Heuristic
     if asset_id.startswith(("sh", "sz")):
-        return "CNY"
-    if asset_id.isdigit() and len(asset_id) == 6:
-        return "CNY"
-    if asset_id.isupper() and any(c.isdigit() for c in asset_id) and len(asset_id) > 8:
-        return "USD"  # BOC-style codes like AMHQLXTTUSD01B
-    if asset_id.isdigit() and len(asset_id) == 8:
-        return "CNY"  # ICBC-style codes like 23GS8125
+        result = "CNY"
+    elif asset_id.isdigit() and len(asset_id) == 6:
+        result = "CNY"
+    elif asset_id.isupper() and any(c.isdigit() for c in asset_id) and len(asset_id) > 8:
+        result = "USD"  # BOC-style codes like AMHQLXTTUSD01B
+    elif asset_id.isdigit() and len(asset_id) == 8:
+        result = "CNY"  # ICBC-style codes like 23GS8125
 
-    return "USD"
+    _currency_cache[asset_id] = result
+    return result
 
 
 # ── Valuation engine ───────────────────────────────────────────────────

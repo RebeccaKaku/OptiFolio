@@ -50,7 +50,7 @@ def load_asset_registry() -> Dict[str, Dict[str, Any]]:
             registry[sym] = {
                 "currency": entry.get("currency", "USD"),
                 # Field is "asset_type" not "type" in asset_registry.yaml
-                "type": entry.get("asset_type", entry.get("type", "")),
+                "type": entry.get("asset_type", ""),
                 "name": entry.get("name", sym),
             }
     return registry
@@ -70,7 +70,7 @@ def load_candidates() -> Dict[str, Dict[str, Any]]:
         if sym:
             result[sym] = {
                 "currency": entry.get("currency", "USD"),
-                "type": entry.get("type", ""),
+                "type": entry.get("asset_type", ""),
             }
     return result
 

@@ -65,7 +65,8 @@ class TestCadenceTable:
             assert cadence.max_stale_hours > 0
 
     def test_expected_keys(self):
-        expected = {"us_equity", "cn_stock", "cn_fund", "forex", "bank_wmp", "crypto"}
+        expected = {"us_equity", "cn_stock", "cn_fund", "forex", "bank_wmp", "crypto",
+                    "bank_wm_boc", "bank_wm_bosc", "bank_wm_icbc"}
         assert set(CADENCE_TABLE.keys()) == expected
 
     def test_hourly_types(self):

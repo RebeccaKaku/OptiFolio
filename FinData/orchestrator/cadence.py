@@ -37,6 +37,9 @@ CADENCE_TABLE: dict[str, UpdateCadence] = {
     "cn_fund":   UpdateCadence("cn_fund",   "t+1_morning", time(1, 0), 36),
     "forex":     UpdateCadence("forex",     "hourly", time(0, 0),  4),
     "bank_wmp":  UpdateCadence("bank_wmp",  "daily", time(12, 0),  28),
+    "bank_wm_boc": UpdateCadence("bank_wm_boc", "daily", time(12, 0), 28),
+    "bank_wm_bosc": UpdateCadence("bank_wm_bosc", "daily", time(12, 0), 28),
+    "bank_wm_icbc": UpdateCadence("bank_wm_icbc", "daily", time(12, 0), 28),
     "crypto":    UpdateCadence("crypto",    "hourly", time(0, 0),  2),
 }
 """Master cadence table — the single source of truth for update schedules."""
@@ -45,10 +48,15 @@ CADENCE_TABLE: dict[str, UpdateCadence] = {
 def get_cadence(asset_type: str) -> UpdateCadence:
     """Look up the UpdateCadence for *asset_type*, falling back to a
     sensible daily default when unknown."""
-    return CADENCE_TABLE.get(
-        asset_type,
-        UpdateCadence(asset_type, "daily", time(0, 0), 24),
-    )
+    if asset_type in CADENCE_TABLE:
+        return CADENCE_TABLE[asset_type]
+    # Normalize: strip _boc/_bosc/_icbc suffix and check generic entry
+    for suffix in ("_boc", "_bosc", "_icbc"):
+        if asset_type.endswith(suffix):
+            generic = asset_type[: -len(suffix)]
+            if generic in CADENCE_TABLE:
+                return CADENCE_TABLE[generic]
+    return UpdateCadence(asset_type, "daily", time(0, 0), 24)
 
 
 def is_update_due(

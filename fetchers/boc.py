@@ -22,7 +22,7 @@ class BocFetcher(AsyncBaseFetcher):
     
     PRODUCT_LIST_URL = "https://www.bocwm.cn/webApi/cms/product/queryStaticProducts"
     NET_WORTH_URL = "https://www.bocwm.cn/webApi/cms/productNetWorth/getNetWorthImageByCode"
-    METADATA_PATH = Path("config/boc_product_metadata.json")
+    METADATA_PATH = Path("data/boc/product_metadata.json")
     
     def __init__(self, data_dir: str = "data/boc", save_raw: bool = True):
         self.data_dir = Path(data_dir)

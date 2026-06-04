@@ -1,6 +1,6 @@
 import json, sys
 sys.stdout.reconfigure(encoding='utf-8')
-with open('config/boc_product_metadata.json', encoding='utf-8') as f:
+with open('data/boc/product_metadata.json', encoding='utf-8') as f:
     data = json.load(f)
 
 no_cur = [p for p in data['products'] if not p.get('currency')]

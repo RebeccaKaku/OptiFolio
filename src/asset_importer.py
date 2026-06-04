@@ -84,6 +84,16 @@ OFFLINE_ASSET_FALLBACKS: Dict[str, Dict[str, Any]] = {
         "currency": "CNY",
         "source": "offline_fallback",
     },
+    "cn_fund:23713A": {
+        "name": "高盛工银理财·盛景",
+        "currency": "CNY",
+        "source": "offline_fallback",
+    },
+    "cn_fund:WH2025109A": {
+        "name": "慧精灵9号",
+        "currency": "CNY",
+        "source": "offline_fallback",
+    },
 }
 
 
@@ -588,7 +598,7 @@ class AssetImporter:
                     print(f"[Warning] 读取上行本地快照失败: {e}")
 
         # C. 中银理财（BOCWM）— boc_product_metadata.json
-        boc_meta_path = Path("config/boc_product_metadata.json")
+        boc_meta_path = Path("data/boc/product_metadata.json")
         if boc_meta_path.exists():
             try:
                 with open(boc_meta_path, "r", encoding="utf-8") as f:
