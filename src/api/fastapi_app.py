@@ -95,6 +95,15 @@ def create_app() -> FastAPI:
     def portfolio_holdings() -> JSONResponse:
         return _json_response(get_application_services().portfolio.get_holdings())
 
+    @app.get("/api/portfolio/v2/ledger", tags=["portfolio"])
+    def portfolio_ledger(
+        start: Optional[str] = Query(default=None),
+        end: Optional[str] = Query(default=None),
+    ) -> JSONResponse:
+        return _json_response(
+            get_application_services().portfolio.get_ledger(start, end)
+        )
+
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
         return _json_response(get_application_services().assets.get_overview())
