@@ -259,7 +259,7 @@ async def fetch_product_net_value_details(
             try:
                 resp = await client.post(NET_VALUE_URL, headers=NET_VALUE_HEADERS, json=payload, timeout=15)
                 if resp.status_code == 200:
-                    content = resp.content.decode("gb18030", errors="ignore")
+                    content = resp.content.decode("utf-8", errors="ignore")
                     data = json.loads(content)
                     records = data.get("data", {}).get("list", [])
                     if records:

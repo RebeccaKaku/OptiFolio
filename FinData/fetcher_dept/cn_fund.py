@@ -9,7 +9,7 @@ class CnFundFetcherAdapter(FetcherProtocol):
     PROVIDER = "akshare-cn-fund"
 
     def __init__(self):
-        from fetchers.cn_fund import CnFundFetcher
+        from .cn_fund_backend import CnFundFetcher
         self._fetcher = CnFundFetcher()
 
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:

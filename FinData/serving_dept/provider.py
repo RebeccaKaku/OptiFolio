@@ -85,7 +85,17 @@ class DataProvider:
 
         prices = self.prices(symbol, start=start, end=end)
         if prices is None or len(prices) < 2:
-            return {k: 0.0 for k in keys}
+            result = {k: 0.0 for k in keys}
+            if "max_drawdown" in result:
+                result["max_drawdown"] = None  # None = no data, distinguish from zero drawdown
+            return result
+
+        prices = prices.dropna()
+        if len(prices) < 2:
+            result = {k: 0.0 for k in keys}
+            if "max_drawdown" in result:
+                result["max_drawdown"] = None
+            return result
 
         result = {}
         for k in keys:

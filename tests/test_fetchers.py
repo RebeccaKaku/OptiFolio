@@ -1,8 +1,8 @@
 import pytest
 import asyncio
-from fetchers.bosc import BoscFetcher
-from fetchers.boc import BocFetcher
-from fetchers.icbc import IcbcFetcher
+from FinData.fetcher_dept.bosc_backend import BoscFetcher
+from FinData.fetcher_dept.boc_backend import BocFetcher
+from FinData.fetcher_dept.icbc_backend import IcbcFetcher
 import pandas as pd
 
 class MockResponse:

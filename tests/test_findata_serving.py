@@ -170,7 +170,12 @@ class TestDataProviderMetrics:
         from FinData.serving_dept.provider import DataProvider
         provider = DataProvider(store=store)
         result = provider.metrics("SINGLE", "all")
-        assert all(v == 0.0 for v in result.values())
+        # max_drawdown is None when no data (distinguishes from zero drawdown)
+        for k, v in result.items():
+            if k == "max_drawdown":
+                assert v is None, f"max_drawdown should be None for no data, got {v}"
+            else:
+                assert v == 0.0, f"{k} should be 0.0 for no data, got {v}"
 
     def test_metrics_unknown_metric_returns_empty(self, tmp_path):
         provider, _ = _populated_provider(tmp_path, "AAPL")

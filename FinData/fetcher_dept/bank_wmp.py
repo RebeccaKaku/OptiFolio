@@ -40,19 +40,19 @@ class BankWmpFetcher(FetcherProtocol):
 
     def _get_boc(self):
         if self._boc is None:
-            from fetchers.boc import BocFetcher
+            from .boc_backend import BocFetcher
             self._boc = BocFetcher()
         return self._boc
 
     def _get_icbc(self):
         if self._icbc is None:
-            from fetchers.icbc import IcbcFetcher
+            from .icbc_backend import IcbcFetcher
             self._icbc = IcbcFetcher()
         return self._icbc
 
     def _get_bosc(self):
         if self._bosc is None:
-            from fetchers.bosc import BoscFetcher
+            from .bosc_backend import BoscFetcher
             self._bosc = BoscFetcher()
         return self._bosc
 

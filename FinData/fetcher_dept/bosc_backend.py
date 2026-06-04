@@ -43,6 +43,7 @@ class BoscFetcher(AsyncBaseFetcher):
     async def fetch_all_products(self) -> List[Dict]:
         """
         Query all active wealth management products from BOSC portal.
+        Falls back to local snapshot if POST API is unavailable.
         """
         print("    [BOSC] Discovering all products from portal...")
         all_rows = []
@@ -58,6 +59,12 @@ class BoscFetcher(AsyncBaseFetcher):
             except Exception as e:
                 print(f"    [BOSC] Request error discovering products at POST {self.PRODUCT_LIST_URL}: {e}")
 
+        # Fallback: load from local snapshot if API returned nothing
+        if not all_rows:
+            all_rows = self._load_products_from_snapshot()
+            if all_rows:
+                print(f"    [BOSC] Loaded {len(all_rows)} products from local snapshot (API unavailable).")
+
         # Deduplicate by prdCode
         unique_products = {p.get("prdCode"): p for p in all_rows if p.get("prdCode")}.values()
         unique_products_list = list(unique_products)
@@ -67,6 +74,16 @@ class BoscFetcher(AsyncBaseFetcher):
 
         print(f"    [BOSC] Discovered {len(unique_products_list)} unique products.")
         return unique_products_list
+
+    def _load_products_from_snapshot(self) -> List[Dict]:
+        """Load product list from the latest local snapshot file."""
+        import glob
+        snapshots = sorted(glob.glob(str(self.raw_dir / "bosc_all_products_snapshot_*.json")))
+        if not snapshots:
+            return []
+        with open(snapshots[-1], encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("data", {}).get("records", [])
 
     def _get_product_metadata(self, symbol: str) -> Dict[str, Any]:
         """Try to load product metadata from local raw snapshot files to resolve taCode and prodSeries."""
@@ -127,10 +144,12 @@ class BoscFetcher(AsyncBaseFetcher):
             params = {
                 "prdCode": symbol,
                 "taCode": ta_code,
-                "prodSeries": prod_series,
                 "size": page_size,
                 "current": current_page
             }
+            # Only include prodSeries if non-empty — empty string causes API to return 0
+            if prod_series:
+                params["prodSeries"] = prod_series
             response = await client_to_use.get(self.NET_WORTH_HIST_URL, headers=headers, params=params, timeout=15)
             response.raise_for_status()
             return response.json()
@@ -142,7 +161,7 @@ class BoscFetcher(AsyncBaseFetcher):
                 # 1. Fetch first page
                 try:
                     data = await make_request(client, page_index)
-                except (httpx.ConnectError, httpx.SSLError, ssl.SSLError) as ssl_err:
+                except (httpx.ConnectError, ssl.SSLError) as ssl_err:
                     if verify_flag:
                         print(f"    [BOSC] SSL verification failed for {symbol}. Retrying with verify=False... Error: {ssl_err}")
                         async with httpx.AsyncClient(verify=False) as fallback_client:
