@@ -37,3 +37,12 @@ class PortfolioService:
             )
         except Exception as exc:
             return failure(str(exc), "HOLDINGS_ERROR")
+
+    def get_ledger(self, start: Optional[str] = None, end: Optional[str] = None) -> Dict[str, Any]:
+        try:
+            return normalize_response(
+                self.api_service.get_portfolio_ledger(start, end),
+                default_message="Portfolio ledger loaded",
+            )
+        except Exception as exc:
+            return failure(str(exc), "PORTFOLIO_LEDGER_ERROR", {"start": start, "end": end})

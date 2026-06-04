@@ -133,6 +133,14 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             return _json_response({"success": False, "message": str(exc), "error_code": "INVALID_DATE_FORMAT"})
 
+    @app.get("/api/portfolio/v2/ledger", tags=["portfolio"])
+    def portfolio_ledger(
+        start: Optional[str] = Query(default=None),
+        end: Optional[str] = Query(default=None),
+    ) -> JSONResponse:
+        return _json_response(
+            get_application_services().portfolio.get_ledger(start, end)
+        )
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
         return _json_response(get_application_services().assets.get_overview())
