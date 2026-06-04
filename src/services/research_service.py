@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Sequence
 
 import pandas as pd
 
+from FinData.store.quality import QualityReport
 from src.data_foundation import MarketDataRepository
 from src.research import BacktestEngine, BacktestRequest
 
@@ -64,6 +65,23 @@ class ResearchService:
             return success({"records": report.to_dict(orient="records")}, "Missing data report loaded")
         except Exception as exc:
             return failure(str(exc), "MISSING_REPORT_ERROR", {"assets": list(assets)})
+
+    def get_quality_reports(self, asset_id: Optional[str] = None) -> Dict[str, Any]:
+        try:
+            if not QualityReport.FILE_PATH.exists():
+                return success({"reports": []}, "No quality reports found")
+
+            df = pd.read_parquet(QualityReport.FILE_PATH)
+            if asset_id:
+                df = df[df["asset_id"] == asset_id]
+
+            # Convert timestamp to string for JSON serialization
+            if not df.empty and "timestamp" in df.columns:
+                df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+
+            return success({"reports": df.to_dict(orient="records")}, "Quality reports loaded")
+        except Exception as exc:
+            return failure(str(exc), "QUALITY_REPORT_ERROR")
 
     def run_backtest(
         self,
