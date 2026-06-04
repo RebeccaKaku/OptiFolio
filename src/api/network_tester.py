@@ -411,16 +411,20 @@ class NetworkTester:
         try:
             import yfinance as yf
             
-            success_count = 0
-            for symbol in symbols:
+            def check_symbol(symbol: str) -> bool:
+                """同步函数：检查单个美股代码"""
                 try:
                     # 尝试获取股票信息
                     ticker = yf.Ticker(symbol)
                     info = ticker.info
-                    if info and len(info) > 0:
-                        success_count += 1
+                    return bool(info and len(info) > 0)
                 except:
-                    continue
+                    return False
+
+            # 使用 asyncio.to_thread 在线程池中并发执行同步的 yfinance 请求
+            tasks = [asyncio.to_thread(check_symbol, symbol) for symbol in symbols]
+            results = await asyncio.gather(*tasks)
+            success_count = sum(results)
             
             # 至少70%的代码可用即认为成功
             return success_count >= len(symbols) * 0.7
