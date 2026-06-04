@@ -95,6 +95,14 @@ def create_app() -> FastAPI:
     def portfolio_holdings() -> JSONResponse:
         return _json_response(get_application_services().portfolio.get_holdings())
 
+    @app.get("/api/portfolio/v2/risk/exposure", tags=["portfolio"])
+    def portfolio_exposure(
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3)
+    ) -> JSONResponse:
+        return _json_response(
+            get_application_services().portfolio_v2.get_exposure_report(base_currency)
+        )
+
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
         return _json_response(get_application_services().assets.get_overview())
