@@ -21,7 +21,7 @@ class BoscFetcher(AsyncBaseFetcher):
     - Standardizes output to the OHLCV format.
     """
 
-    PRODUCT_LIST_URL = "https://www.bosc.cn/apiQry/apiPCQry/qryPcFinanceProductZh"
+    PRODUCT_DISCOVERY_URL = "https://www.bosc.cn/apiQry/apiPCQry/v2/doPcD709QryPage"
     NET_WORTH_HIST_URL = "https://www.bosc.cn/apiQry/apiPCQry/v2/qryMCFinanceNetProHisValueForPersonPage"
 
     def __init__(self, data_dir: str = "data/bosc", save_raw: bool = True, verify_ssl: bool = True):
@@ -36,54 +36,47 @@ class BoscFetcher(AsyncBaseFetcher):
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
         self.headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": "https://www.bosc.cn/zh/dtjr/grlc/xjgllcp/",
         }
 
-    async def fetch_all_products(self) -> List[Dict]:
+    async def fetch_all_products(self, max_pages: int = 50) -> List[Dict]:
+        """Query all D709 (现金管理类) products via the stable GET API.
+
+        The POST `qryPcFinanceProductZh` is unreliable (frequent connection errors).
+        This GET endpoint is used by BOSC's own website and is always available.
         """
-        Query all active wealth management products from BOSC portal.
-        Falls back to local snapshot if POST API is unavailable.
-        """
-        print("    [BOSC] Discovering all products from portal...")
-        all_rows = []
+        print("    [BOSC] Discovering products via GET API...")
+        all_rows: List[Dict] = []
         async with httpx.AsyncClient(verify=self.verify_ssl) as client:
-            try:
-                post_payload = {"current": 1, "size": 1000}
-                post_resp = await client.post(self.PRODUCT_LIST_URL, headers=self.headers, json=post_payload, timeout=15)
-                post_resp.raise_for_status()
-                post_data = post_resp.json()
-                if post_data.get("code") == 200 and post_data.get("success"):
-                    rows = post_data.get("data", {}).get("records", [])
-                    all_rows.extend(rows)
-            except Exception as e:
-                print(f"    [BOSC] Request error discovering products at POST {self.PRODUCT_LIST_URL}: {e}")
+            for page in range(1, max_pages + 1):
+                try:
+                    url = f"{self.PRODUCT_DISCOVERY_URL}?size=50&current={page}"
+                    resp = await client.get(url, headers=self.headers, timeout=15)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if data.get("code") == 200 and data.get("success"):
+                        records = data.get("data", {}).get("records", [])
+                        if not records:
+                            break
+                        all_rows.extend(records)
+                        total_pages = data.get("data", {}).get("pages", 1)
+                        if page >= total_pages:
+                            break
+                except Exception as e:
+                    print(f"    [BOSC] Error on page {page}: {e}")
+                    break
 
-        # Fallback: load from local snapshot if API returned nothing
-        if not all_rows:
-            all_rows = self._load_products_from_snapshot()
-            if all_rows:
-                print(f"    [BOSC] Loaded {len(all_rows)} products from local snapshot (API unavailable).")
+        unique = {p.get("prdCode"): p for p in all_rows if p.get("prdCode")}.values()
+        result = list(unique)
 
-        # Deduplicate by prdCode
-        unique_products = {p.get("prdCode"): p for p in all_rows if p.get("prdCode")}.values()
-        unique_products_list = list(unique_products)
+        if self.save_raw and result:
+            self._save_raw("bosc_all_products_snapshot", {"data": {"records": result}})
 
-        if self.save_raw and unique_products_list:
-            self._save_raw("bosc_all_products_snapshot", {"data": {"records": unique_products_list}})
-
-        print(f"    [BOSC] Discovered {len(unique_products_list)} unique products.")
-        return unique_products_list
-
-    def _load_products_from_snapshot(self) -> List[Dict]:
-        """Load product list from the latest local snapshot file."""
-        import glob
-        snapshots = sorted(glob.glob(str(self.raw_dir / "bosc_all_products_snapshot_*.json")))
-        if not snapshots:
-            return []
-        with open(snapshots[-1], encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("data", {}).get("records", [])
+        print(f"    [BOSC] Discovered {len(result)} unique products.")
+        return result
 
     def _get_product_metadata(self, symbol: str) -> Dict[str, Any]:
         """Try to load product metadata from local raw snapshot files to resolve taCode and prodSeries."""

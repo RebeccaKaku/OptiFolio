@@ -78,7 +78,18 @@ def mock_httpx_post(monkeypatch):
 
         async def get(self, url, *args, **kwargs):
             self.get_called += 1
-            if "qryMCFinanceNetProHisValueForPersonPage" in url:
+            if "doPcD709QryPage" in url:
+                return MockResponse({
+                    "code": 200, "success": True,
+                    "data": {
+                        "records": [
+                            {"prdCode": "TEST1", "prdName": "Test Product", "prdTemplate": "D709",
+                             "taCode": "Y58", "prodSeries": "W", "yield": "1.5", "totNav": "1.0"}
+                        ],
+                        "total": 1, "size": 50, "current": 1, "pages": 1
+                    }
+                })
+            elif "qryMCFinanceNetProHisValueForPersonPage" in url:
                 return MockResponse({
                     "code": 200,
                     "success": True,
