@@ -12,7 +12,7 @@ This script demonstrates the full workflow:
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import pandas as pd
 import numpy as np
 
