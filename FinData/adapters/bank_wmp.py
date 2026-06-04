@@ -40,7 +40,7 @@ class BankWmpFetcher(FetcherProtocol):
 
     def _get_boc(self):
         if self._boc is None:
-            from .boc import BocFetcher
+            from .boc_wm import BocFetcher
             self._boc = BocFetcher()
         return self._boc
 

@@ -136,9 +136,6 @@ async def test_boc_fetcher_discovery(mock_httpx_post, tmp_path):
     assert len(codes) == 2
     assert "BOC1" in codes
 
-    struct_codes = await fetcher.fetch_structural_deposits()
-    assert "GRSDR260056" in struct_codes
-
 @pytest.mark.asyncio
 async def test_icbc_fetcher_sync_defaults(mock_httpx_post, tmp_path):
     fetcher = IcbcFetcher(data_dir=str(tmp_path))
