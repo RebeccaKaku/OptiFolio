@@ -1,0 +1,390 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e5]:
+      - link "金融消费者权益保护" [ref=e7] [cursor=pointer]:
+        - /url: /zh/sy/jrxfzqy/jrxfzqy/
+      - link "客户服务" [ref=e9] [cursor=pointer]:
+        - /url: /zh/sy/khfw/lxwm/
+      - link "人才招聘" [ref=e11] [cursor=pointer]:
+        - /url: https://bosc.zhiye.com
+      - generic [ref=e12]:
+        - link "繁體" [ref=e13] [cursor=pointer]:
+          - /url: javascript:StranBody()
+        - text: "|"
+        - link "简体" [ref=e14] [cursor=pointer]:
+          - /url: javascript:StranBody1()
+      - link "EN" [ref=e16] [cursor=pointer]:
+        - /url: /en/
+    - generic [ref=e18]:
+      - link:
+        - /url: /zh/
+        - img [ref=e19] [cursor=pointer]
+      - generic [ref=e20]:
+        - generic:
+          - textbox [ref=e21]: 请输入关键词
+          - button [ref=e22] [cursor=pointer]
+    - generic [ref=e25]:
+      - link "首页" [ref=e27] [cursor=pointer]:
+        - /url: /zh/
+      - link "个人业务" [ref=e29] [cursor=pointer]:
+        - /url: /zh/gryw/
+      - link "信用卡" [ref=e31] [cursor=pointer]:
+        - /url: /zh/xyk/
+      - link "公司金融" [ref=e33] [cursor=pointer]:
+        - /url: /zh/gsjr/
+      - link "普惠金融" [ref=e35] [cursor=pointer]:
+        - /url: /zh/phjr/
+      - link "信息公开" [ref=e37] [cursor=pointer]:
+        - /url: /zh/jrsh/
+  - generic [ref=e40]:
+    - generic [ref=e41]:
+      - generic:
+        - list:
+          - listitem [ref=e42]:
+            - text: 您的当前位置：
+            - link "上海银行首页" [ref=e43] [cursor=pointer]:
+              - /url: ../../../
+            - text: ">"
+            - link "动态金融信息" [ref=e44] [cursor=pointer]:
+              - /url: ../../
+            - text: ">"
+            - link "个人理财产品" [ref=e45] [cursor=pointer]:
+              - /url: ../
+            - text: ">"
+            - link "现金管理类产品" [ref=e46] [cursor=pointer]:
+              - /url: ./
+    - generic:
+      - generic [ref=e47]:
+        - generic [ref=e48]: 动态金融信息
+        - list [ref=e50]:
+          - listitem [ref=e51]:
+            - link "外汇牌价" [ref=e52] [cursor=pointer]:
+              - /url: /zh/dtjr/whpj/
+          - listitem [ref=e53]:
+            - link "贵金属收盘价" [ref=e54] [cursor=pointer]:
+              - /url: /zh/dtjr/gjsspj/
+          - listitem [ref=e55]:
+            - link "存贷款利率" [ref=e56] [cursor=pointer]:
+              - /url: /zh/dtjr/cdkll/
+          - listitem [ref=e57]:
+            - link "代销基金净值" [ref=e58] [cursor=pointer]:
+              - /url: /zh/dtjr/dxjj/
+          - listitem [ref=e59]:
+            - link "公司理财产品" [ref=e60] [cursor=pointer]:
+              - /url: javascript:;
+          - listitem [ref=e61]:
+            - link "个人理财产品" [ref=e62] [cursor=pointer]:
+              - /url: javascript:;
+            - list [ref=e63]:
+              - listitem [ref=e64]:
+                - link "现金管理类产品" [ref=e65] [cursor=pointer]:
+                  - /url: /zh/dtjr/grlc/xjgllcp/
+                - img [ref=e66]
+              - listitem [ref=e67]:
+                - link "净值型产品" [ref=e68] [cursor=pointer]:
+                  - /url: /zh/dtjr/grlc/jzx/
+          - listitem [ref=e69]:
+            - link "服务价目表" [ref=e70] [cursor=pointer]:
+              - /url: javascript:;
+      - generic [ref=e72]:
+        - heading "现金管理类产品列表" [level=3] [ref=e73]
+        - generic [ref=e74]:
+          - generic [ref=e75]:
+            - generic [ref=e76]: 产品管理人：
+            - generic [ref=e77]:
+              - combobox [ref=e78]
+              - combobox "请选择" [ref=e81] [cursor=pointer]:
+                - textbox [ref=e82]
+            - generic [ref=e83]: 产品系列：
+            - generic [ref=e84]:
+              - combobox [ref=e85]
+              - combobox "请选择" [ref=e88] [cursor=pointer]:
+                - textbox [ref=e89]
+          - generic [ref=e90]:
+            - generic [ref=e91]: 产品代码：
+            - generic [ref=e92]:
+              - combobox [ref=e93]
+              - combobox "请选择" [ref=e96] [cursor=pointer]:
+                - textbox "请选择" [ref=e97]
+            - generic [ref=e98] [cursor=pointer]: 查询
+        - table [ref=e100]:
+          - rowgroup [ref=e101]:
+            - row "产品代码 产品名称 七日年化 每万份收益 日期" [ref=e102]:
+              - columnheader "产品代码" [ref=e103]:
+                - generic [ref=e104]: 产品代码
+              - columnheader "产品名称" [ref=e105]:
+                - generic [ref=e106]: 产品名称
+              - columnheader "七日年化" [ref=e107]:
+                - generic [ref=e108]: 七日年化
+              - columnheader "每万份收益" [ref=e109]:
+                - generic [ref=e110]: 每万份收益
+              - columnheader "日期" [ref=e111]:
+                - generic [ref=e112]: 日期
+          - rowgroup [ref=e113]:
+            - row "ZGN235S001C 宁银理财宁欣天天鎏金现金管理类理财产品S款1号-C份额 1.407% 0.3803 2026-06-03" [ref=e114]:
+              - cell "ZGN235S001C" [ref=e115]
+              - cell "宁银理财宁欣天天鎏金现金管理类理财产品S款1号-C份额" [ref=e116]
+              - cell "1.407%" [ref=e117]
+              - cell "0.3803" [ref=e118]
+              - cell "2026-06-03" [ref=e119]:
+                - generic [ref=e120]: 2026-06-03
+            - row "WH2026107A 上银理财慧精灵7号 1.77% 0.3671 2026-06-03" [ref=e121]:
+              - cell "WH2026107A" [ref=e122]
+              - cell "上银理财慧精灵7号" [ref=e123]
+              - cell "1.77%" [ref=e124]
+              - cell "0.3671" [ref=e125]
+              - cell "2026-06-03" [ref=e126]:
+                - generic [ref=e127]: 2026-06-03
+            - row "WH2025109A 上银理财慧精灵9号 1.41% 0.3607 2026-06-03" [ref=e128]:
+              - cell "WH2025109A" [ref=e129]
+              - cell "上银理财慧精灵9号" [ref=e130]
+              - cell "1.41%" [ref=e131]
+              - cell "0.3607" [ref=e132]
+              - cell "2026-06-03" [ref=e133]:
+                - generic [ref=e134]: 2026-06-03
+            - row "WH2025108A 上银理财慧精灵8号 1.28% 0.3419 2026-06-03" [ref=e135]:
+              - cell "WH2025108A" [ref=e136]
+              - cell "上银理财慧精灵8号" [ref=e137]
+              - cell "1.28%" [ref=e138]
+              - cell "0.3419" [ref=e139]
+              - cell "2026-06-03" [ref=e140]:
+                - generic [ref=e141]: 2026-06-03
+            - row "WH2025106A 上银理财慧精灵6号 1.41% 0.3662 2026-06-03" [ref=e142]:
+              - cell "WH2025106A" [ref=e143]
+              - cell "上银理财慧精灵6号" [ref=e144]
+              - cell "1.41%" [ref=e145]
+              - cell "0.3662" [ref=e146]
+              - cell "2026-06-03" [ref=e147]:
+                - generic [ref=e148]: 2026-06-03
+            - row "WH2024105A 上银理财慧精灵5号 1.41% 0.3845 2026-06-03" [ref=e149]:
+              - cell "WH2024105A" [ref=e150]
+              - cell "上银理财慧精灵5号" [ref=e151]
+              - cell "1.41%" [ref=e152]
+              - cell "0.3845" [ref=e153]
+              - cell "2026-06-03" [ref=e154]:
+                - generic [ref=e155]: 2026-06-03
+            - row "WH2024104A 上银理财慧精灵4号 1.37% 0.3731 2026-06-03" [ref=e156]:
+              - cell "WH2024104A" [ref=e157]
+              - cell "上银理财慧精灵4号" [ref=e158]
+              - cell "1.37%" [ref=e159]
+              - cell "0.3731" [ref=e160]
+              - cell "2026-06-03" [ref=e161]:
+                - generic [ref=e162]: 2026-06-03
+            - row "WH2024103A 上银理财慧精灵3号 1.31% 0.3553 2026-06-03" [ref=e163]:
+              - cell "WH2024103A" [ref=e164]
+              - cell "上银理财慧精灵3号" [ref=e165]
+              - cell "1.31%" [ref=e166]
+              - cell "0.3553" [ref=e167]
+              - cell "2026-06-03" [ref=e168]:
+                - generic [ref=e169]: 2026-06-03
+            - row "WH2024102A 上银理财慧精灵2号 1.32% 0.3579 2026-06-03" [ref=e170]:
+              - cell "WH2024102A" [ref=e171]
+              - cell "上银理财慧精灵2号" [ref=e172]
+              - cell "1.32%" [ref=e173]
+              - cell "0.3579" [ref=e174]
+              - cell "2026-06-03" [ref=e175]:
+                - generic [ref=e176]: 2026-06-03
+            - row "WH2024101A 上银理财慧精灵1号 1.34% 0.3624 2026-06-03" [ref=e177]:
+              - cell "WH2024101A" [ref=e178]
+              - cell "上银理财慧精灵1号" [ref=e179]
+              - cell "1.34%" [ref=e180]
+              - cell "0.3624" [ref=e181]
+              - cell "2026-06-03" [ref=e182]:
+                - generic [ref=e183]: 2026-06-03
+            - row "W2026939A 上银理财易精灵39号 1.444% 0.3888 2026-06-03" [ref=e184]:
+              - cell "W2026939A" [ref=e185]
+              - cell "上银理财易精灵39号" [ref=e186]
+              - cell "1.444%" [ref=e187]
+              - cell "0.3888" [ref=e188]
+              - cell "2026-06-03" [ref=e189]:
+                - generic [ref=e190]: 2026-06-03
+            - row "W2026938A 上银理财易精灵38号 1.895% 1.1647 2026-06-03" [ref=e191]:
+              - cell "W2026938A" [ref=e192]
+              - cell "上银理财易精灵38号" [ref=e193]
+              - cell "1.895%" [ref=e194]
+              - cell "1.1647" [ref=e195]
+              - cell "2026-06-03" [ref=e196]:
+                - generic [ref=e197]: 2026-06-03
+            - row "W2026937A 上银理财易精灵37号 1.499% 0.3998 2026-06-03" [ref=e198]:
+              - cell "W2026937A" [ref=e199]
+              - cell "上银理财易精灵37号" [ref=e200]
+              - cell "1.499%" [ref=e201]
+              - cell "0.3998" [ref=e202]
+              - cell "2026-06-03" [ref=e203]:
+                - generic [ref=e204]: 2026-06-03
+            - row "W2026923A 上银理财易精灵23号 1.515% 0.3892 2026-06-03" [ref=e205]:
+              - cell "W2026923A" [ref=e206]
+              - cell "上银理财易精灵23号" [ref=e207]
+              - cell "1.515%" [ref=e208]
+              - cell "0.3892" [ref=e209]
+              - cell "2026-06-03" [ref=e210]:
+                - generic [ref=e211]: 2026-06-03
+            - row "W2026922A 上银理财易精灵22号 1.622% 0.3774 2026-06-03" [ref=e212]:
+              - cell "W2026922A" [ref=e213]
+              - cell "上银理财易精灵22号" [ref=e214]
+              - cell "1.622%" [ref=e215]
+              - cell "0.3774" [ref=e216]
+              - cell "2026-06-03" [ref=e217]:
+                - generic [ref=e218]: 2026-06-03
+            - row "W2026921A 上银理财易精灵21号 1.48% 0.3748 2026-06-03" [ref=e219]:
+              - cell "W2026921A" [ref=e220]
+              - cell "上银理财易精灵21号" [ref=e221]
+              - cell "1.48%" [ref=e222]
+              - cell "0.3748" [ref=e223]
+              - cell "2026-06-03" [ref=e224]:
+                - generic [ref=e225]: 2026-06-03
+            - row "W2025936A 上银理财易精灵36号 0.888% 0.2404 2026-06-03" [ref=e226]:
+              - cell "W2025936A" [ref=e227]
+              - cell "上银理财易精灵36号" [ref=e228]
+              - cell "0.888%" [ref=e229]
+              - cell "0.2404" [ref=e230]
+              - cell "2026-06-03" [ref=e231]:
+                - generic [ref=e232]: 2026-06-03
+            - row "W2025935A 上银理财易精灵35号 0.89% 0.2457 2026-06-03" [ref=e233]:
+              - cell "W2025935A" [ref=e234]
+              - cell "上银理财易精灵35号" [ref=e235]
+              - cell "0.89%" [ref=e236]
+              - cell "0.2457" [ref=e237]
+              - cell "2026-06-03" [ref=e238]:
+                - generic [ref=e239]: 2026-06-03
+            - row "W2025934A 上银理财易精灵34号 0.898% 0.2444 2026-06-03" [ref=e240]:
+              - cell "W2025934A" [ref=e241]
+              - cell "上银理财易精灵34号" [ref=e242]
+              - cell "0.898%" [ref=e243]
+              - cell "0.2444" [ref=e244]
+              - cell "2026-06-03" [ref=e245]:
+                - generic [ref=e246]: 2026-06-03
+            - row "W2025933A 上银理财易精灵33号 0.898% 0.2464 2026-06-03" [ref=e247]:
+              - cell "W2025933A" [ref=e248]
+              - cell "上银理财易精灵33号" [ref=e249]
+              - cell "0.898%" [ref=e250]
+              - cell "0.2464" [ref=e251]
+              - cell "2026-06-03" [ref=e252]:
+                - generic [ref=e253]: 2026-06-03
+        - generic [ref=e256]:
+          - generic [ref=e257]: "1"
+          - link "2" [ref=e258] [cursor=pointer]:
+            - /url: javascript:;
+          - link "3" [ref=e259] [cursor=pointer]:
+            - /url: javascript:;
+          - link "4" [ref=e260] [cursor=pointer]:
+            - /url: javascript:;
+          - link "5" [ref=e261] [cursor=pointer]:
+            - /url: javascript:;
+          - text: …
+          - link "4062" [ref=e262] [cursor=pointer]:
+            - /url: javascript:;
+          - link "下一页" [ref=e263] [cursor=pointer]:
+            - /url: javascript:;
+  - generic [ref=e264]:
+    - list [ref=e266]:
+      - link [ref=e267] [cursor=pointer]:
+        - /url: javascript:;
+        - listitem [ref=e268]
+      - listitem [ref=e269]:
+        - generic:
+          - list:
+            - listitem [ref=e270]:
+              - paragraph [ref=e271]: 手机银行
+            - listitem [ref=e272]:
+              - paragraph [ref=e273]: 企业银行
+      - listitem [ref=e274]:
+        - generic:
+          - list:
+            - listitem [ref=e275]:
+              - paragraph [ref=e276]: 个人微信银行
+            - listitem [ref=e277]:
+              - paragraph [ref=e278]: 企业微信银行
+      - listitem [ref=e279]:
+        - generic:
+          - list:
+            - listitem [ref=e280]:
+              - link "外汇牌价" [ref=e281] [cursor=pointer]:
+                - /url: /zh/dtjr/whpj/
+            - listitem [ref=e282]:
+              - link "贵金属收盘价" [ref=e283] [cursor=pointer]:
+                - /url: /zh/dtjr/gjsspj/
+            - listitem [ref=e284]:
+              - link "存贷款利率" [ref=e285] [cursor=pointer]:
+                - /url: /zh/dtjr/cdkll/
+            - listitem [ref=e286]:
+              - link "代销基金净值" [ref=e287] [cursor=pointer]:
+                - /url: /zh/dtjr/dxjj/
+            - listitem [ref=e288]:
+              - link "公司理财产品" [ref=e289] [cursor=pointer]:
+                - /url: /zh/dtjr/gslc/
+            - listitem [ref=e290]:
+              - link "个人理财产品" [ref=e291] [cursor=pointer]:
+                - /url: /zh/dtjr/grlc/
+            - listitem [ref=e292]:
+              - link "服务价目" [ref=e293] [cursor=pointer]:
+                - /url: /zh/dtjr/fwjmb/
+      - listitem [ref=e294]
+    - generic [ref=e295]:
+      - generic [ref=e296]:
+        - generic [ref=e297]:
+          - heading "村镇银行" [level=2] [ref=e299]:
+            - link "村镇银行" [ref=e300] [cursor=pointer]:
+              - /url: https://www.bosc.cn/zh/inc/czyh/
+          - generic [ref=e301]:
+            - heading "合作伙伴" [level=2] [ref=e302]
+            - list [ref=e303]:
+              - listitem [ref=e304]:
+                - link "人行小面额人民币预约" [ref=e305] [cursor=pointer]:
+                  - /url: https://xmeyy.pbc.gov.cn/misint/
+              - listitem [ref=e306]:
+                - link "中国银联" [ref=e307] [cursor=pointer]:
+                  - /url: https://cn.unionpay.com/upowhtml/cn/templates/index/index.html
+              - listitem [ref=e308]:
+                - link "台湾上海商业储蓄银行" [ref=e309] [cursor=pointer]:
+                  - /url: https://www.scsb.com.tw/
+              - listitem [ref=e310]:
+                - link "香港上海商业银行" [ref=e311] [cursor=pointer]:
+                  - /url: http://www.shacombank.com.hk/
+              - listitem [ref=e312]:
+                - link "中国银行业协会" [ref=e313] [cursor=pointer]:
+                  - /url: https://www.china-cba.net/
+          - generic [ref=e314]:
+            - heading "子公司" [level=2] [ref=e315]
+            - list [ref=e316]:
+              - listitem [ref=e317]:
+                - link "上银基金" [ref=e318] [cursor=pointer]:
+                  - /url: http://www.boscam.com.cn/
+              - listitem [ref=e319]:
+                - link "上银香港" [ref=e320] [cursor=pointer]:
+                  - /url: https://www.bosc-hk.com/
+              - listitem [ref=e321]:
+                - link "上银国际" [ref=e322] [cursor=pointer]:
+                  - /url: https://www.boscinternational.com/
+              - listitem [ref=e323]:
+                - link "上银理财" [ref=e324] [cursor=pointer]:
+                  - /url: https://www.boscwm.cn
+        - generic [ref=e325]:
+          - heading "手机银行" [level=2] [ref=e327]
+          - heading "微信银行" [level=2] [ref=e329]
+      - generic [ref=e331]:
+        - paragraph [ref=e332]:
+          - text: 上海银行版权所有|
+          - link "沪ICP备14020744号-2" [ref=e333] [cursor=pointer]:
+            - /url: http://beian.miit.gov.cn
+          - text: "|"
+          - link "沪公网安备 31011502003675号" [ref=e334] [cursor=pointer]:
+            - /url: http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=31011502003675
+          - text: "|本网站支持IPV6"
+          - link "|联系我们" [ref=e336] [cursor=pointer]:
+            - /url: https://www.bosc.cn/zh/sy/khfw/lxwm/
+          - link "|网站地图" [ref=e338] [cursor=pointer]:
+            - /url: https://www.bosc.cn/zh/inc/map.shtml
+          - text: "|客户服务及投诉热线：95594"
+        - paragraph [ref=e339]: 未经上海银行许可，任何组织或个人不得链接上海银行网站
+        - generic [ref=e340]:
+          - link [ref=e341] [cursor=pointer]:
+            - /url: http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=31011502003675
+            - img [ref=e342]
+          - link [ref=e343] [cursor=pointer]:
+            - /url: http://www.zx110.org/
+            - img [ref=e344]
+          - img [ref=e346]
+          - link [ref=e347] [cursor=pointer]:
+            - /url: https://ss.knet.cn/verifyseal.dll?sn=e17041031010767311luyk000000&ct=df&pa=ebuac3rHAkmXTMuf
+            - img [ref=e348]

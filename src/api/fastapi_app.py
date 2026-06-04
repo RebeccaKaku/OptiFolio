@@ -115,6 +115,24 @@ def create_app() -> FastAPI:
     def portfolio_holdings() -> JSONResponse:
         return _json_response(get_application_services().portfolio.get_holdings())
 
+    @app.get("/api/portfolio/v2/performance/fx-decomposition", tags=["portfolio"])
+    def fx_decomposition(
+        start: str = Query(..., regex=r"^\d{4}-\d{2}-\d{2}$"),
+        end: str = Query(..., regex=r"^\d{4}-\d{2}-\d{2}$"),
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+    ) -> JSONResponse:
+        from datetime import datetime
+        try:
+            start_date = datetime.strptime(start, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end, "%Y-%m-%d").date()
+            return _json_response(
+                get_application_services().portfolio_v2.get_fx_decomposition(
+                    start_date, end_date, base_currency
+                )
+            )
+        except ValueError as exc:
+            return _json_response({"success": False, "message": str(exc), "error_code": "INVALID_DATE_FORMAT"})
+
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
         return _json_response(get_application_services().assets.get_overview())

@@ -439,6 +439,132 @@ class PortfolioServiceV2:
         except Exception as exc:
             return {"success": False, "message": str(exc), "error_code": "METRICS_ERROR"}
 
+    def get_fx_decomposition(
+        self,
+        start: date,
+        end: date,
+        base_currency: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Decompose portfolio performance into local returns and FX returns.
+
+        Values the portfolio at start and end dates, aggregates by currency,
+        and runs the decomposition engine to split returns into:
+        - local_return: performance in original currencies
+        - fx_return: impact of exchange rate movements
+        - interaction: cross term (local * fx)
+        """
+        from src.analytics.returns import ReturnAnalyzer
+
+        currency = base_currency or self.base_currency
+
+        try:
+            # 1. Value portfolio at start and end
+            # Use corporate action processor to ensure holdings are date-correct
+            adj_holdings_start, adj_cash_start, _ = self.corp_actions.apply_to_holdings(
+                self._holdings, self._cash, up_to_date=start,
+            )
+            val_start = self.valuation_engine.value(
+                adj_holdings_start, adj_cash_start,
+                ValuationRequest(as_of=start, base_currency=currency),
+            )
+
+            adj_holdings_end, adj_cash_end, _ = self.corp_actions.apply_to_holdings(
+                self._holdings, self._cash, up_to_date=end,
+            )
+            val_end = self.valuation_engine.value(
+                adj_holdings_end, adj_cash_end,
+                ValuationRequest(as_of=end, base_currency=currency),
+            )
+
+            # 2. Aggregate per-currency values for decomposition
+            def get_currency_breakdown(val_result: Any) -> Dict[str, float]:
+                breakdown: Dict[str, float] = {}
+                for pos in val_result.positions.values():
+                    breakdown[pos.currency] = breakdown.get(pos.currency, 0.0) + pos.value_base
+                for cash in val_result.cash_breakdown.values():
+                    breakdown[cash.currency] = breakdown.get(cash.currency, 0.0) + cash.value_base
+                return breakdown
+
+            start_breakdown = get_currency_breakdown(val_start)
+            end_breakdown = get_currency_breakdown(val_end)
+
+            per_currency = {}
+            all_currencies = sorted(set(start_breakdown.keys()) | set(end_breakdown.keys()))
+
+            for cur in all_currencies:
+                if cur == currency:
+                    continue  # Skip base currency
+
+                s_val = start_breakdown.get(cur, 0.0)
+                e_val = end_breakdown.get(cur, 0.0)
+
+                # Need positive start value to compute return
+                if s_val <= 0:
+                    continue
+
+                s_fx = val_start.fx_rates.get(cur, 1.0)
+                e_fx = val_end.fx_rates.get(cur, 1.0)
+
+                decomp = ReturnAnalyzer.decompose_fx(
+                    start_value=s_val,
+                    end_value=e_val,
+                    start_fx=s_fx,
+                    end_fx=e_fx,
+                    period_start=start,
+                    period_end=end,
+                    base_currency=currency,
+                )
+
+                per_currency[cur] = {
+                    "local_return": round(decomp.local_return, 6),
+                    "fx_return": round(decomp.fx_return, 6),
+                    "weight": round(s_val / val_start.total_value, 4) if val_start.total_value > 0 else 0,
+                }
+
+            # 3. Total portfolio decomposition
+            # Uses value-weighted effective FX rates so identity holds exactly
+            start_local_total = sum(v / val_start.fx_rates.get(c, 1.0) for c, v in start_breakdown.items())
+            end_local_total = sum(v / val_end.fx_rates.get(c, 1.0) for c, v in end_breakdown.items())
+
+            total_start_val = val_start.total_value
+            total_end_val = val_end.total_value
+
+            if total_start_val <= 0:
+                return {"success": False, "message": "Portfolio value must be positive at start date", "error_code": "INVALID_START_VALUE"}
+
+            eff_start_fx = total_start_val / start_local_total if start_local_total > 0 else 1.0
+            eff_end_fx = total_end_val / end_local_total if end_local_total > 0 else 1.0
+
+            total_decomp = ReturnAnalyzer.decompose_fx(
+                start_value=total_start_val,
+                end_value=total_end_val,
+                start_fx=eff_start_fx,
+                end_fx=eff_end_fx,
+                period_start=start,
+                period_end=end,
+                base_currency=currency,
+            )
+
+            return {
+                "success": True,
+                "data": {
+                    "base_currency": currency,
+                    "start_value": total_start_val,
+                    "end_value": total_end_val,
+                    "total_return": round(total_decomp.base_return, 6),
+                    "local_return": round(total_decomp.local_return, 6),
+                    "fx_return": round(total_decomp.fx_return, 6),
+                    "interaction": round(total_decomp.interaction, 6),
+                    "per_currency": per_currency,
+                },
+                "message": f"FX decomposition from {start} to {end}",
+            }
+
+        except NoPriceDataError as exc:
+            return {"success": False, "message": str(exc), "error_code": "NO_PRICE_DATA"}
+        except Exception as exc:
+            return {"success": False, "message": str(exc), "error_code": "FX_DECOMPOSITION_ERROR"}
+
     def get_history(
         self,
         start: Optional[date] = None,
