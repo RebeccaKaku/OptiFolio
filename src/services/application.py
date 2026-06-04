@@ -7,7 +7,6 @@ from src.api.enhanced_api_service import get_enhanced_api_service
 
 from .asset_service import AssetService
 from .dashboard_service import DashboardService
-from .market_data_service import MarketDataIngestionService
 from .portfolio_service import PortfolioService
 from .portfolio_service_v2 import PortfolioServiceV2
 from .research_service import ResearchService
@@ -22,7 +21,6 @@ class ApplicationServices:
     portfolio_v2: PortfolioServiceV2  # NEW — date-aware valuation
     assets: AssetService
     research: ResearchService
-    ingestion: MarketDataIngestionService
 
 
 @lru_cache(maxsize=1)
@@ -35,5 +33,4 @@ def get_application_services() -> ApplicationServices:
         portfolio_v2=PortfolioServiceV2(),
         assets=AssetService(api_service),
         research=ResearchService(),
-        ingestion=MarketDataIngestionService(),
     )
