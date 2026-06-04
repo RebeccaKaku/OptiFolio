@@ -1,12 +1,20 @@
 # OptiFolio Current State And Code Review
 
-**Date**: 2026-06-04 (updated after cleanup)
+**Date**: 2026-06-05 (post-Jules PR round, FinData audit)
 **Branch**: `master`
-**Package version**: `0.2.0` in `pyproject.toml`
-**Runtime target**: Python `>=3.11, <3.14` recommended for the quant stack; `pyproject.toml` currently allows `>=3.10,<3.14`
-**Verified tests**: `77 passed, 12 skipped`
+**Package version**: `0.2.0`
+**Runtime**: Python 3.13.13 (optifolio313 conda env)
+**Verified tests**: `581 passed, 30 skipped, 0 failures`
+**FinData**: 32 Python files, 4143 lines, 4 sub-departments, self-contained
 
 Use this document as the live project map until the next review pass.
+
+## One-Line Status
+
+FinData is self-contained and operational. 8 Jules PRs merged this round.
+581 tests green. Data foundation hardening (Issues A-G) is the top priority.
+External code review identified bronze/silver/gold data layering, Asset Master,
+and NAV/OHLCV separation as the most critical remaining gaps.
 
 ---
 

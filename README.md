@@ -1,578 +1,103 @@
-# OptiFolio - 极致组合投资优化与金融数据分析系统
+# OptiFolio — Personal Asset Risk & Allocation Engine
 
-OptiFolio 是一个集成了量化资产配置、多资产投资组合优化（如 Markowitz、Black-Litterman 模型）以及多数据源增量同步的统一金融计算与抓取框架。
+OptiFolio is a multi-asset portfolio management system with a self-contained data
+department (FinData), date-aware valuation, risk analytics, and a FastAPI service layer.
 
-## 当前状态
+**Direction**: risk engine first, allocation advice second. Do not treat every asset
+as a stock-like price series, and do not predict returns before understanding exposures.
 
-项目正在从 legacy Streamlit 单体应用迁移到 FastAPI + services + future React frontend 的分层架构。当前实现状态、代码审查问题、近期计划和远期路线图见：
-
-- `docs/CURRENT_STATE_2026-06-03.md`
-- `docs/README.md`
-- `docs/TIME_ALIGNMENT_DESIGN.md`
-
-当前最重要的工程/金融风险：
-
-- 跨市场时间对齐和可知道性检查仍未完全落地，混合美股/A股/加密货币组合存在 look-ahead-bias 风险。
-- Portfolio V2 是新的日期感知估值路径，但仍需补强 FX 来源、逐日 corporate actions 和 per-position price metadata。
-- `app.py` 仍保留为 legacy dashboard；新功能应优先进入 `src/services/`、`src/api/fastapi_app.py` 和 `src/data_foundation/`。
-- 浏览器前端需要 POST API 时，当前 CORS method 配置还需要补齐。
-
-## 运行环境与启动
-
-### Python 版本要求
-推荐使用 Python **>=3.11, <3.14**。
-> 注意：`pyproject.toml` 当前允许 `>=3.10,<3.14`，但开发和量化依赖栈建议使用 3.11/3.12/3.13。Python 3.14 暂不作为正式支持目标。
-
-### 启动应用
-推荐使用统一的启动脚本，该脚本会自动完成本地环境初始化（Bootstrap）并启动 API 服务：
+## Quick Start
 
 ```bash
-python tools/start_app.py
+# Environment
+conda activate optifolio313  # Python 3.13.13
+
+# Install
+pip install -r requirements.txt
+
+# Start server
+python tools/start_app.py      # FastAPI on port 8011
+
+# Ingest portfolio prices
+python tools/ingest_portfolio_prices.py
+
+# Daily pipeline
+python tools/scheduler.py
 ```
 
-服务默认运行在 `http://localhost:8011`。
-
-### 测试
-
-在当前 Windows 工作区，直接运行 `pytest -q` 可能会扫到 `scratch/pytest` 或使用受限临时目录。推荐使用：
-
-```powershell
-python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider
-```
-
-最近一次验证结果：
+## Architecture
 
 ```text
-77 passed, 12 skipped
+FinData/               # Self-contained data department (4 sub-modules)
+  adapters/            # Provider adapters — one file per asset class
+  store/               # Storage engine — Parquet + DuckDB + QualityGate
+  orchestration/       # Scheduling, ingestion, rate limiting, fallback chains
+  serving/             # Public data API — prices, returns, metrics, rates, export
+
+src/
+  analytics/           # Liquidity, concentration, FX exposure, risk rules, screening, alerts
+  api/                 # FastAPI routes — V1 (legacy) + V2 (date-aware) + Ghostfolio compat
+  core/                # ValuationEngine, FxRateProvider, calendars, corporate actions, fees
+  data_foundation/     # Canonical market data schema + MarketDataRepository
+  domain/              # Domain contracts — instruments, series, products, positions, cashflows
+  research/            # BacktestEngine (vectorbt + pandas fallback)
+  services/            # PortfolioServiceV2, research service, fund friction, dividend detection
+
+tools/                 # CLI tools
+config/                # YAML configuration (templates only — secrets in local/)
+tests/                 # 581 tests, 30 skipped
 ```
 
-### 常用接口
-
-- `GET /health`
-- `GET /api/system/status`
-- `GET /api/dashboard/summary`
-- `GET /api/portfolio/value`
-- `GET /api/assets/overview`
-
-Streamlit 入口 `app.py` 仍保留为 legacy dashboard，后续新功能优先进入 `src/services/` 和 `src/api/fastapi_app.py`。
-
-## 隐私边界
-
-真实业务状态不要提交到 Git。推荐放在 `local/`，例如真实组合快照、现金余额、经纪商设置、数据库、行情数据和临时导出。
-
-提交前运行：
-
-```bash
-python tools/privacy_scan.py --strict --with-detect-secrets
-```
-
-仓库里只保留安全模板：
-
-- `config/portfolio.example.yaml`
-- `config/secrets.example.yaml`
-
-真实组合读取顺序：
-
-1. `OPTIFOLIO_PORTFOLIO_PATH`
-2. `local/portfolio.yaml`
-3. legacy `config/portfolio.yaml`
-
-## 项目结构
-
-```
-OptiFolio/
-├── fetchers/                 # 数据抓取模块
-│   ├── __init__.py          # 模块入口
-│   ├── interfaces.py        # 核心接口定义
-│   ├── crypto_fetcher.py    # 加密货币数据抓取
-│   ├── yahoo_fetcher.py     # Yahoo Finance 数据抓取
-│   ├── cn_fund.py           # 中国公募基金数据抓取
-│   └── icbc.py              # 工商银行理财产品抓取
-├── data/                     # 数据存储目录
-│   └── icbc/                # 工商银行数据
-│       ├── raw/             # 原始 JSON 数据
-│       └── processed/       # 处理后的 OHLCV CSV
-├── sync_icbc_data.py         # 工行数据同步脚本
-├── api_checker/              # API 检测模块
-│   ├── __init__.py          # 模块入口
-│   ├── base.py              # 基类定义
-│   ├── crypto_checker.py    # 加密货币 API 检测
-│   ├── yahoo_checker.py     # Yahoo Finance API 检测
-│   ├── akshare_checker.py   # Akshare API 检测
-│   ├── runner.py            # 统一运行器
-│   └── test_api_checker.py  # 测试脚本
-└── README.md                 # 项目文档
-```
-
-## 安装依赖
-
-```bash
-# 核心依赖
-pip install pandas
-
-# 数据源依赖 (按需安装)
-pip install ccxt          # 加密货币数据
-pip install yfinance      # Yahoo Finance 数据
-pip install akshare       # 中国金融数据
-```
-
----
-
-## Fetcher 模块 API 文档
-
-### 核心接口: AsyncBaseFetcher
-
-所有数据抓取器都继承自 `AsyncBaseFetcher`，遵循统一的接口规范。
-
-```python
-from fetchers import AsyncBaseFetcher
-
-class AsyncBaseFetcher(ABC):
-    @abstractmethod
-    async def fetch(
-        self, 
-        symbol: str,           # 交易品种代码
-        start_date: str,       # 开始日期 (YYYY-MM-DD)
-        end_date: str,         # 结束日期 (YYYY-MM-DD)
-        timeframe: str = '1d', # 时间周期
-        exchange: Optional[str] = None,  # 交易所
-        **kwargs
-    ) -> pd.DataFrame:
-        pass
-```
-
-### 返回数据格式
-
-所有 `fetch()` 方法返回的 DataFrame 遵循以下规范：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| **索引** | `pd.DatetimeIndex` | 名称必须为 `timestamp` |
-| `open` | `float` | 开盘价 |
-| `high` | `float` | 最高价 |
-| `low` | `float` | 最低价 |
-| `close` | `float` | 收盘价 |
-| `volume` | `float` | 成交量 |
-
-**示例输出:**
-
-```
-                           open      high       low     close    volume
-timestamp                                                              
-2024-01-01 00:00:00  42000.5  42500.0  41800.0  42300.0  12345.67
-2024-01-02 00:00:00  42300.0  42800.0  42100.0  42650.0  13456.78
-2024-01-03 00:00:00  42650.0  43000.0  42400.0  42800.0  14567.89
-```
-
----
-
-### CryptoFetcher - 加密货币数据
-
-支持 Binance、OKX、Kraken 等主流交易所。
-
-**初始化:**
-
-```python
-from fetchers import CryptoFetcher
-
-# 默认使用 Binance
-fetcher = CryptoFetcher()
-
-# 指定交易所
-fetcher = CryptoFetcher(exchange_id='okx')
-```
-
-**支持的 timeframe:**
-
-| 参数值 | 说明 |
-|--------|------|
-| `1m` | 1分钟 |
-| `5m` | 5分钟 |
-| `15m` | 15分钟 |
-| `1h` | 1小时 |
-| `1d` | 1天 (默认) |
-| `1w` | 1周 |
-| `1M` | 1月 |
-
-**使用示例:**
-
-```python
-import asyncio
-from fetchers import CryptoFetcher
-
-async def main():
-    fetcher = CryptoFetcher(exchange_id='binance')
-    
-    df = await fetcher.fetch(
-        symbol='BTC/USDT',
-        start_date='2024-01-01',
-        end_date='2024-01-31',
-        timeframe='1d'
-    )
-    
-    print(df.head())
-
-asyncio.run(main())
-```
-
-**参数说明:**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `symbol` | str | 是 | 交易对，如 `BTC/USDT` |
-| `start_date` | str | 是 | 开始日期，格式 `YYYY-MM-DD` |
-| `end_date` | str | 是 | 结束日期，格式 `YYYY-MM-DD` |
-| `timeframe` | str | 否 | 时间周期，默认 `1d` |
-| `exchange` | str | 否 | 覆盖默认交易所 |
-
----
-
-### YahooFinanceFetcher - 美股/港股/ETF 数据
-
-支持美股、港股、ETF、外汇和部分期货。
-
-**初始化:**
-
-```python
-from fetchers import YahooFinanceFetcher
-
-fetcher = YahooFinanceFetcher()
-```
-
-**支持的 timeframe:**
-
-| 参数值 | 说明 |
-|--------|------|
-| `1m` | 1分钟 (仅最近7天) |
-| `5m` | 5分钟 (仅最近60天) |
-| `15m` | 15分钟 |
-| `1h` | 1小时 |
-| `1d` | 1天 (默认) |
-| `1w` | 1周 |
-| `1M` | 1月 |
-
-**使用示例:**
-
-```python
-import asyncio
-from fetchers import YahooFinanceFetcher
-
-async def main():
-    fetcher = YahooFinanceFetcher()
-    
-    # 美股
-    df = await fetcher.fetch(
-        symbol='AAPL',
-        start_date='2024-01-01',
-        end_date='2024-01-31'
-    )
-    
-    # 港股 (通过 exchange 参数)
-    df_hk = await fetcher.fetch(
-        symbol='0700',
-        start_date='2024-01-01',
-        end_date='2024-01-31',
-        exchange='HK'  # 自动添加 .HK 后缀
-    )
-    
-    print(df.head())
-
-asyncio.run(main())
-```
-
-**参数说明:**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `symbol` | str | 是 | 股票代码 |
-| `start_date` | str | 是 | 开始日期 |
-| `end_date` | str | 是 | 结束日期 |
-| `timeframe` | str | 否 | 时间周期，默认 `1d` |
-| `exchange` | str | 否 | 交易所代码，如 `HK`、`LSE` |
-
----
-
-### CnFundFetcher - 中国公募基金数据
-
-支持场内ETF、场外公募基金、货币基金。
-
-**初始化:**
-
-```python
-from fetchers import CnFundFetcher
-
-# 使用默认缓存目录
-fetcher = CnFundFetcher()
-
-# 指定缓存目录
-fetcher = CnFundFetcher(cache_dir='.cache')
-```
-
-**使用示例:**
-
-```python
-import asyncio
-from fetchers import CnFundFetcher
-
-async def main():
-    fetcher = CnFundFetcher()
-    
-    # 抓取基金数据 (自动识别类型)
-    df = await fetcher.fetch(
-        symbol='000001',  # 基金代码
-        start_date='2024-01-01',
-        end_date='2024-01-31'
-    )
-    
-    print(df.head())
-
-asyncio.run(main())
-```
-
-**智能路由:**
-
-`CnFundFetcher` 会根据基金类型自动选择数据源：
-
-| 基金类型 | 数据来源 |
+## Key Design Principles
+
+1. **FinData is self-contained.** All data flows through `from FinData import fd`. No direct fetcher imports outside FinData.
+2. **Data quality is enforced.** QualityGate runs 8 checks on every write. Empty data NEVER overwrites good data.
+3. **Valuation is date-aware.** `value_on(T)` uses close prices with date ≤ T, per-asset staleness tracking.
+4. **Products ≠ instruments.** Funds, bank WMPs, and structured deposits have NAV semantics, not OHLCV semantics.
+5. **Algorithms consume panels, not raw fetcher DataFrames.**
+
+## API
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check |
+| `GET /api/portfolio/v2/value?as_of=YYYY-MM-DD` | Date-aware portfolio NAV |
+| `GET /api/portfolio/v2/history?start=&end=` | Daily valuation history |
+| `GET /api/portfolio/v2/risk/liquidity` | T+0 / T+1 / 7d / 1m / 3m / 1y / locked breakdown |
+| `GET /api/portfolio/v2/risk/concentration` | Currency / issuer / asset class concentration |
+| `GET /api/portfolio/v2/risk/fx-exposure` | Currency exposure + sensitivity |
+| `POST /api/portfolio/v2/risk/rules` | Rule engine with configurable thresholds |
+| `POST /api/portfolio/v2/corporate-actions/*` | Record dividends, splits, mergers |
+| `GET /api/market/prices?assets=AAPL,QQQ` | Price matrix from canonical store |
+| `GET /api/v1/portfolio/details` | Ghostfolio-compatible adapter |
+
+## Documentation
+
+| Document | Audience |
 |----------|----------|
-| 货币基金 | `ak.fund_money_fund_info_em()` |
-| 场内ETF | `ak.fund_etf_hist_em()` |
-| 场外公募 | `ak.fund_open_fund_info_em()` |
+| `docs/CURRENT_STATE_2026-06-03.md` | Onboarding — what works, what's broken, what's next |
+| `docs/FINANCIAL_LOGIC_AND_MODULE_DESIGN.md` | Architects — target architecture, naming, migration |
+| `docs/TIME_ALIGNMENT_DESIGN.md` | Cross-market time alignment problem and solution |
+| `FinData/README.md` | FinData internal architecture and conventions |
+| `FinData/adapters/README.md` | How to add a new data source |
+| `FinData/store/README.md` | Storage layer — schemas, QualityGate, repository API |
+| `FinData/orchestration/README.md` | Scheduling, cadence, rate limiting |
+| `FinData/serving/README.md` | Public data API — usage examples |
 
-**参数说明:**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `symbol` | str | 是 | 基金代码 |
-| `start_date` | str | 是 | 开始日期 |
-| `end_date` | str | 是 | 结束日期 |
-| `timeframe` | str | 否 | 仅支持 `1d` (默认) |
-| `exchange` | str | 否 | 基金数据不需要此参数 |
-
----
-
-### IcbcFetcher - 工商银行理财产品数据
-
-支持工行自主发行及代销的理财产品。
-
-**初始化:**
-
-```python
-from fetchers import IcbcFetcher
-
-fetcher = IcbcFetcher(data_dir="data/icbc", save_raw=True)
-```
-
-**使用示例:**
-
-```python
-import asyncio
-from fetchers import IcbcFetcher
-
-async def main():
-    fetcher = IcbcFetcher()
-    
-    # 抓取理财产品净值
-    df = await fetcher.fetch(
-        symbol='23GS8125',
-        start_date='2024-01-01',
-        end_date='2024-05-01'
-    )
-    
-    print(df.head())
-
-asyncio.run(main())
-```
-
-**数据同步与触发器:**
-
-为了方便每日更新，提供了 `sync_icbc_data.py` 脚本，支持增量更新：
+## Development
 
 ```bash
-# 同步所有已存在的理财产品
-python sync_icbc_data.py
+# Tests
+C:\Users\Z\miniconda3\envs\optifolio313\python.exe -m pytest tests/ -q --tb=line
 
-# 同步指定理财产品
-python sync_icbc_data.py 23GS8125 23GS8689
+# Privacy scan
+python tools/privacy_scan.py --strict --with-detect-secrets
+
+# Lint / type check
+# (not configured yet — feel free to add)
 ```
 
-**参数说明:**
+## Private Data
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `symbol` | str | 是 | 理财产品代码 |
-| `start_date` | str | 是 | 开始日期 |
-| `end_date` | str | 是 | 结束日期 |
-| `timeframe` | str | 否 | 仅支持 `1d` (默认) |
-
-**数据存储规范:**
-
-- **原始数据**: 存储在 `data/icbc/raw/`，保存为每日抓取的 JSON 页面。
-- **处理后数据**: 存储在 `data/icbc/processed/`，保存为符合规范的 CSV 文件。
-
----
-
-## API Checker 模块文档
-
-API Checker 模块用于检测各数据源 API 的连通性，帮助排查网络问题。
-
-### 快速使用
-
-```python
-from api_checker import run_check
-
-# 同步方式运行检测
-result = run_check()
-```
-
-### 异步使用
-
-```python
-import asyncio
-from api_checker import quick_check
-
-async def main():
-    result = await quick_check()
-    print(result)
-
-asyncio.run(main())
-```
-
-### 自定义检测
-
-```python
-import asyncio
-from api_checker import APICheckerRunner, CryptoAPIChecker
-
-async def main():
-    runner = APICheckerRunner(log_dir="logs")
-    
-    # 添加自定义检测器
-    runner.add_checker(CryptoAPIChecker(exchanges=['binance', 'okx']))
-    
-    # 运行检测
-    results = await runner.run_all()
-    
-    # 获取汇总
-    summary = runner.get_summary()
-    print(f"成功率: {summary['success_rate']*100:.1f}%")
-
-asyncio.run(main())
-```
-
-### 检测结果格式
-
-`CheckResult` 对象包含以下属性：
-
-| 属性 | 类型 | 说明 |
-|------|------|------|
-| `name` | str | API 名称 |
-| `status` | CheckStatus | 状态: `OK`, `FAIL`, `TIMEOUT`, `ERROR` |
-| `latency_ms` | float | 响应延迟 (毫秒) |
-| `message` | str | 详细信息 |
-| `is_ok` | bool | 是否成功 |
-
-**汇总数据格式:**
-
-```python
-{
-    'timestamp': '2024-01-15T10:30:00',
-    'total': 3,
-    'success': 2,
-    'failed': 1,
-    'success_rate': 0.667,
-    'results': [
-        {
-            'name': 'Crypto',
-            'status': 'OK',
-            'latency_ms': 245.0,
-            'message': 'BTC/USDT: $42,300.00',
-            'is_ok': True
-        },
-        # ...
-    ]
-}
-```
-
-### 命令行使用
-
-```bash
-# 运行默认检测
-python -m api_checker.runner
-
-# 指定交易所
-python -m api_checker.runner binance,okx
-
-# 指定日志目录
-python -m api_checker.runner binance,okx ./my_logs
-```
-
----
-
-## 开发指南
-
-### 添加新的 Fetcher
-
-1. 创建新文件 `fetchers/new_fetcher.py`
-2. 继承 `AsyncBaseFetcher`
-3. 实现 `fetch()` 方法
-4. 确保返回格式符合规范
-
-```python
-from fetchers import AsyncBaseFetcher
-import pandas as pd
-from typing import Optional
-
-class NewFetcher(AsyncBaseFetcher):
-    async def fetch(
-        self, 
-        symbol: str, 
-        start_date: str, 
-        end_date: str, 
-        timeframe: str = '1d',
-        exchange: Optional[str] = None,
-        **kwargs
-    ) -> pd.DataFrame:
-        # 实现数据抓取逻辑
-        df = pd.DataFrame(...)
-        
-        # 确保格式正确
-        df.index.name = 'timestamp'
-        df.columns = [c.lower() for c in df.columns]
-        
-        return df
-```
-
-### 添加新的 API Checker
-
-1. 创建新文件 `api_checker/new_checker.py`
-2. 继承 `APIChecker`
-3. 实现 `check()` 方法
-
-```python
-from api_checker import APIChecker, CheckResult
-
-class NewAPIChecker(APIChecker):
-    async def check(self) -> CheckResult:
-        try:
-            # 执行检测
-            with self._measure_time() as timer:
-                # ... 检测逻辑 ...
-                pass
-            
-            return self._create_success_result(
-                timer.latency_ms,
-                "Connection OK"
-            )
-        except Exception as e:
-            return self._create_fail_result(
-                CheckStatus.FAIL,
-                str(e)
-            )
-```
-
----
-
-## 许可证
-
-MIT License
+Real portfolio data, secrets, and local state live in `local/` and are git-ignored.
+Templates in `config/*.example.yaml` are safe to commit.
