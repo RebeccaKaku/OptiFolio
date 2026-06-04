@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from src.services import get_application_services
 from src.services.response import success
+from .ghostfolio_compat import router as ghostfolio_router
 
 
 class BacktestPayload(BaseModel):
@@ -185,6 +186,8 @@ def create_app() -> FastAPI:
                 risk_free_rate=payload.risk_free_rate,
             )
         )
+
+    app.include_router(ghostfolio_router)
 
     return app
 
