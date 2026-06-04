@@ -137,7 +137,7 @@ class BocFetcher(AsyncBaseFetcher):
                     print(f"    [BOC] No historical data returned for {symbol}.")
                     return pd.DataFrame()
                     
-                return self._transform_to_ohlcv(dates, worths, start_date, end_date)
+                return self._transform_to_nav(dates, worths, start_date, end_date)
             except Exception as e:
                 print(f"    [BOC] Request error for {symbol}: {e}")
                 return pd.DataFrame()
@@ -151,26 +151,20 @@ class BocFetcher(AsyncBaseFetcher):
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def _transform_to_ohlcv(self, dates: List[str], worths: List[Any], start_date: str, end_date: str) -> pd.DataFrame:
-        """Transform date list and net worth list into standardized OHLCV DataFrame."""
+    def _transform_to_nav(self, dates: List[str], worths: List[Any], start_date: str, end_date: str) -> pd.DataFrame:
+        """Transform date list and net worth list into standardized NAV DataFrame."""
         df = pd.DataFrame({
-            "timestamp": dates,
-            "close": worths
+            "date": dates,
+            "unit_nav": worths
         })
         
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        df["date"] = pd.to_datetime(df["date"])
+        df["unit_nav"] = pd.to_numeric(df["unit_nav"], errors="coerce")
         
-        # Set open, high, low equal to close, volume to 0.0 for fund net assets
-        df["open"] = df["close"]
-        df["high"] = df["close"]
-        df["low"] = df["close"]
-        df["volume"] = 0.0
-        
-        df = df.set_index("timestamp").sort_index()
+        df = df.set_index("date").sort_index()
         
         # Filter by date range
-        return df.loc[start_date:end_date][["open", "high", "low", "close", "volume"]]
+        return df.loc[start_date:end_date]
 
     async def sync(self, symbols: Optional[List[str]] = None):
         """Trigger update for a list of products. If None, performs auto-discovery."""
