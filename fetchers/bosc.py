@@ -101,26 +101,20 @@ class BoscFetcher(AsyncBaseFetcher):
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def _transform_to_ohlcv(self, timestamp_str: str, close_val: float, start_date: str, end_date: str) -> pd.DataFrame:
-        """Transform single snapshot to standardized OHLCV DataFrame."""
+    def _transform_to_nav(self, timestamp_str: str, nav_val: float, start_date: str, end_date: str) -> pd.DataFrame:
+        """Transform single snapshot to standardized NAV DataFrame."""
         df = pd.DataFrame({
-            "timestamp": [timestamp_str],
-            "close": [close_val]
+            "date": [timestamp_str],
+            "unit_nav": [nav_val]
         })
 
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        df["date"] = pd.to_datetime(df["date"])
+        df["unit_nav"] = pd.to_numeric(df["unit_nav"], errors="coerce")
 
-        # Set open, high, low equal to close, volume to 0.0 for fund net assets
-        df["open"] = df["close"]
-        df["high"] = df["close"]
-        df["low"] = df["close"]
-        df["volume"] = 0.0
-
-        df = df.set_index("timestamp").sort_index()
+        df = df.set_index("date").sort_index()
 
         # Filter by date range (though typically only 1 row)
-        return df.loc[start_date:end_date][["open", "high", "low", "close", "volume"]]
+        return df.loc[start_date:end_date]
 
     async def sync(self, symbols: Optional[List[str]] = None):
         """Trigger update for BOSC products using the current snapshot."""
@@ -156,7 +150,7 @@ class BoscFetcher(AsyncBaseFetcher):
                 val = 1.0
 
             try:
-                close_val = float(val)
+                nav_val = float(val)
             except (ValueError, TypeError):
                 continue
 
@@ -169,7 +163,7 @@ class BoscFetcher(AsyncBaseFetcher):
             except Exception:
                 date_obj = today_str
 
-            df = self._transform_to_ohlcv(date_obj, close_val, "2000-01-01", "2099-12-31")
+            df = self._transform_to_nav(date_obj, nav_val, "2000-01-01", "2099-12-31")
 
             if not df.empty:
                 if processed_file.exists():
