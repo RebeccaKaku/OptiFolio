@@ -103,7 +103,7 @@ class DataLoader:
             is_valid, msg = self.validator.check_series(symbol, series)
             if not is_valid:
                 print(f"        [提示] 采购失败或数据无效 ({msg})，尝试从本地仓储加载...")
-                local_df = self.storage.load_raw(symbol, frequency='daily')
+                local_df = self.storage.load_canonical(symbol, frequency='daily')
                 if local_df is not None and not local_df.empty:
                     if 'Close' in local_df.columns:
                         series = local_df['Close']
@@ -126,8 +126,8 @@ class DataLoader:
                 # 去重
                 series = series[~series.index.duplicated(keep='first')]
                 
-                # 保存原始数据，默认频率为daily
-                self.storage.save_raw(symbol, series, frequency='daily')
+                # 保存规范化数据，默认频率为daily
+                self.storage.save_canonical(symbol, series, frequency='daily')
                 return symbol, series
             else:
                 print(f"        [×] 废弃 ({msg})")
@@ -162,7 +162,7 @@ class DataLoader:
         # --- 6. 归档成品 ---
         if not final_df.empty:
             self.storage.save_processed(final_df)
-            print(f"    [归档] 已保存到 data/processed/market_matrix.parquet")
+            print(f"    [归档] 已保存到 data/silver/market_matrix.parquet")
             
         return final_df
     

@@ -12,7 +12,7 @@ from src.data_foundation import MarketDataRepository
 
 
 class MarketDataIngestionService:
-    """Adapter that takes provider output and calls MarketDataRepository.save_raw."""
+    """Adapter that takes provider output and calls MarketDataRepository.save_canonical."""
 
     def __init__(self, market_data: Optional[MarketDataRepository] = None) -> None:
         self.market_data = market_data or MarketDataRepository()
@@ -49,4 +49,8 @@ class MarketDataIngestionService:
         if df.empty:
             return df
 
-        return self.market_data.save_raw(df, asset_id=symbol, source=provider, currency=currency)
+        # Step 1: Save as-is to bronze layer
+        self.market_data.save_bronze(df, asset_id=symbol, provider=provider)
+
+        # Step 2: Save cleaned/normalized to canonical layer
+        return self.market_data.save_canonical(df, asset_id=symbol, source=provider, currency=currency)

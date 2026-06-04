@@ -1,11 +1,13 @@
 # src/data_core/storage.py
 import os
+import warnings
+from datetime import datetime
 import pandas as pd
 
 class DataStorage:
     def __init__(self, root_dir="data"):
-        self.raw_dir = os.path.join(root_dir, "raw")
-        self.processed_dir = os.path.join(root_dir, "processed")
+        self.raw_dir = os.path.join(root_dir, "bronze")
+        self.processed_dir = os.path.join(root_dir, "silver")
         os.makedirs(self.raw_dir, exist_ok=True)
         os.makedirs(self.processed_dir, exist_ok=True)
         
@@ -17,9 +19,28 @@ class DataStorage:
         except ImportError:
             print("    [Warning] pyarrow未安装，将使用CSV格式存储")
 
-    def save_raw(self, symbol, data, frequency='daily'):
+    def save_bronze(self, frame, asset_id, provider, ingest_date=None):
+        """Save provider output AS-IS to the bronze layer."""
+        date = ingest_date or datetime.now().strftime("%Y-%m-%d")
+        bronze_dir = os.path.join(
+            self.raw_dir,
+            f"provider={provider}",
+            "entity=market_price",
+            f"ingest_date={date}"
+        )
+        os.makedirs(bronze_dir, exist_ok=True)
+
+        if self.supports_parquet:
+            file_path = os.path.join(bronze_dir, f"{asset_id}.parquet")
+            frame.to_parquet(file_path, compression='snappy', index=True)
+        else:
+            file_path = os.path.join(bronze_dir, f"{asset_id}.csv")
+            frame.to_csv(file_path, index=True)
+        return file_path
+
+    def save_canonical(self, symbol, data, frequency='daily'):
         """
-        保存单只资产原始数据
+        保存单只资产规范化数据
         
         Args:
             symbol: 资产代码
@@ -29,8 +50,8 @@ class DataStorage:
         if data is None or (hasattr(data, 'empty') and data.empty):
             return
         
-        # 创建频率子目录
-        freq_dir = os.path.join(self.raw_dir, frequency)
+        # 创建频率子目录 (in silver layer)
+        freq_dir = os.path.join(self.processed_dir, frequency)
         os.makedirs(freq_dir, exist_ok=True)
         
         if self.supports_parquet:
@@ -52,6 +73,16 @@ class DataStorage:
             file_path = os.path.join(freq_dir, f"{symbol}.csv")
             data.to_csv(file_path)
             print(f"    [仓储] 保存 {symbol} {frequency} 数据到 {file_path}")
+
+    def save_raw(self, *args, **kwargs):
+        """Deprecated wrapper for save_canonical."""
+        warnings.warn(
+            "save_raw() is deprecated; use save_canonical() for cleaned data "
+            "or save_bronze() for raw provider output.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.save_canonical(*args, **kwargs)
 
     def save_processed(self, df):
         """保存清洗后的总表"""
@@ -79,18 +110,18 @@ class DataStorage:
                 return pd.read_csv(file_path, index_col=0, parse_dates=True)
         return pd.DataFrame()
     
-    def load_raw(self, symbol, frequency='daily'):
+    def load_canonical(self, symbol, frequency='daily'):
         """
-        加载单只资产原始数据
+        加载单只资产规范化数据
         
         Args:
             symbol: 资产代码
             frequency: 数据频率 ('daily', 'minute', 'weekly', 'monthly')
             
         Returns:
-            pandas.DataFrame: 原始数据DataFrame
+            pandas.DataFrame: 规范化数据DataFrame
         """
-        freq_dir = os.path.join(self.raw_dir, frequency)
+        freq_dir = os.path.join(self.processed_dir, frequency)
         
         if self.supports_parquet:
             file_path = os.path.join(freq_dir, f"{symbol}.parquet")
@@ -112,9 +143,18 @@ class DataStorage:
         
         # 如果找不到指定频率的数据，尝试查找任何频率的数据
         if frequency != 'daily':
-            return self.load_raw(symbol, 'daily')
+            return self.load_canonical(symbol, 'daily')
         
         return pd.DataFrame()
+
+    def load_raw(self, *args, **kwargs):
+        """Deprecated wrapper."""
+        warnings.warn(
+            "load_raw() is deprecated; use load_canonical().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.load_canonical(*args, **kwargs)
     
     def get_available_frequencies(self, symbol):
         """
@@ -130,7 +170,7 @@ class DataStorage:
         frequencies = ['daily', 'minute', 'weekly', 'monthly']
         
         for freq in frequencies:
-            freq_dir = os.path.join(self.raw_dir, freq)
+            freq_dir = os.path.join(self.processed_dir, freq)
             if self.supports_parquet:
                 file_path = os.path.join(freq_dir, f"{symbol}.parquet")
             else:
@@ -141,9 +181,9 @@ class DataStorage:
         
         return available
     
-    def save_raw_with_metadata(self, symbol, df, metadata=None):
+    def save_canonical_with_metadata(self, symbol, df, metadata=None):
         """
-        保存原始数据并附带元数据
+        保存规范化数据并附带元数据
         
         Args:
             symbol: 资产代码
@@ -163,4 +203,13 @@ class DataStorage:
             for key, value in metadata.items():
                 df.attrs[key] = value
         
-        self.save_raw(symbol, df, frequency)
+        self.save_canonical(symbol, df, frequency)
+
+    def save_raw_with_metadata(self, *args, **kwargs):
+        """Deprecated wrapper."""
+        warnings.warn(
+            "save_raw_with_metadata() is deprecated; use save_canonical_with_metadata().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.save_canonical_with_metadata(*args, **kwargs)

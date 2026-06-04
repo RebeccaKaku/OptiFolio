@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -16,11 +18,34 @@ class MarketDataRepository:
     """Store canonical market data in Parquet and query it through DuckDB."""
 
     def __init__(self, root_dir: str | Path | None = None) -> None:
-        self.root_dir = Path(root_dir) if root_dir else PROJECT_ROOT / "data" / "foundation"
+        self.root_dir = Path(root_dir) if root_dir else PROJECT_ROOT / "data" / "silver"
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self.price_path = self.root_dir / "market_prices.parquet"
 
-    def save_raw(
+    def save_bronze(
+        self,
+        frame: pd.DataFrame,
+        asset_id: str,
+        provider: str,
+        ingest_date: str | None = None,
+    ) -> Path:
+        """Save provider output AS-IS to the bronze layer."""
+        date = ingest_date or datetime.now().strftime("%Y-%m-%d")
+        # Use the parent of silver layer (root_dir) as the data root
+        data_root = self.root_dir.parent
+        bronze_dir = (
+            data_root
+            / "bronze"
+            / f"provider={provider}"
+            / "entity=market_price"
+            / f"ingest_date={date}"
+        )
+        bronze_dir.mkdir(parents=True, exist_ok=True)
+        path = bronze_dir / f"{asset_id}.parquet"
+        frame.to_parquet(path, compression="snappy", index=True)
+        return path
+
+    def save_canonical(
         self,
         frame: pd.DataFrame,
         asset_id: str | None = None,
@@ -35,6 +60,16 @@ class MarketDataRepository:
         combined = combined.sort_values(["asset_id", "date", "source"]).reset_index(drop=True)
         validate_market_frame(combined).to_parquet(self.price_path, compression="snappy", index=False)
         return canonical
+
+    def save_raw(self, *args, **kwargs) -> pd.DataFrame:
+        """Deprecated wrapper for save_canonical."""
+        warnings.warn(
+            "save_raw() is deprecated; use save_canonical() for cleaned data "
+            "or save_bronze() for raw provider output.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.save_canonical(*args, **kwargs)
 
     def load_canonical(self) -> pd.DataFrame:
         if not self.price_path.exists():
