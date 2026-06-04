@@ -95,6 +95,16 @@ def create_app() -> FastAPI:
     def portfolio_holdings() -> JSONResponse:
         return _json_response(get_application_services().portfolio.get_holdings())
 
+    @app.get("/api/portfolio/v2/metrics", tags=["portfolio"])
+    def portfolio_metrics_v2() -> JSONResponse:
+        return _json_response(get_application_services().portfolio_v2.get_metrics())
+
+    @app.get("/api/portfolio/v2/metrics/rolling", tags=["portfolio"])
+    def portfolio_rolling_metrics_v2(
+        window: int = Query(default=60, ge=1)
+    ) -> JSONResponse:
+        return _json_response(get_application_services().portfolio_v2.get_rolling_metrics(window))
+
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
         return _json_response(get_application_services().assets.get_overview())
