@@ -73,6 +73,62 @@ class BocStructuredDepositFetcher:
             print(f"    [BOC-SD] Error: {e}")
             return None
 
+    # ── Personal structural deposits — prospectus listing (在售产品) ───
+
+    async def fetch_personal_prospectus_list(self, max_pages: int = 3) -> List[Dict[str, str]]:
+        """Get currently-selling personal structural deposits with PDF links.
+
+        Scrapes https://www.bankofchina.com/pbservice/pbsd/pbsd3/ — the
+        '产品说明书' (product prospectus) page for personal products.
+        Each entry contains: code, name, series, start date, term, yield range, PDF URL.
+
+        Args:
+            max_pages: Maximum pages to scrape (default 3 = ~60 recent products).
+        """
+        print("    [BOC-SD] Fetching personal structural deposit prospectuses...")
+        results: List[Dict[str, str]] = []
+        seen_codes: set = set()
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
+                for page in range(1, max_pages + 1):
+                    url = f"https://www.bankofchina.com/pbservice/pbsd/pbsd3/index_{page}.html" if page > 1 else "https://www.bankofchina.com/pbservice/pbsd/pbsd3/"
+                    res = await client.get(url, headers=self.HEADERS, timeout=15)
+                    if res.status_code != 200:
+                        break
+                    soup = BeautifulSoup(res.text, "html.parser")
+                    new_on_page = 0
+                    for link in soup.find_all("a"):
+                        text = link.text.strip()
+                        href = link.get("href", "")
+                        # Pattern: GRSDR... 系列名(受众) YYYY年M月D日起售 NN天 X%至Y%
+                        m = re.match(
+                            r'(GRSDR[A-Z0-9]+)\s*'
+                            r'(\S+)\s*\(\S+\)\s*'
+                            r'(\d{4})年(\d{1,2})月(\d{1,2})日起售\s*'
+                            r'(\d+)天\s*'
+                            r'(\d+\.?\d*%[至或]\d+\.?\d*%)',
+                            text
+                        )
+                        if m and m.group(1) not in seen_codes:
+                            seen_codes.add(m.group(1))
+                            results.append({
+                                "code": m.group(1),
+                                "currency": "CNY",
+                                "name": f"{m.group(2)}{m.group(1)}",
+                                "series": m.group(2),
+                                "start_date": f"{m.group(3)}-{m.group(4).zfill(2)}-{m.group(5).zfill(2)}",
+                                "term_days": int(m.group(6)),
+                                "expected_yield_range": m.group(7),
+                                "pdf_url": href if href.endswith(".pdf") else "",
+                            })
+                            new_on_page += 1
+                    if new_on_page == 0:
+                        break
+        except Exception as e:
+            print(f"    [BOC-SD] Error: {e}")
+        print(f"    [BOC-SD] Found {len(results)} personal products (scanned {max_pages} pages).")
+        return results
+
     # ── Institutional structural deposits (机构结构性存款) ──────────────
 
     async def fetch_institutional_list(self, max_pages: int = 5) -> List[Dict[str, str]]:
@@ -94,17 +150,18 @@ class BocStructuredDepositFetcher:
                     res = await client.get(url, headers=self.HEADERS, timeout=15)
                     if res.status_code != 200:
                         break
-                    text = BeautifulSoup(res.text, "html.parser").get_text("\n", strip=True)
+                    soup = BeautifulSoup(res.text, "html.parser")
                     new_on_page = 0
-                    for line in text.split('\n'):
-                        line = line.strip()
+                    for link in soup.find_all("a"):
+                        text = link.text.strip()
+                        href = link.get("href", "")
                         m = re.match(
                             r'(CSDPY\d+)\s*'
                             r'(人民币|美元)\s*'
                             r'结构性存款\s*'
                             r'(\d{4})年(\d{1,2})月(\d{1,2})日起售\s*'
                             r'(\d+)天',
-                            line
+                            text
                         )
                         if m and m.group(1) not in seen_codes:
                             seen_codes.add(m.group(1))
@@ -114,6 +171,7 @@ class BocStructuredDepositFetcher:
                                 "name": f"{m.group(2)}结构性存款{m.group(1)}",
                                 "start_date": f"{m.group(3)}-{m.group(4).zfill(2)}-{m.group(5).zfill(2)}",
                                 "term_days": int(m.group(6)),
+                                "pdf_url": href if href.endswith(".pdf") else "",
                             })
                             new_on_page += 1
                     if new_on_page == 0:
