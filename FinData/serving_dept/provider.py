@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 import pandas as pd
 import numpy as np
 
@@ -95,17 +95,25 @@ class DataProvider:
 
     # ── rates ──
 
-    def rate(self, rate_id: str = "1y_cn") -> float:
-        """Get latest interest rate. Stub — extend with macro data later.
+    # ── IMPORTANT ──────────────────────────────────────────────────────
+    # These rates are HARDCODED RESEARCH APPROXIMATIONS.
+    # They are NOT real-time market data and should NEVER be displayed
+    # as "current" or "live" in any UI.
+    # _RATE_SOURCE = "hardcoded_stub"
+    # TODO: replace with actual macro data pipeline (PBOC, FRED, SHIBOR)
 
-        rate_id options: '1y_cn', '5y_cn', '10y_cn', 'federal_funds', 'shibor_overnight'
-        """
+    def rate(self, rate_id: str = "1y_cn") -> Dict[str, Any]:
         RATE_STUBS = {
-            "1y_cn": 0.017,    # 1.7% — PBOC 1Y LPR (approx)
-            "5y_cn": 0.036,    # 3.6% — PBOC 5Y LPR (approx)
-            "10y_cn": 0.028,   # 2.8% — CGB 10Y yield (approx)
+            "1y_cn": 0.017, "5y_cn": 0.036, "10y_cn": 0.028,
         }
-        return RATE_STUBS.get(rate_id, 0.0)
+        value = RATE_STUBS.get(rate_id, 0.0)
+        return {
+            "rate_id": rate_id,
+            "value": value,
+            "source": "hardcoded_stub",
+            "as_of": None,
+            "warning": "RESEARCH APPROXIMATION — NOT real-time market data. Do not display as live/current in UI.",
+        }
 
     def fx_rate(self, from_currency: str, to_currency: str,
                 date_str: str = None) -> float:

@@ -104,6 +104,7 @@ class LiquidityAnalyzer:
         positions: Dict[str, PositionValue],
         product_registry: Dict[str, ProductDefinition],
         total_value: float,
+        as_of: date,
         cash_breakdown: Optional[Dict[str, CashHolding]] = None,
     ) -> LiquidityReport:
         """Classify every position and cash holding into a liquidity bucket.
@@ -112,13 +113,14 @@ class LiquidityAnalyzer:
             positions: {asset_id: PositionValue} from ValuationEngine.
             product_registry: {asset_id: ProductDefinition} lookup.
             total_value: Total portfolio value in base currency (must be > 0).
+            as_of: Valuation date for the report.
             cash_breakdown: {currency: CashHolding} from ValuationResult
                             (aggregated as "T+0").
 
         Returns:
             LiquidityReport with ordered buckets and aggregate metrics.
         """
-        today = date.today()
+        self._warnings: List[str] = []
 
         bucket_values: Dict[str, float] = {name: 0.0 for name in BUCKET_ORDER}
         bucket_asset_ids: Dict[str, List[str]] = {name: [] for name in BUCKET_ORDER}
@@ -133,7 +135,7 @@ class LiquidityAnalyzer:
         # ── Classify each position ────────────────────────────────────────
         for asset_id, pos in positions.items():
             product = product_registry.get(asset_id)
-            bucket = self._classify(asset_id, product)
+            bucket = self._classify(asset_id, product, as_of)
             if bucket not in bucket_values:
                 bucket = "7天内"
             bucket_values[bucket] += pos.value_base
@@ -165,7 +167,7 @@ class LiquidityAnalyzer:
         )
 
         return LiquidityReport(
-            as_of=today,
+            as_of=as_of,
             total_value=total_value,
             buckets=buckets,
             available_7d_pct=round(available_7d_pct, 2),
@@ -178,6 +180,7 @@ class LiquidityAnalyzer:
         self,
         asset_id: str,
         product: Optional[ProductDefinition],
+        as_of: date,
     ) -> str:
         """Map a single asset to a liquidity bucket name.
 
@@ -213,15 +216,15 @@ class LiquidityAnalyzer:
 
             # Bank WMP → inspect lockup / liquidity_type
             if ptype == "bank_wmp":
-                return self._classify_bank_wmp(product)
+                return self._classify_bank_wmp(product, as_of)
 
-            # Deposit → T+0 (demand deposits are instantly available)
+            # Deposit → distinguish demand vs time by maturity/term
             if ptype == "deposit":
-                return "T+0"
+                return self._classify_deposit(product, as_of)
 
             # Structured deposit → check liquidity_type, fallback 1 month
             if ptype in ("structured_deposit", "structured_note"):
-                return self._classify_bank_wmp(product)
+                return self._classify_bank_wmp(product, as_of)
 
         # ── Symbol pattern heuristics ─────────────────────────────────────
         return self._classify_by_symbol(asset_id)
@@ -244,9 +247,8 @@ class LiquidityAnalyzer:
         return "7天内"
 
     @staticmethod
-    def _classify_bank_wmp(product: ProductDefinition) -> str:
+    def _classify_bank_wmp(product: ProductDefinition, as_of: date) -> str:
         """Classify a bank WMP or structured product by lockup / liquidity_type."""
-        today = date.today()
         lockup = product.metadata.get("lockup_end_date") if product.metadata else None
 
         if lockup:
@@ -257,7 +259,7 @@ class LiquidityAnalyzer:
                     pass
 
             if isinstance(lockup, date):
-                days = (lockup - today).days
+                days = (lockup - as_of).days
                 if days <= 0:
                     return "T+0"
                 if days <= 30:
@@ -280,3 +282,61 @@ class LiquidityAnalyzer:
 
         # Default for bank WMP / structured products
         return "1个月内"
+
+    def _classify_deposit(self, product: ProductDefinition, as_of: date) -> str:
+        """Classify a deposit as demand (T+0) or time (maturity-based bucket).
+
+        Checks metadata for maturity_date, lockup_end_date, or term (days).
+        If unable to determine whether a deposit is demand or time, assumes
+        T+0 and records a warning in ``self._warnings``.
+        """
+        metadata = product.metadata if product.metadata else {}
+
+        # Check for a maturity / lockup end date
+        lockup = metadata.get("maturity_date") or metadata.get("lockup_end_date")
+        if lockup:
+            if isinstance(lockup, str):
+                try:
+                    lockup = datetime.fromisoformat(lockup).date()
+                except (ValueError, TypeError):
+                    lockup = None
+
+            if isinstance(lockup, date):
+                days = (lockup - as_of).days
+                if days <= 0:
+                    return "T+0"
+                if days <= 7:
+                    return "7天内"
+                if days <= 30:
+                    return "1个月内"
+                if days <= 90:
+                    return "3个月内"
+                if days <= 365:
+                    return "1年内"
+                return "锁仓"
+
+        # Check for a term (in days)
+        term = metadata.get("term")
+        if term is not None:
+            try:
+                term_days = int(term)
+            except (ValueError, TypeError):
+                term_days = 0
+
+            if term_days <= 0:
+                return "T+0"
+            if term_days <= 7:
+                return "7天内"
+            if term_days <= 30:
+                return "1个月内"
+            if term_days <= 90:
+                return "3个月内"
+            if term_days <= 365:
+                return "1年内"
+            return "锁仓"
+
+        # Unable to determine if demand or time — assume T+0 and warn
+        self._warnings.append(
+            f"Deposit {product.product_id}: unable to determine if demand/time, assuming T+0"
+        )
+        return "T+0"

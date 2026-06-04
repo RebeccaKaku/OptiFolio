@@ -79,6 +79,15 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
 class TestFxExposureAnalyzer:
     """Unit tests for the FX exposure analyzer in isolation."""
 
+    def test_docstring_contains_level0_warning(self):
+        """The class docstring must clearly state the Level 0 limitation."""
+        doc = FxExposureAnalyzer.__doc__
+        assert doc is not None
+        assert "Level 0" in doc
+        assert "LABEL-LEVEL" in doc
+        assert "does NOT look through" in doc
+        assert "NEVER be presented as complete FX risk analysis" in doc
+
     def test_empty_portfolio(self):
         analyzer = FxExposureAnalyzer()
         report = analyzer.analyze(
@@ -86,6 +95,7 @@ class TestFxExposureAnalyzer:
             cash_breakdown={},
             base_currency="CNY",
             total_value=0.0,
+            as_of=date(2025, 6, 15),
         )
         assert isinstance(report, FxExposureReport)
         assert report.total_value == 0.0
@@ -106,6 +116,7 @@ class TestFxExposureAnalyzer:
         report = analyzer.analyze(
             positions=positions, cash_breakdown=cash,
             base_currency="CNY", total_value=5000.0,
+            as_of=date(2025, 6, 15),
         )
         assert report.base_currency == "CNY"
         assert report.net_non_base_pct == 0.0
@@ -134,6 +145,7 @@ class TestFxExposureAnalyzer:
         report = analyzer.analyze(
             positions=positions, cash_breakdown=cash,
             base_currency="CNY", total_value=total,
+            as_of=date(2025, 6, 15),
         )
 
         # USD exposure: (108000 + 36000) / 158000 = 0.91139...  => 91.14%
@@ -169,6 +181,7 @@ class TestFxExposureAnalyzer:
         report = analyzer.analyze(
             positions=positions, cash_breakdown={},
             base_currency="CNY", total_value=216000.0,
+            as_of=date(2025, 6, 15),
         )
         assert len(report.exposures) == 1
         usd_item = report.exposures[0]
@@ -192,6 +205,7 @@ class TestFxExposureAnalyzer:
         report = analyzer.analyze(
             positions=positions, cash_breakdown={},
             base_currency="CNY", total_value=total,
+            as_of=date(2025, 6, 15),
         )
         # USD is ~57.4% > 20% threshold
         assert len(report.warnings) >= 1
@@ -205,6 +219,7 @@ class TestFxExposureAnalyzer:
         report = analyzer.analyze(
             positions={}, cash_breakdown=cash,
             base_currency="CNY", total_value=7920.0,
+            as_of=date(2025, 6, 15),
         )
         assert len(report.exposures) == 1
         assert report.exposures[0].currency == "EUR"
@@ -222,6 +237,7 @@ class TestFxExposureAnalyzer:
         report = analyzer.analyze(
             positions=positions, cash_breakdown={},
             base_currency="CNY", total_value=50000.0,
+            as_of=date(2025, 6, 15),
         )
         usd_item = report.exposures[0]
         assert "¥500.00" in usd_item.sensitivity_note  # 50000 * 0.01 = 500
@@ -240,6 +256,7 @@ class TestFxExposureAnalyzer:
         report = analyzer.analyze(
             positions=positions, cash_breakdown=cash,
             base_currency="CNY", total_value=118000.0,
+            as_of=date(2025, 6, 15),
         )
         d = report.to_dict()
         assert d["base_currency"] == "CNY"

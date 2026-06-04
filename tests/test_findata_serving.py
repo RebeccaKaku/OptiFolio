@@ -219,33 +219,46 @@ class TestDataProviderMetrics:
 # ── Rates tests ────────────────────────────────────────────────────────────
 
 class TestDataProviderRates:
-    def test_rate_1y_cn_returns_float(self, tmp_path):
+    def test_rate_1y_cn_returns_dict(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("1y_cn")
-        assert isinstance(result, float)
-        assert result == pytest.approx(0.017)
+        assert isinstance(result, dict)
+        assert result["rate_id"] == "1y_cn"
+        assert result["value"] == pytest.approx(0.017)
+        assert result["source"] == "hardcoded_stub"
+        assert result["as_of"] is None
+        assert "warning" in result
 
-    def test_rate_5y_cn_returns_float(self, tmp_path):
+    def test_rate_5y_cn_returns_dict(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("5y_cn")
-        assert isinstance(result, float)
-        assert result == pytest.approx(0.036)
+        assert isinstance(result, dict)
+        assert result["rate_id"] == "5y_cn"
+        assert result["value"] == pytest.approx(0.036)
+        assert result["source"] == "hardcoded_stub"
 
-    def test_rate_10y_cn_returns_float(self, tmp_path):
+    def test_rate_10y_cn_returns_dict(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("10y_cn")
-        assert isinstance(result, float)
-        assert result == pytest.approx(0.028)
+        assert isinstance(result, dict)
+        assert result["rate_id"] == "10y_cn"
+        assert result["value"] == pytest.approx(0.028)
+        assert result["source"] == "hardcoded_stub"
 
     def test_rate_default_is_1y_cn(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate()
-        assert result == pytest.approx(0.017)
+        assert isinstance(result, dict)
+        assert result["rate_id"] == "1y_cn"
+        assert result["value"] == pytest.approx(0.017)
 
     def test_rate_unknown_returns_zero(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("nonexistent")
-        assert result == 0.0
+        assert isinstance(result, dict)
+        assert result["rate_id"] == "nonexistent"
+        assert result["value"] == 0.0
+        assert result["source"] == "hardcoded_stub"
 
 
 class TestDataProviderFxRates:
@@ -401,7 +414,10 @@ class TestFdBackCompat:
         fd_test._store = store
 
         result = fd_test.rate("5y_cn")
-        assert result == pytest.approx(0.036)
+        assert isinstance(result, dict)
+        assert result["rate_id"] == "5y_cn"
+        assert result["value"] == pytest.approx(0.036)
+        assert result["source"] == "hardcoded_stub"
 
     def test_fd_export_works(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))

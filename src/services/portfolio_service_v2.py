@@ -182,6 +182,7 @@ class PortfolioServiceV2:
                 cash_breakdown=result.cash_breakdown,
                 base_currency=currency,
                 total_value=result.total_value,
+                as_of=target_date,
             )
         except NoPriceDataError as exc:
             return {"success": False, "message": str(exc), "error_code": "NO_PRICE_DATA"}
@@ -213,6 +214,7 @@ class PortfolioServiceV2:
             report = self._concentration_analyzer.analyze(
                 positions=result.positions,
                 asset_meta=asset_meta,
+                as_of=target_date,
             )
         except NoPriceDataError as exc:
             return {"success": False, "message": str(exc), "error_code": "NO_PRICE_DATA"}
@@ -247,6 +249,7 @@ class PortfolioServiceV2:
                 positions=result.positions,
                 product_registry=registry,
                 total_value=result.total_value,
+                as_of=target_date,
                 cash_breakdown=result.cash_breakdown,
             )
         except NoPriceDataError as exc:
@@ -306,6 +309,7 @@ class PortfolioServiceV2:
                 positions=result.positions,
                 product_registry=registry,
                 total_value=portfolio_value,
+                as_of=target_date,
                 cash_breakdown=result.cash_breakdown,
             )
         except Exception:
@@ -316,6 +320,7 @@ class PortfolioServiceV2:
             concentration_report = self._concentration_analyzer.analyze(
                 positions=result.positions,
                 asset_meta=asset_meta,
+                as_of=target_date,
             )
         except Exception:
             pass
@@ -326,6 +331,7 @@ class PortfolioServiceV2:
                 cash_breakdown=result.cash_breakdown,
                 base_currency=currency,
                 total_value=portfolio_value,
+                as_of=target_date,
             )
         except Exception:
             pass

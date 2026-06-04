@@ -7,10 +7,13 @@ but do not block.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
 
 import pandas as pd
+
+_log = logging.getLogger(__name__)
 
 from .schemas import _COLUMN_ALIASES, _canonical_column_name
 
@@ -40,7 +43,7 @@ class QualityGate:
     2. Price column       → REJECT if no close/adj_close column
     3. Row count          → FLAG if long date span but very few rows
     4. NaN proportion     → REJECT if close column is >50% NaN
-    5. Positive prices    → FLAG if close <= 0 found
+    5. Positive prices    → REJECT if close <= 0 found
     6. Time reversal      → REJECT if new data is older than existing
     7. Price spikes       → FLAG if any daily change exceeds 50%
     8. Duplicate data     → REJECT if identical to already-stored data
@@ -130,8 +133,8 @@ class QualityGate:
         # ── Check 5: Positive prices ──────────────────────────────────
         valid_prices = price_series.dropna()
         if len(valid_prices) > 0 and (valid_prices <= 0).any():
-            flags.append("Non-positive prices found")
-            checks.append({"name": "positive_prices", "passed": True, "detail": "FLAG: non-positive values"})
+            reject_reasons.append("Non-positive prices found — data is corrupt or invalid")
+            checks.append({"name": "positive_prices", "passed": False, "detail": "REJECT: close <= 0"})
         else:
             checks.append({"name": "positive_prices", "passed": True, "detail": ""})
 

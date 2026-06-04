@@ -175,20 +175,18 @@ class TestQualityGatePassCleanData:
             assert "passed" in check
             assert "detail" in check
 
-    def test_non_positive_prices_are_flagged(self):
+    def test_non_positive_prices_are_rejected(self):
         gate = QualityGate()
         df = _make_df(
             dates=pd.date_range("2024-01-01", periods=5, freq="B"),
             close=[100, 0, 102, -5, 104],
         )
         report = gate.inspect(df)
-        # NaN check would fire first if we have 0 or negative — 0 and -5 are not NaN
-        # Actually, the non-positive check is a FLAG, not a rejection.
-        # But the validate_market_frame would reject <=0. The gate just flags.
-        # Let's see: close values are [100, 0, 102, -5, 104]
-        # NaN rate = 0/5 = 0% → pass
-        # Non-positive = [0, -5] → flag
-        assert any("Non-positive prices" in f for f in report.flags)
+        # close values are [100, 0, 102, -5, 104]
+        # NaN rate = 0/5 = 0% → pass NaN check
+        # Non-positive = [0, -5] → REJECT
+        assert not report.passed
+        assert any("Non-positive prices" in r for r in report.reject_reasons)
 
 
 # ── CanonicalStore tests ───────────────────────────────────────────────

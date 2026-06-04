@@ -1,7 +1,16 @@
-"""FX return decomposition — split base-currency returns into local-asset + FX components.
+"""FX return decomposition — split base-currency returns into local + FX.
 
-Formula::
+This module provides FX DECOMPOSITION ONLY. It does NOT provide:
+- IRR (money-weighted return from cashflows)
+- TWR (time-weighted return for strategy comparison)
+- Full multi-period performance attribution
+- Benchmark-relative return decomposition
 
+For IRR/TWR, see PortfolioHistoryTracker.compute_metrics() which provides
+basic time-series metrics. A full cashflow-aware performance engine
+(IRR from CashflowEvent ledger) is planned future work.
+
+Formula:
     (1 + r_base) = (1 + r_local) × (1 + r_fx)
     r_base = r_local + r_fx + r_local × r_fx
 

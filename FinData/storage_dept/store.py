@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional, Sequence
 
 import pandas as pd
+
+_log = logging.getLogger(__name__)
 
 from src.data_foundation import MarketDataRepository
 
@@ -65,7 +68,7 @@ class CanonicalStore:
 
     def reject(self, asset_id: str, reason: str) -> None:
         """Log rejection — does NOT write data."""
-        print(f"[FinData] REJECTED {asset_id}: {reason}")
+        _log.warning(f"[FinData] REJECTED {asset_id}: {reason}")
 
     def _load_existing(self, asset_id: str) -> Optional[pd.DataFrame]:
         """Load previously stored data for an asset, or None if unavailable."""

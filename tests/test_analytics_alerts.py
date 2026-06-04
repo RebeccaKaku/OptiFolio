@@ -206,7 +206,7 @@ class TestCheckMaturity:
                 "maturity_date": _in_days(10),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].alert_id.startswith("maturity_WMP1")
         assert "WMP1" in alerts[0].title
@@ -222,7 +222,7 @@ class TestCheckMaturity:
                 "maturity_date": date.today(),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["days_left"] == 0
 
@@ -235,7 +235,7 @@ class TestCheckMaturity:
                 "maturity_date": _tomorrow(),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["days_left"] == 1
 
@@ -248,7 +248,7 @@ class TestCheckMaturity:
                 "maturity_date": _in_days(60),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 0
 
     def test_product_already_past_no_alert(self):
@@ -260,7 +260,7 @@ class TestCheckMaturity:
                 "maturity_date": _n_days_ago(5),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 0
 
     def test_lockup_end_date(self):
@@ -272,7 +272,7 @@ class TestCheckMaturity:
                 "lockup_end_date": _in_days(3),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["date_type"] == "lockup_end_date"
 
@@ -285,7 +285,7 @@ class TestCheckMaturity:
                 "open_date": _in_days(15),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["date_type"] == "open_date"
 
@@ -298,7 +298,7 @@ class TestCheckMaturity:
                 "next_open_date": _in_days(7),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["date_type"] == "next_open_date"
 
@@ -312,7 +312,7 @@ class TestCheckMaturity:
                 "maturity_date": target.isoformat(),
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["days_left"] == 5
 
@@ -324,18 +324,18 @@ class TestCheckMaturity:
             {"product_id": "C", "name": "C", "maturity_date": _in_days(60)},
             {"product_id": "D", "name": "D", "lockup_end_date": _in_days(20)},
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 3  # A(5d), B(10d), D(20d); C is outside window
 
     def test_empty_products(self):
         engine = AlertEngine()
-        alerts = engine.check_maturity([], within_days=30)
+        alerts = engine.check_maturity([], as_of=date.today(), within_days=30)
         assert alerts == []
 
     def test_product_with_no_dates(self):
         engine = AlertEngine()
         products = [{"product_id": "NODATE", "name": "无日期产品"}]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert alerts == []
 
     def test_product_with_none_dates(self):
@@ -348,13 +348,13 @@ class TestCheckMaturity:
                 "lockup_end_date": None,
             }
         ]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert alerts == []
 
     def test_alert_carries_evidence(self):
         engine = AlertEngine()
         products = [{"product_id": "E1", "name": "证据测试", "maturity_date": _in_days(7)}]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["product_id"] == "E1"
         assert alerts[0].evidence["date_type"] == "maturity_date"
@@ -366,14 +366,14 @@ class TestCheckMaturity:
     def test_severity_warning_when_within_7_days(self):
         engine = AlertEngine()
         products = [{"product_id": "URG", "name": "紧急", "maturity_date": _in_days(3)}]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].severity == "warning"
 
     def test_severity_info_when_more_than_7_days(self):
         engine = AlertEngine()
         products = [{"product_id": "CALM", "name": "从容", "maturity_date": _in_days(20)}]
-        alerts = engine.check_maturity(products, within_days=30)
+        alerts = engine.check_maturity(products, as_of=date.today(), within_days=30)
         assert len(alerts) == 1
         assert alerts[0].severity == "info"
 
@@ -659,7 +659,7 @@ class TestCheckOpenWindows:
                 "next_open_date": _in_days(10),
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts) == 1
         assert alerts[0].alert_id.startswith("open_window_005827")
         assert alerts[0].evidence["days_left"] == 10
@@ -675,7 +675,7 @@ class TestCheckOpenWindows:
                 "next_open_date": None,  # NaT = daily open
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts) == 0
 
     def test_alert_when_closed_for_purchase(self):
@@ -689,7 +689,7 @@ class TestCheckOpenWindows:
                 "next_open_date": None,
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts) == 1
         assert "buy" in alerts[0].alert_id
         assert alerts[0].severity == "warning"
@@ -705,7 +705,7 @@ class TestCheckOpenWindows:
                 "next_open_date": None,
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts) == 1
         assert "sell" in alerts[0].alert_id
         assert alerts[0].severity == "critical"
@@ -721,7 +721,7 @@ class TestCheckOpenWindows:
                 "next_open_date": _in_days(5),
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         # buy closed, sell closed, open window approaching = 3 alerts
         assert len(alerts) == 3
 
@@ -732,7 +732,7 @@ class TestCheckOpenWindows:
             {"fund_code": "B", "fund_name": "B", "can_buy": True, "can_sell": False, "next_open_date": None},
             {"fund_code": "C", "fund_name": "C", "can_buy": True, "can_sell": True, "next_open_date": _in_days(3)},
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts) == 3  # A buy closed, B sell closed, C open window
 
     def test_alert_carries_evidence(self):
@@ -746,7 +746,7 @@ class TestCheckOpenWindows:
                 "next_open_date": _in_days(14),
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts) >= 1
         for a in alerts:
             assert a.evidence
@@ -756,7 +756,7 @@ class TestCheckOpenWindows:
 
     def test_empty_fund_statuses(self):
         engine = AlertEngine()
-        alerts = engine.check_open_windows([], window_days=30)
+        alerts = engine.check_open_windows([], as_of=date.today(), window_days=30)
         assert alerts == []
 
     def test_string_next_open_date(self):
@@ -771,7 +771,7 @@ class TestCheckOpenWindows:
                 "next_open_date": target.isoformat(),
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts) == 1
         assert alerts[0].evidence["days_left"] == 8
 
@@ -786,7 +786,7 @@ class TestCheckOpenWindows:
                 "next_open_date": _in_days(3),
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         open_alerts = [a for a in alerts if a.alert_id.startswith("open_window")]
         assert len(open_alerts) == 1
         assert open_alerts[0].severity == "warning"
@@ -802,7 +802,7 @@ class TestCheckOpenWindows:
                 "next_open_date": _in_days(20),
             }
         ]
-        alerts = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         open_alerts = [a for a in alerts if a.alert_id.startswith("open_window")]
         assert len(open_alerts) == 1
         assert open_alerts[0].severity == "info"
@@ -819,10 +819,10 @@ class TestCheckOpenWindows:
             }
         ]
         # 45 days is outside default 30-day window, but NOT outside 60-day window
-        alerts_default = engine.check_open_windows(fund_statuses, window_days=30)
+        alerts_default = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=30)
         assert len(alerts_default) == 0
 
-        alerts_extended = engine.check_open_windows(fund_statuses, window_days=60)
+        alerts_extended = engine.check_open_windows(fund_statuses, as_of=date.today(), window_days=60)
         assert len(alerts_extended) == 1
 
 
@@ -857,6 +857,7 @@ class TestRunAll:
             "current_concentration": cur_conc,
             "previous_concentration": prev_conc,
             "fund_statuses": fund_statuses,
+            "as_of": date.today(),
         }
         alerts = engine.run_all(context)
 
@@ -900,6 +901,7 @@ class TestRunAll:
         context = {
             "products": products,
             "maturity_within_days": 60,  # custom wider window
+            "as_of": date.today(),
         }
         alerts = engine.run_all(context)
         assert len(alerts) == 1
@@ -928,6 +930,7 @@ class TestRunAll:
             "current_concentration": cur,
             "previous_concentration": prev,
             "fund_statuses": funds,
+            "as_of": date.today(),
         }
         alerts = engine.run_all(context)
         assert len(alerts) > 0
@@ -976,7 +979,7 @@ class TestRunAll:
     def test_fund_open_window_custom_days(self):
         engine = AlertEngine()
         funds = [{"fund_code": "F", "fund_name": "F", "can_buy": True, "can_sell": True, "next_open_date": _in_days(50)}]
-        context = {"fund_statuses": funds, "open_window_days": 60}
+        context = {"fund_statuses": funds, "open_window_days": 60, "as_of": date.today()}
         alerts = engine.run_all(context)
         assert len(alerts) == 1
         assert "open_window" in alerts[0].alert_id

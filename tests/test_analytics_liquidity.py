@@ -112,7 +112,7 @@ def test_empty_positions_returns_zero_total():
     report = analyzer.analyze(
         positions={},
         product_registry={},
-        total_value=0.0,
+        as_of=date.today(), total_value=0.0,
         cash_breakdown={},
     )
     assert report.total_value == 0.0
@@ -130,7 +130,7 @@ def test_cash_is_t0():
     report = analyzer.analyze(
         positions={},
         product_registry={},
-        total_value=5000.0,
+        as_of=date.today(), total_value=5000.0,
         cash_breakdown=cash_bd,
     )
     t0 = _find_bucket(report, "T+0")
@@ -148,7 +148,7 @@ def test_us_stock_is_t1():
     report = analyzer.analyze(
         positions=positions,
         product_registry={},
-        total_value=30000.0,
+        as_of=date.today(), total_value=30000.0,
     )
     t1 = _find_bucket(report, "T+1")
     assert t1.value == 30000.0
@@ -161,7 +161,7 @@ def test_a_share_numeric_is_t1():
     report = analyzer.analyze(
         positions=positions,
         product_registry={},
-        total_value=20000.0,
+        as_of=date.today(), total_value=20000.0,
     )
     t1 = _find_bucket(report, "T+1")
     assert t1.value == 20000.0
@@ -174,7 +174,7 @@ def test_a_share_sh_prefix_is_t1():
     report = analyzer.analyze(
         positions=positions,
         product_registry={},
-        total_value=15000.0,
+        as_of=date.today(), total_value=15000.0,
     )
     t1 = _find_bucket(report, "T+1")
     assert t1.value == 15000.0
@@ -186,7 +186,7 @@ def test_a_share_sz_prefix_is_t1():
     report = analyzer.analyze(
         positions=positions,
         product_registry={},
-        total_value=10000.0,
+        as_of=date.today(), total_value=10000.0,
     )
     t1 = _find_bucket(report, "T+1")
     assert t1.value == 10000.0
@@ -202,7 +202,7 @@ def test_money_fund_is_t1():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=8000.0,
+        as_of=date.today(), total_value=8000.0,
     )
     t1 = _find_bucket(report, "T+1")
     assert t1.value == 8000.0
@@ -215,7 +215,7 @@ def test_money_fund_by_name_contains_huobi():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=6000.0,
+        as_of=date.today(), total_value=6000.0,
     )
     t1 = _find_bucket(report, "T+1")
     assert t1.value == 6000.0
@@ -234,7 +234,7 @@ def test_open_end_fund_is_t2_t4(ptype):
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=12000.0,
+        as_of=date.today(), total_value=12000.0,
     )
     bucket = _find_bucket(report, "T+2~T+4")
     assert bucket.value == 12000.0
@@ -250,7 +250,7 @@ def test_bank_wmp_default_1_month():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=25000.0,
+        as_of=date.today(), total_value=25000.0,
     )
     bucket = _find_bucket(report, "1个月内")
     assert bucket.value == 25000.0
@@ -269,7 +269,7 @@ def test_bank_wmp_lockup_15_days():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=30000.0,
+        as_of=date.today(), total_value=30000.0,
     )
     bucket = _find_bucket(report, "1个月内")
     assert bucket.value == 30000.0
@@ -288,7 +288,7 @@ def test_bank_wmp_lockup_60_days():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=40000.0,
+        as_of=date.today(), total_value=40000.0,
     )
     bucket = _find_bucket(report, "3个月内")
     assert bucket.value == 40000.0
@@ -307,7 +307,7 @@ def test_bank_wmp_lockup_200_days():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=50000.0,
+        as_of=date.today(), total_value=50000.0,
     )
     bucket = _find_bucket(report, "1年内")
     assert bucket.value == 50000.0
@@ -326,7 +326,7 @@ def test_bank_wmp_lockup_500_days():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=60000.0,
+        as_of=date.today(), total_value=60000.0,
     )
     bucket = _find_bucket(report, "锁仓")
     assert bucket.value == 60000.0
@@ -345,7 +345,7 @@ def test_bank_wmp_lockup_past_is_t0():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=70000.0,
+        as_of=date.today(), total_value=70000.0,
     )
     t0 = _find_bucket(report, "T+0")
     # value should include this WMP (70000)
@@ -361,7 +361,7 @@ def test_bank_wmp_liquidity_type_t0():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=8000.0,
+        as_of=date.today(), total_value=8000.0,
     )
     t0 = _find_bucket(report, "T+0")
     assert t0.value == 8000.0
@@ -376,7 +376,7 @@ def test_unknown_symbol_is_7_days():
     report = analyzer.analyze(
         positions=positions,
         product_registry={},
-        total_value=5000.0,
+        as_of=date.today(), total_value=5000.0,
     )
     bucket = _find_bucket(report, "7天内")
     assert bucket.value == 5000.0
@@ -412,7 +412,7 @@ def test_full_portfolio_buckets_sum_to_100():
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=total_value,
+        as_of=date.today(), total_value=total_value,
         cash_breakdown=cash_bd,
     )
 
@@ -448,7 +448,7 @@ def test_all_buckets_present_in_order():
     report = analyzer.analyze(
         positions={},
         product_registry={},
-        total_value=0.0,
+        as_of=date.today(), total_value=0.0,
     )
     assert len(report.buckets) == len(BUCKET_ORDER)
     for i, b in enumerate(report.buckets):
@@ -458,17 +458,112 @@ def test_all_buckets_present_in_order():
 # ── deposit classification ─────────────────────────────────────────────
 
 
-def test_deposit_is_t0():
+def test_demand_deposit_is_t0():
+    """Demand deposit (no maturity/term metadata) → T+0."""
     analyzer = LiquidityAnalyzer()
     registry = {"DEP001": _product("DEP001", "deposit", "活期存款")}
     positions = {"DEP001": _pv("DEP001", 3000.0)}
     report = analyzer.analyze(
         positions=positions,
         product_registry=registry,
-        total_value=3000.0,
+        as_of=date.today(), total_value=3000.0,
     )
     t0 = _find_bucket(report, "T+0")
     assert t0.value == 3000.0
+
+
+def test_time_deposit_maturity_60_days():
+    """Time deposit with maturity_date 60 days out → 3个月内."""
+    future = (date.today() + timedelta(days=60)).isoformat()
+    analyzer = LiquidityAnalyzer()
+    registry = {
+        "TD001": _product("TD001", "deposit", "定期存款60天", metadata={
+            "maturity_date": future,
+        }),
+    }
+    positions = {"TD001": _pv("TD001", 50000.0)}
+    report = analyzer.analyze(
+        positions=positions,
+        product_registry=registry,
+        as_of=date.today(), total_value=50000.0,
+    )
+    bucket = _find_bucket(report, "3个月内")
+    assert bucket.value == 50000.0
+    assert "TD001" in bucket.asset_ids
+
+
+def test_time_deposit_term_365_days():
+    """Time deposit with term=365 → 1年内."""
+    analyzer = LiquidityAnalyzer()
+    registry = {
+        "TD002": _product("TD002", "deposit", "定期存款365天", metadata={
+            "term": 365,
+        }),
+    }
+    positions = {"TD002": _pv("TD002", 80000.0)}
+    report = analyzer.analyze(
+        positions=positions,
+        product_registry=registry,
+        as_of=date.today(), total_value=80000.0,
+    )
+    bucket = _find_bucket(report, "1年内")
+    assert bucket.value == 80000.0
+    assert "TD002" in bucket.asset_ids
+
+
+def test_time_deposit_lockup_500_days():
+    """Time deposit with lockup_end_date 500 days out → 锁仓."""
+    future = (date.today() + timedelta(days=500)).isoformat()
+    analyzer = LiquidityAnalyzer()
+    registry = {
+        "TD003": _product("TD003", "deposit", "定期存款500天", metadata={
+            "lockup_end_date": future,
+        }),
+    }
+    positions = {"TD003": _pv("TD003", 100000.0)}
+    report = analyzer.analyze(
+        positions=positions,
+        product_registry=registry,
+        as_of=date.today(), total_value=100000.0,
+    )
+    bucket = _find_bucket(report, "锁仓")
+    assert bucket.value == 100000.0
+    assert "TD003" in bucket.asset_ids
+
+
+def test_time_deposit_past_maturity_is_t0():
+    """Time deposit with already-expired maturity → T+0."""
+    past = (date.today() - timedelta(days=10)).isoformat()
+    analyzer = LiquidityAnalyzer()
+    registry = {
+        "TD004": _product("TD004", "deposit", "已到期定期", metadata={
+            "maturity_date": past,
+        }),
+    }
+    positions = {"TD004": _pv("TD004", 20000.0)}
+    report = analyzer.analyze(
+        positions=positions,
+        product_registry=registry,
+        as_of=date.today(), total_value=20000.0,
+    )
+    t0 = _find_bucket(report, "T+0")
+    assert t0.value == 20000.0
+
+
+def test_deposit_unknown_type_warns():
+    """Deposit with no maturity/term metadata warns and defaults to T+0."""
+    analyzer = LiquidityAnalyzer()
+    registry = {"DEP_UNK": _product("DEP_UNK", "deposit", "未知存款类型")}
+    positions = {"DEP_UNK": _pv("DEP_UNK", 5000.0)}
+    report = analyzer.analyze(
+        positions=positions,
+        product_registry=registry,
+        as_of=date.today(), total_value=5000.0,
+    )
+    t0 = _find_bucket(report, "T+0")
+    assert t0.value == 5000.0
+    assert hasattr(analyzer, "_warnings")
+    assert any("DEP_UNK" in w for w in analyzer._warnings)
 
 
 # ── helpers ─────────────────────────────────────────────────────────────

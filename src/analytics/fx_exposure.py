@@ -57,7 +57,20 @@ class FxExposureReport:
 
 
 class FxExposureAnalyzer:
-    """Compute portfolio FX exposure across all currencies.
+    """Level 0 FX exposure — aggregates by position quote currency ONLY.
+
+    IMPORTANT LIMITATION: This is a LABEL-LEVEL analysis. It groups by
+    the position's declared currency (e.g., a QDII fund shows as CNY
+    even though it holds USD assets). It does NOT look through to
+    fund/wealth-product underlying currency exposures or hedges.
+
+    For accurate FX exposure decomposition, Level 1 (holdings-based)
+    or Level 2 (look-through) analysis is required. See
+    docs/FINANCIAL_LOGIC_AND_MODULE_DESIGN.md for the look-through levels.
+
+    This Level 0 view is useful as a FIRST APPROXIMATION but should
+    NEVER be presented as complete FX risk analysis without the
+    limitation visible.
 
     Usage::
 
@@ -78,6 +91,7 @@ class FxExposureAnalyzer:
         cash_breakdown: Dict[str, CashHolding],
         base_currency: str,
         total_value: float,
+        as_of: date,
     ) -> FxExposureReport:
         """Aggregate positions and cash into per-currency exposure items.
 
@@ -86,10 +100,11 @@ class FxExposureAnalyzer:
             cash_breakdown: Per-currency cash holdings (from ValuationResult).
             base_currency: The portfolio's reporting currency (e.g. "CNY").
             total_value: Total portfolio value in base currency.
+            as_of: Valuation date for the report.
         """
         if total_value <= 0:
             return FxExposureReport(
-                as_of=date.today(),
+                as_of=as_of,
                 base_currency=base_currency,
                 total_value=0.0,
                 exposures=[],
@@ -152,7 +167,7 @@ class FxExposureAnalyzer:
                 )
 
         return FxExposureReport(
-            as_of=date.today(),
+            as_of=as_of,
             base_currency=base_currency,
             total_value=total_value,
             exposures=exposures,

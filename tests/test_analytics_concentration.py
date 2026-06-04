@@ -158,7 +158,7 @@ class TestConcentrationReport:
 class TestConcentrationAnalyzer:
     def test_empty_positions(self):
         analyzer = ConcentrationAnalyzer()
-        report = analyzer.analyze({}, {})
+        report = analyzer.analyze({}, {}, as_of=date(2026, 6, 1))
         assert report.total_value == 0.0
         assert report.by_currency == []
         assert report.by_asset_class == []
@@ -170,7 +170,7 @@ class TestConcentrationAnalyzer:
         positions = {
             "AAPL": _pos("AAPL", 0.0),
         }
-        report = analyzer.analyze(positions, {"AAPL": {"name": "AAPL", "asset_type": "us_equity"}})
+        report = analyzer.analyze(positions, {"AAPL": {"name": "AAPL", "asset_type": "us_equity"}}, as_of=date(2026, 6, 1))
         assert report.total_value == 0.0
 
     def test_currency_breakdown(self):
@@ -185,7 +185,7 @@ class TestConcentrationAnalyzer:
             "GOOGL": {"name": "Alphabet Inc.", "asset_type": "us_equity"},
             "sh600519": {"name": "贵州茅台", "asset_type": "cn_stock_sh"},
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
 
         assert report.total_value == 100000.0
         assert len(report.by_currency) == 2
@@ -211,7 +211,7 @@ class TestConcentrationAnalyzer:
             "QQQ": {"name": "Invesco QQQ", "asset_type": "etf"},
             "SHV": {"name": "iShares Short Treasury", "asset_type": "bond"},
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
 
         assert report.total_value == 100000.0
         assert len(report.by_asset_class) >= 2
@@ -240,7 +240,7 @@ class TestConcentrationAnalyzer:
             "MSFT": {"name": "Microsoft Corporation", "asset_type": "us_equity"},
             "GOOGL": {"name": "Alphabet Inc.", "asset_type": "us_equity"},
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
 
         assert len(report.by_issuer) == 3
         apple = next(i for i in report.by_issuer if i.key == "Apple Inc.")
@@ -252,14 +252,14 @@ class TestConcentrationAnalyzer:
         analyzer = ConcentrationAnalyzer()
         positions = {"AAPL": _pos("AAPL", 100000.0)}
         meta = {"AAPL": {"name": "Apple Inc.", "asset_type": "us_equity"}}
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         assert report.by_issuer[0].key == "Apple Inc."
 
     def test_issuer_falls_back_to_asset_id(self):
         analyzer = ConcentrationAnalyzer()
         positions = {"UNKNOWN_ASSET": _pos("UNKNOWN_ASSET", 100000.0)}
         meta = {"UNKNOWN_ASSET": {}}
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         assert report.by_issuer[0].key == "UNKNOWN_ASSET"
 
     def test_warning_single_currency(self):
@@ -274,7 +274,7 @@ class TestConcentrationAnalyzer:
             "MSFT": {"name": "MSFT", "asset_type": "us_equity"},
             "EUR_ASSET": {"name": "EUR Asset", "asset_type": "us_equity"},
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         warnings = report.warnings
         assert any("USD" in w and "80%" in w for w in warnings)
 
@@ -290,7 +290,7 @@ class TestConcentrationAnalyzer:
             "CNY_1": {"name": "A Share 1", "asset_type": "cn_stock"},
             "EUR_1": {"name": "EU Asset", "asset_type": "hk_equity"},
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         # No single currency exceeds 80%
         assert not any("币种" in w for w in report.warnings)
 
@@ -298,7 +298,7 @@ class TestConcentrationAnalyzer:
         analyzer = ConcentrationAnalyzer()
         positions = {"AAPL": _pos("AAPL", 50000.0)}
         meta = {"AAPL": {"name": "Apple Inc.", "asset_type": "us_equity"}}
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         assert any("Apple Inc." in w and "30%" in w for w in report.warnings)
 
     def test_warning_equity_heavy(self):
@@ -313,7 +313,7 @@ class TestConcentrationAnalyzer:
             "MSFT": {"name": "MSFT", "asset_type": "us_equity"},
             "BOND1": {"name": "Treasury Bond", "asset_type": "bond"},
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         assert any("权益" in w and "70%" in w for w in report.warnings)
 
     def test_sorted_descending(self):
@@ -328,7 +328,7 @@ class TestConcentrationAnalyzer:
             "B": {"name": "B", "asset_type": "us_equity"},
             "C": {"name": "C", "asset_type": "us_equity"},
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         # USD should be first (80k), CNY second (10k)
         assert report.by_currency[0].key == "USD"
         assert report.by_currency[0].value == 80000.0
@@ -346,7 +346,7 @@ class TestConcentrationAnalyzer:
                 "manager": "中银理财",
             },
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         assert report.by_issuer[0].key == "中国银行"
 
     def test_uses_manager_when_no_issuer(self):
@@ -359,7 +359,7 @@ class TestConcentrationAnalyzer:
                 "manager": "华夏基金",
             },
         }
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         assert report.by_issuer[0].key == "华夏基金"
 
     def test_multiple_warnings_combined(self):
@@ -368,6 +368,6 @@ class TestConcentrationAnalyzer:
             "AAPL": _pos("AAPL", 90000.0, currency="USD"),
         }
         meta = {"AAPL": {"name": "Apple Inc.", "asset_type": "us_equity"}}
-        report = analyzer.analyze(positions, meta)
+        report = analyzer.analyze(positions, meta, as_of=date(2026, 6, 1))
         # Should have both single-currency warning AND single-issuer warning AND equity warning
         assert len(report.warnings) >= 2

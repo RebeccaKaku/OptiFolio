@@ -172,6 +172,7 @@ class AlertEngine:
     def check_maturity(
         self,
         products: List[Dict[str, Any]],
+        as_of: date,
         within_days: int = DEFAULT_MATURITY_WINDOW_DAYS,
     ) -> List[Alert]:
         """Alert for products approaching maturity, lockup expiry, or open date.
@@ -182,12 +183,12 @@ class AlertEngine:
         Args:
             products: List of product dicts.  Each must have at least a
                 ``product_id`` or ``name`` key for identification.
+            as_of: Reference date for computing days-until-maturity.
             within_days: Look-ahead window in days (default 30).
 
         Returns:
             List of ``Alert`` objects (one per approaching deadline).
         """
-        today = date.today()
         alerts: List[Alert] = []
 
         date_keys = ("maturity_date", "lockup_end_date", "open_date", "next_open_date")
@@ -204,7 +205,7 @@ class AlertEngine:
                 if target is None:
                     continue
 
-                days_left = (target - today).days
+                days_left = (target - as_of).days
 
                 if 0 <= days_left <= within_days:
                     label_map = {
@@ -434,6 +435,7 @@ class AlertEngine:
     def check_open_windows(
         self,
         fund_statuses: List[Dict[str, Any]],
+        as_of: date,
         window_days: int = DEFAULT_OPEN_WINDOW_DAYS,
     ) -> List[Alert]:
         """Alert for fund subscription/redemption window events.
@@ -450,12 +452,12 @@ class AlertEngine:
 
         Args:
             fund_statuses: List of fund status dicts.
+            as_of: Reference date for computing days-to-next-open.
             window_days: Look-ahead window for ``next_open_date`` (default 30).
 
         Returns:
             List of ``Alert`` objects.
         """
-        today = date.today()
         alerts: List[Alert] = []
 
         for fs in fund_statuses:
@@ -520,7 +522,7 @@ class AlertEngine:
             if next_open_raw is not None:
                 next_open = _parse_date(next_open_raw)
                 if next_open is not None:
-                    days_left = (next_open - today).days
+                    days_left = (next_open - as_of).days
                     if 0 <= days_left <= window_days:
                         alerts.append(Alert(
                             alert_id=_make_id("open_window", code, f"{days_left}d"),
@@ -586,11 +588,13 @@ class AlertEngine:
                 alerts.append(result)
 
         # ── Maturity ─────────────────────────────────────────────────────
+        as_of = context.get("as_of")
         products = context.get("products")
-        if products:
+        if products and as_of is not None:
             alerts.extend(
                 self.check_maturity(
                     products,
+                    as_of=as_of,
                     within_days=int(
                         context.get("maturity_within_days", self.DEFAULT_MATURITY_WINDOW_DAYS)
                     ),
@@ -628,10 +632,11 @@ class AlertEngine:
 
         # ── Open windows ─────────────────────────────────────────────────
         fund_statuses = context.get("fund_statuses")
-        if fund_statuses:
+        if fund_statuses and as_of is not None:
             alerts.extend(
                 self.check_open_windows(
                     fund_statuses,
+                    as_of=as_of,
                     window_days=int(
                         context.get("open_window_days", self.DEFAULT_OPEN_WINDOW_DAYS)
                     ),

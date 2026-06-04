@@ -124,6 +124,7 @@ class ConcentrationAnalyzer:
         self,
         positions: Dict[str, PositionValue],
         asset_meta: Dict[str, Dict[str, Any]],
+        as_of: date,
     ) -> ConcentrationReport:
         """Analyze concentration from a set of valued positions.
 
@@ -131,29 +132,23 @@ class ConcentrationAnalyzer:
             positions: {asset_id: PositionValue} from ValuationEngine.
             asset_meta: {asset_id: {name, asset_type, currency, issuer, manager, ...}}
                         Loaded from config/asset_registry.yaml.
+            as_of: Valuation date for the report.
 
         Returns:
             ConcentrationReport with three breakdown axes and threshold warnings.
         """
         if not positions:
             return ConcentrationReport(
-                as_of=date.today(),
+                as_of=as_of,
                 total_value=0.0,
             )
 
         total_value = sum(p.value_base for p in positions.values())
         if total_value <= 0:
             return ConcentrationReport(
-                as_of=date.today(),
+                as_of=as_of,
                 total_value=0.0,
             )
-
-        # Determine as_of from the first position (all positions should share
-        # the same valuation date in practice).
-        as_of = date.today()
-        first_pos = next(iter(positions.values()), None)
-        if first_pos is not None and first_pos.price_date is not None:
-            as_of = first_pos.price_date
 
         # ── Currency breakdown ──────────────────────────────────────────
         currency_buckets: Dict[str, Dict[str, Any]] = {}
