@@ -8,92 +8,53 @@ Usage:
 
 from __future__ import annotations
 
-
-class _LazyStore:
-    """Lazy proxy for CanonicalStore — avoids importing storage_dept at module level."""
-
-    def __init__(self) -> None:
-        self._store = None
-
-    def _get(self):
-        if self._store is None:
-            from .storage_dept.store import CanonicalStore
-            self._store = CanonicalStore()
-        return self._store
-
-    def __getattr__(self, name: str):
-        return getattr(self._get(), name)
+from .serving_dept.provider import DataProvider
 
 
 class FinData:
-    """Unified data facade. Phase 1: storage only. Later phases add orchestrator/fetcher/serving."""
+    """Unified data facade. Delegates all requests to DataProvider."""
 
     def __init__(self) -> None:
-        self._store = _LazyStore()
+        self._provider = DataProvider()
 
-    def prices(
-        self,
-        symbol: str,
-        start: str | None = None,
-        end: str | None = None,
-        mode: str = "fast",
-    ):
-        """Get price series for an asset.
+    @property
+    def _store(self):
+        """Backward-compatible store accessor — delegates to provider."""
+        return self._provider._store
 
-        Args:
-            symbol: Asset identifier (e.g. 'AAPL').
-            start: Start date string (e.g. '2024-01-01').
-            end: End date string.
-            mode: 'fast' (cached only) or 'live' (refresh then return).
+    @_store.setter
+    def _store(self, value):
+        self._provider._store = value
 
-        Returns:
-            Price series as a pandas Series, or None if unavailable.
-        """
-        if mode == "live":
-            # Phase 1 stub: live mode just warns
-            import warnings
+    def prices(self, symbol, start=None, end=None, mode="fast"):
+        return self._provider.prices(symbol, start=start, end=end, mode=mode)
 
-            warnings.warn("Live mode not yet implemented — returning cached data")
-        series = self._store.get_prices([symbol], start=start, end=end)
-        if series.empty or symbol not in series.columns:
-            return None
-        return series[symbol]
+    def ohlcv(self, symbol, start=None, end=None, mode="fast"):
+        return self._provider.ohlcv(symbol, start=start, end=end, mode=mode)
 
-    def ohlcv(
-        self,
-        symbol: str,
-        start: str | None = None,
-        end: str | None = None,
-    ):
-        """Raw OHLCV DataFrame."""
-        import pandas as pd
+    def panel(self, symbols, start=None, end=None, mode="fast"):
+        return self._provider.panel(symbols, start=start, end=end, mode=mode)
 
-        result = self._store.get_prices([symbol], start=start, end=end)
-        if result.empty or symbol not in result.columns:
-            return None
-        return pd.DataFrame(result[symbol])
+    def returns(self, symbol, start=None, end=None, frequency="D"):
+        return self._provider.returns(symbol, start=start, end=end, frequency=frequency)
 
-    def panel(
-        self,
-        symbols: list[str],
-        start: str | None = None,
-        end: str | None = None,
-    ):
-        """Multi-asset price matrix (date x asset_id)."""
-        return self._store.get_prices(symbols, start=start, end=end)
+    def metrics(self, symbol, metric="all", start=None, end=None, risk_free_rate=0.0):
+        return self._provider.metrics(symbol, metric=metric, start=start, end=end, risk_free_rate=risk_free_rate)
 
-    def list_assets(self) -> list[str]:
-        """Return all asset IDs in storage."""
-        return self._store.list_assets()
+    def rate(self, rate_id="1y_cn"):
+        return self._provider.rate(rate_id)
 
-    def missing_report(
-        self,
-        assets: list[str],
-        start: str | None = None,
-        end: str | None = None,
-    ):
-        """Return data completeness report per asset."""
-        return self._store.missing_report(assets, start=start, end=end)
+    def fx_rate(self, from_cur, to_cur, date_str=None):
+        return self._provider.fx_rate(from_cur, to_cur, date_str=date_str)
+
+    def export(self, symbol, start=None, end=None, format="csv"):
+        return self._provider.export(symbol, start=start, end=end, format=format)
+
+    def list_assets(self):
+        return self._provider._store.list_assets()
+
+    def missing_report(self, assets, start=None, end=None):
+        return self._provider._store.missing_report(assets, start=start, end=end)
 
 
 fd = FinData()
