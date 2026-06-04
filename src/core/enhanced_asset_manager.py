@@ -48,9 +48,12 @@ class EnhancedAssetManager(IAssetManager):
         # 传统导入器（用于向后兼容）
         self.importer = AssetImporter(registry_path)
         
-        # 数据获取器工厂
-        from src.data_core.fetchers.factory import get_factory
-        self.fetcher_factory = get_factory()
+        # 数据获取器工厂 (factory module removed; legacy path kept for compatibility)
+        try:
+            from src.data_core.fetchers.factory import get_factory
+            self.fetcher_factory = get_factory()
+        except ImportError:
+            self.fetcher_factory = None
         
         # 迁移现有数据到数据库
         self._migrate_legacy_data()
@@ -332,6 +335,8 @@ class EnhancedAssetManager(IAssetManager):
     
     def get_fetcher_for_type(self, asset_type: str) -> Optional[Any]:
         """获取资产类型对应的Fetcher"""
+        if self.fetcher_factory is None:
+            return None
         return self.fetcher_factory.get_fetcher(asset_type)
     
     # ==================== 关注机制相关方法 ====================

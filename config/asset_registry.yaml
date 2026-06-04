@@ -3,7 +3,7 @@ assets:
   attributes:
     exchange: SZ
   currency: CNY
-  last_updated: '2026-05-22T03:58:08.118695'
+  last_updated: '2026-06-04T16:28:48.057959'
   name: 贵州茅台
   source: akshare_stock_info
   symbol: '600519'
@@ -24,10 +24,8 @@ assets:
   symbol: EUR/USD
 - asset_type: us_equity
   attributes:
-    attributes:
-      attributes:
-        exchange: NMS
-        sector: Communication Services
+    exchange: NMS
+    sector: Communication Services
   currency: USD
   last_updated: '2026-02-18T00:16:40.855410'
   name: Alphabet Inc.
@@ -44,12 +42,9 @@ assets:
   symbol: MSFT
 - asset_type: currency
   attributes:
-    attributes:
-      attributes:
-        attributes:
-          base_currency: USD
-          pair_type: major
-          quote_currency: CAD
+    base_currency: USD
+    pair_type: major
+    quote_currency: CAD
   currency: USD
   last_updated: '2026-02-13T21:11:15.732378'
   name: USD/CAD
@@ -65,15 +60,12 @@ assets:
   symbol: sh000001
 - asset_type: cn_stock
   attributes:
-    attributes:
-      attributes:
-        attributes:
-          exchange: SH
+    exchange: SH
   currency: CNY
   last_updated: '2026-02-13T21:11:15.725891'
   name: 贵州茅台
   source: akshare_stock_info
   symbol: sh600519
 description: 资产注册表 (自动前缀+智能币种)
-last_updated: '2026-05-22T03:58:08.118755'
+last_updated: '2026-06-04T16:28:48.058025'
 version: '2.0'

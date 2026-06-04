@@ -1,0 +1,1 @@
+FinData/orchestration/ingest.py:Routes all fetch requests through FinData fetcher_dept and storage_dept.

@@ -2,11 +2,26 @@
 
 OptiFolio 是一个集成了量化资产配置、多资产投资组合优化（如 Markowitz、Black-Litterman 模型）以及多数据源增量同步的统一金融计算与抓取框架。
 
+## 当前状态
+
+项目正在从 legacy Streamlit 单体应用迁移到 FastAPI + services + future React frontend 的分层架构。当前实现状态、代码审查问题、近期计划和远期路线图见：
+
+- `docs/CURRENT_STATE_2026-06-03.md`
+- `docs/README.md`
+- `docs/TIME_ALIGNMENT_DESIGN.md`
+
+当前最重要的工程/金融风险：
+
+- 跨市场时间对齐和可知道性检查仍未完全落地，混合美股/A股/加密货币组合存在 look-ahead-bias 风险。
+- Portfolio V2 是新的日期感知估值路径，但仍需补强 FX 来源、逐日 corporate actions 和 per-position price metadata。
+- `app.py` 仍保留为 legacy dashboard；新功能应优先进入 `src/services/`、`src/api/fastapi_app.py` 和 `src/data_foundation/`。
+- 浏览器前端需要 POST API 时，当前 CORS method 配置还需要补齐。
+
 ## 运行环境与启动
 
 ### Python 版本要求
-本项目要求 Python **>=3.11, <3.14**。
-> 注意：目前量化工具栈在 Python 3.14 上尚不稳定，请务必使用推荐版本。
+推荐使用 Python **>=3.11, <3.14**。
+> 注意：`pyproject.toml` 当前允许 `>=3.10,<3.14`，但开发和量化依赖栈建议使用 3.11/3.12/3.13。Python 3.14 暂不作为正式支持目标。
 
 ### 启动应用
 推荐使用统一的启动脚本，该脚本会自动完成本地环境初始化（Bootstrap）并启动 API 服务：
@@ -16,6 +31,20 @@ python tools/start_app.py
 ```
 
 服务默认运行在 `http://localhost:8011`。
+
+### 测试
+
+在当前 Windows 工作区，直接运行 `pytest -q` 可能会扫到 `scratch/pytest` 或使用受限临时目录。推荐使用：
+
+```powershell
+python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider
+```
+
+最近一次验证结果：
+
+```text
+77 passed, 12 skipped
+```
 
 ### 常用接口
 

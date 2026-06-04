@@ -1,0 +1,247 @@
+"""QualityGate — the data quality guardian for the FinData storage department.
+
+Every incoming DataFrame is inspected against 8 quality checks before
+it is allowed into canonical storage. Rejections are fatal; flags warn
+but do not block.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import List, Optional
+
+import pandas as pd
+
+_log = logging.getLogger(__name__)
+
+from src.data_foundation.schemas import _COLUMN_ALIASES, _canonical_column_name
+
+
+@dataclass
+class QualityReport:
+    """Result of a QualityGate inspection.
+
+    Attributes:
+        passed: True if all fatal checks passed.
+        checks: List of individual check results with name, passed, and detail.
+        reject_reasons: Human-readable reasons for rejection (fatal).
+        flags: Human-readable warnings (non-fatal).
+    """
+
+    passed: bool
+    checks: List[dict] = field(default_factory=list)
+    reject_reasons: List[str] = field(default_factory=list)
+    flags: List[str] = field(default_factory=list)
+
+
+class QualityGate:
+    """Multi-check data quality inspector.
+
+    The gate runs eight checks on every incoming DataFrame:
+    1. Non-empty          → REJECT on empty
+    2. Price column       → REJECT if no close/adj_close column
+    3. Row count          → FLAG if long date span but very few rows
+    4. NaN proportion     → REJECT if close column is >50% NaN
+    5. Positive prices    → REJECT if close <= 0 found
+    6. Time reversal      → REJECT if new data is older than existing
+    7. Price spikes       → FLAG if any daily change exceeds 50%
+    8. Duplicate data     → REJECT if identical to already-stored data
+
+    All rejections are FATAL — data will NOT be stored.
+    Flags are warnings — data is stored but flagged.
+    """
+
+    def inspect(
+        self,
+        df: pd.DataFrame,
+        existing_data: Optional[pd.DataFrame] = None,
+    ) -> QualityReport:
+        """Run all quality checks against the incoming DataFrame.
+
+        Args:
+            df: Raw incoming DataFrame from a data fetcher.
+            existing_data: Previously stored data for the same asset
+                           (used for time-reversal and duplicate checks).
+
+        Returns:
+            QualityReport with pass/fail status, per-check details,
+            rejection reasons, and warning flags.
+        """
+        checks: list[dict] = []
+        reject_reasons: list[str] = []
+        flags: list[str] = []
+
+        # Map column names to canonical form for consistent checking
+        mapped = self._map_columns(df)
+
+        # ── Check 1: Non-empty ────────────────────────────────────────
+        if df.empty:
+            reject_reasons.append("Empty DataFrame — likely network error")
+            checks.append({"name": "non_empty", "passed": False, "detail": "DataFrame is empty"})
+            return QualityReport(
+                passed=False, checks=checks,
+                reject_reasons=reject_reasons, flags=flags,
+            )
+        checks.append({"name": "non_empty", "passed": True, "detail": ""})
+
+        # ── Check 2: Price column ─────────────────────────────────────
+        has_close = "close" in mapped or "adj_close" in mapped
+        if not has_close:
+            reject_reasons.append("Missing price column — need 'close' or 'adj_close'")
+            checks.append({"name": "price_column", "passed": False, "detail": str(list(df.columns))})
+            return QualityReport(
+                passed=False, checks=checks,
+                reject_reasons=reject_reasons, flags=flags,
+            )
+        checks.append({"name": "price_column", "passed": True, "detail": ""})
+
+        # Determine which price column to use
+        price_col = "close" if "close" in mapped else "adj_close"
+
+        # ── Check 3: Row count vs date span ───────────────────────────
+        if "date" in mapped:
+            dates = pd.to_datetime(mapped["date"], errors="coerce")
+            valid_dates = dates.dropna()
+            if len(valid_dates) >= 2:
+                date_span = (valid_dates.max() - valid_dates.min()).days
+                if date_span > 200 and len(df) < 5:
+                    flags.append(
+                        f"Suspiciously few rows: {len(df)} rows spanning {date_span} days"
+                    )
+                    checks.append({
+                        "name": "row_count",
+                        "passed": True,
+                        "detail": f"FLAG: {len(df)} rows over {date_span} days",
+                    })
+                else:
+                    checks.append({"name": "row_count", "passed": True, "detail": ""})
+            else:
+                checks.append({"name": "row_count", "passed": True, "detail": "insufficient date data"})
+        else:
+            checks.append({"name": "row_count", "passed": True, "detail": "no date column"})
+
+        # ── Check 4: NaN proportion in price column ───────────────────
+        price_series = pd.to_numeric(mapped[price_col], errors="coerce")
+        nan_rate = price_series.isna().mean()
+        if nan_rate > 0.5:
+            reject_reasons.append(f"Majority NaN values: {nan_rate:.1%} NaN in {price_col}")
+            checks.append({"name": "nan_check", "passed": False, "detail": f"{nan_rate:.1%} NaN"})
+        else:
+            checks.append({"name": "nan_check", "passed": True, "detail": f"{nan_rate:.1%} NaN"})
+
+        # ── Check 5: Positive prices ──────────────────────────────────
+        valid_prices = price_series.dropna()
+        if len(valid_prices) > 0 and (valid_prices <= 0).any():
+            reject_reasons.append("Non-positive prices found — data is corrupt or invalid")
+            checks.append({"name": "positive_prices", "passed": False, "detail": "REJECT: close <= 0"})
+        else:
+            checks.append({"name": "positive_prices", "passed": True, "detail": ""})
+
+        # ── Check 6: Time reversal ────────────────────────────────────
+        if existing_data is not None and not existing_data.empty and "date" in mapped:
+            new_dates = pd.to_datetime(mapped["date"], errors="coerce").dropna()
+            if len(new_dates) > 0:
+                new_max = new_dates.max()
+                if "date" in existing_data.columns:
+                    existing_max = pd.to_datetime(existing_data["date"], errors="coerce").max()
+                    if pd.notna(existing_max) and new_max < existing_max:
+                        reject_reasons.append(
+                            f"Newer data already exists: new max date {new_max.date()} "
+                            f"< existing max date {existing_max.date()}"
+                        )
+                        checks.append({
+                            "name": "time_reversal",
+                            "passed": False,
+                            "detail": f"new max {new_max.date()} < existing max {existing_max.date()}",
+                        })
+                    else:
+                        checks.append({"name": "time_reversal", "passed": True, "detail": ""})
+                else:
+                    checks.append({"name": "time_reversal", "passed": True, "detail": "no date in existing"})
+            else:
+                checks.append({"name": "time_reversal", "passed": True, "detail": "no valid dates"})
+        else:
+            checks.append({"name": "time_reversal", "passed": True, "detail": "no existing data to compare"})
+
+        # ── Check 7: Price spikes (daily change > 50%) ────────────────
+        if "date" in mapped and len(mapped) >= 2:
+            ts = mapped[["date", price_col]].copy()
+            ts["date"] = pd.to_datetime(ts["date"], errors="coerce")
+            ts[price_col] = pd.to_numeric(ts[price_col], errors="coerce")
+            ts = ts.dropna(subset=["date", price_col]).sort_values("date")
+            if len(ts) >= 2:
+                ts["pct_change"] = ts[price_col].pct_change().abs()
+                spike_mask = ts["pct_change"] > 0.5
+                if spike_mask.any():
+                    spike_count = spike_mask.sum()
+                    flags.append(
+                        f"Extreme price movements detected: {spike_count} day(s) with >50% daily change"
+                    )
+                    checks.append({
+                        "name": "price_spikes",
+                        "passed": True,
+                        "detail": f"FLAG: {spike_count} spikes >50%",
+                    })
+                else:
+                    checks.append({"name": "price_spikes", "passed": True, "detail": ""})
+            else:
+                checks.append({"name": "price_spikes", "passed": True, "detail": "insufficient data after cleaning"})
+        else:
+            checks.append({"name": "price_spikes", "passed": True, "detail": "no date column or single row"})
+
+        # ── Check 8: Duplicate data ───────────────────────────────────
+        if existing_data is not None and not existing_data.empty:
+            if self._is_duplicate(mapped, existing_data):
+                reject_reasons.append("Duplicate data — identical to already-stored records")
+                checks.append({"name": "duplicate_check", "passed": False, "detail": "data already exists"})
+            else:
+                checks.append({"name": "duplicate_check", "passed": True, "detail": ""})
+        else:
+            checks.append({"name": "duplicate_check", "passed": True, "detail": "no existing data to compare"})
+
+        # ── Final report ──────────────────────────────────────────────
+        passed = len(reject_reasons) == 0
+        return QualityReport(
+            passed=passed,
+            checks=checks,
+            reject_reasons=reject_reasons,
+            flags=flags,
+        )
+
+    @staticmethod
+    def _map_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """Return a DataFrame with column names mapped to canonical form."""
+        mapped = df.copy()
+        mapped.columns = [_canonical_column_name(c) for c in df.columns]
+        return mapped
+
+    @staticmethod
+    def _is_duplicate(new_df: pd.DataFrame, existing: pd.DataFrame) -> bool:
+        """Check whether the incoming data is already fully present in storage."""
+        # Normalize columns on both sides for comparison
+        new_mapped = new_df.copy()
+        new_mapped.columns = [_canonical_column_name(c) for c in new_df.columns]
+        existing_mapped = existing.copy()
+        if existing_mapped.columns.tolist() != existing.columns.tolist() or (
+            set(existing_mapped.columns) != set(existing.columns)
+        ):
+            existing_mapped.columns = [_canonical_column_name(c) for c in existing.columns]
+
+        # Compare on common columns
+        common_cols = [c for c in new_mapped.columns if c in existing_mapped.columns]
+        if not common_cols:
+            return False
+
+        new_subset = new_mapped[common_cols].reset_index(drop=True)
+        existing_subset = existing_mapped[common_cols].reset_index(drop=True)
+
+        if new_subset.empty or existing_subset.empty:
+            return False
+
+        # Check if every row in new_df has a matching row in existing
+        try:
+            merged = new_subset.merge(existing_subset, on=common_cols, how="left", indicator=True)
+            return (merged["_merge"] == "both").all()
+        except Exception:
+            return False
