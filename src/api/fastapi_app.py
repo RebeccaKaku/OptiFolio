@@ -158,6 +158,10 @@ def create_app() -> FastAPI:
             get_application_services().research.get_missing_report(assets, start, end)
         )
 
+    @app.get("/api/data/ingestion/runs", tags=["data"])
+    def ingestion_runs() -> JSONResponse:
+        return _json_response(get_application_services().ingestion.get_runs())
+
     @app.post("/api/research/backtest", tags=["research"])
     def run_backtest(payload: BacktestPayload) -> JSONResponse:
         return _json_response(
