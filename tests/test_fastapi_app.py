@@ -63,3 +63,15 @@ def test_research_backtest_route_uses_service_layer(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["data"]["assets"] == ["AAA", "BBB"]
+
+def test_ingestion_runs_endpoint():
+    from fastapi.testclient import TestClient
+    from src.api.fastapi_app import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    response = client.get("/api/data/ingestion/runs")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "runs" in data["data"]

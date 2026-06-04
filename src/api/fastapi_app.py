@@ -175,6 +175,14 @@ def create_app() -> FastAPI:
             get_application_services().research.get_quality_reports(asset_id)
         )
 
+    @app.get("/api/data/ingestion/runs", tags=["market"])
+    def ingestion_runs(
+        limit: int = Query(default=100, ge=1, le=1000),
+    ) -> JSONResponse:
+        from src.services.market_data_service import MarketDataIngestionService
+
+        return _json_response(MarketDataIngestionService().get_ingestion_runs(limit))
+
     @app.post("/api/research/backtest", tags=["research"])
     def run_backtest(payload: BacktestPayload) -> JSONResponse:
         return _json_response(
