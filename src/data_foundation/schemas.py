@@ -7,6 +7,9 @@ from typing import Optional
 import pandas as pd
 
 
+STORE_VERSION: str = "1.0"
+
+
 CANONICAL_MARKET_COLUMNS = [
     "asset_id",
     "date",

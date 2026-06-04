@@ -15,7 +15,7 @@ import pandas as pd
 
 _log = logging.getLogger(__name__)
 
-from .schemas import _COLUMN_ALIASES, _canonical_column_name
+from src.data_foundation.schemas import _COLUMN_ALIASES, _canonical_column_name
 
 
 @dataclass

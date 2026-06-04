@@ -14,21 +14,3 @@ from src.data_foundation.schemas import (  # noqa: F401
 CANONICAL_COLUMNS = CANONICAL_MARKET_COLUMNS  # alias for backward compat
 
 store_version: str = "1.0"
-
-# Private helpers kept locally for quality.py compatibility
-_COLUMN_ALIASES = {
-    "asset": "asset_id",
-    "symbol": "asset_id",
-    "ticker": "asset_id",
-    "datetime": "date",
-    "time": "date",
-    "timestamp": "date",
-    "adj close": "adj_close",
-    "adjusted_close": "adj_close",
-    "adjusted close": "adj_close",
-}
-
-
-def _canonical_column_name(name: object) -> str:
-    normalized = str(name).strip().replace("_", " ").lower()
-    return _COLUMN_ALIASES.get(normalized, normalized.replace(" ", "_"))

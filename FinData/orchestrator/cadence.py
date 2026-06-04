@@ -95,7 +95,17 @@ def is_update_due(
 
     # For "hourly" frequency: due if trigger time has passed since last update
     if cadence.frequency == "hourly":
-        return age_hours >= 1.0
+        if age_hours >= 1.0:
+            # Check if we're past the trigger time today
+            trigger_today = now_utc.replace(
+                hour=cadence.trigger_after_utc.hour,
+                minute=cadence.trigger_after_utc.minute,
+                second=0,
+                microsecond=0,
+            )
+            if now_utc >= trigger_today:
+                return True
+        return False
 
     # For "daily" / "t+1_morning": due if trigger time has passed today
     # AND the last update was before today's trigger window
@@ -109,13 +119,6 @@ def is_update_due(
         # Trigger time hasn't arrived yet today
         return False
 
-    # Check if we already updated after today's trigger
-    last_trigger_today = last_updated_utc.replace(
-        hour=cadence.trigger_after_utc.hour,
-        minute=cadence.trigger_after_utc.minute,
-        second=0,
-        microsecond=0,
-    )
     if last_updated_utc >= trigger_today:
         return False
 

@@ -168,11 +168,11 @@ class TestRegistry:
     def test_get_fetcher_resolves_known_types(self):
         from FinData.fetcher_dept.registry import get_fetcher, FETCHER_REGISTRY
 
-        # All registered keys should return something (even None for crypto)
+        # All registered keys should return something (even None for crypto/hk_equity)
         for key in FETCHER_REGISTRY:
             val = get_fetcher(key)
-            if key == "crypto":
-                assert val is None
+            if key in ("crypto", "hk_equity"):
+                assert val is None, f"get_fetcher({key!r}) should be None (not yet adapted)"
             else:
                 assert val is not None, f"get_fetcher({key!r}) returned None"
 
@@ -183,11 +183,12 @@ class TestRegistry:
     def test_registry_keys_are_expected(self):
         from FinData.fetcher_dept.registry import FETCHER_REGISTRY
         expected = {
-            "us_equity", "cn_stock", "cn_stock_sh", "cn_stock_sz",
+            "us_equity", "us_etf", "cn_stock", "cn_stock_sh", "cn_stock_sz",
             "cn_fund", "cn_fund_open", "cn_fund_etf", "cn_fund_money",
+            "cn_fund_qdii", "cn_money_market_fund",
             "currency", "forex",
-            "bank_wm_bosc", "bank_wm_boc", "bank_wm_icbc",
-            "crypto",
+            "bank_wmp", "bank_wm_bosc", "bank_wm_boc", "bank_wm_icbc",
+            "crypto", "hk_equity",
         }
         assert set(FETCHER_REGISTRY.keys()) == expected
 
