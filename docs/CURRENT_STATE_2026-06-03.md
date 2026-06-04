@@ -1,6 +1,6 @@
 # OptiFolio Current State And Code Review
 
-**Date**: 2026-06-03
+**Date**: 2026-06-04 (updated after cleanup)
 **Branch**: `master`
 **Package version**: `0.2.0` in `pyproject.toml`
 **Runtime target**: Python `>=3.11, <3.14` recommended for the quant stack; `pyproject.toml` currently allows `>=3.10,<3.14`
