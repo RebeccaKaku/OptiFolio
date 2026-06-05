@@ -4,7 +4,16 @@ from datetime import datetime
 
 @dataclass
 class ExposureItem:
-    dimension: str  # asset_class, currency, region
+    """A single entry in an exposure breakdown.
+
+    Attributes:
+        dimension: Grouping axis (e.g. "asset_class", "currency", "region").
+        bucket: Group value (e.g. "USD", "equity").
+        value: Market value in base currency.
+        pct: Fraction of total portfolio value (0–1).
+        asset_ids: Asset IDs that belong to this group.
+    """
+    dimension: str
     bucket: str
     value: float
     pct: float
@@ -137,7 +146,7 @@ class ExposureAnalyzer:
                 dimension='asset_class',
                 bucket=ac,
                 value=data['value'],
-                pct=data['value'] / total_value if total_value > 0 else 0,
+                pct=round(data['value'] / total_value, 4) if total_value > 0 else 0,
                 asset_ids=data['assets']
             ))
         ac_items.sort(key=lambda x: x.value, reverse=True)
@@ -149,7 +158,7 @@ class ExposureAnalyzer:
                 dimension='currency',
                 bucket=cur,
                 value=data['value'],
-                pct=data['value'] / total_value if total_value > 0 else 0,
+                pct=round(data['value'] / total_value, 4) if total_value > 0 else 0,
                 asset_ids=data['assets']
             ))
         cur_items.sort(key=lambda x: x.value, reverse=True)
