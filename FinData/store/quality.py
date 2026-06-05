@@ -21,7 +21,7 @@ import pandas as pd
 _log = logging.getLogger(__name__)
 
 from src.core.paths import PROJECT_ROOT
-from src.data_foundation.schemas import _COLUMN_ALIASES, _canonical_column_name
+from .schemas import _COLUMN_ALIASES, _canonical_column_name
 
 
 # ── Ingestion quality report (per-batch, in-memory) ──────────────────────────
