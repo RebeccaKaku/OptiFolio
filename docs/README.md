@@ -1,6 +1,6 @@
 # OptiFolio Documentation Index
 
-**Last updated**: 2026-06-03
+**Last updated**: 2026-06-05
 
 This index points to the current docs first. Older Streamlit-era documents remain available for context, but they should not be treated as the implementation source of truth.
 
@@ -10,7 +10,7 @@ This index points to the current docs first. Older Streamlit-era documents remai
 
 | Document | Purpose |
 |---|---|
-| [Current State And Code Review](CURRENT_STATE_2026-06-03.md) | Live project status, risks, standard test command, near-term and long-term roadmap. |
+| [Current State And Code Review](CURRENT_STATE_2026-06-05.md) | Live project status, risks, standard test command, near-term and long-term roadmap. |
 | [Financial Logic And Module Design](FINANCIAL_LOGIC_AND_MODULE_DESIGN.md) | Top-level financial domain model, data contracts, algorithm interfaces, naming refactor, and AI-sized task slices. |
 | [Phase 0 Protection And Refactor Plan](PHASE0_AND_REFACTOR_PLAN.md) | Migration strategy from Streamlit-first app to FastAPI/services/frontend. |
 | [Time Alignment Design](TIME_ALIGNMENT_DESIGN.md) | Critical design for cross-market valuation and look-ahead-bias prevention. |
@@ -47,7 +47,7 @@ This index points to the current docs first. Older Streamlit-era documents remai
 
 ## Legacy Or Stale Docs
 
-These files are retained for history, but current decisions should be checked against [Current State And Code Review](CURRENT_STATE_2026-06-03.md):
+These files are retained for history, but current decisions should be checked against [Current State And Code Review](CURRENT_STATE_2026-06-05.md):
 
 - `代码审查与改进建议.md` - 2026-02 Streamlit-era review.
 - `最终完成报告.md` - historical completion report.
