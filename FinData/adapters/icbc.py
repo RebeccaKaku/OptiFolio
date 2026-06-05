@@ -8,9 +8,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-from .interfaces import AsyncBaseFetcher
-
-class IcbcFetcher(AsyncBaseFetcher):
+class IcbcFetcher:
     """
     ICBC Wealth Management Product (理财产品) Fetcher.
     

@@ -8,7 +8,7 @@ import pytest
 from FinData import fd as fd_import
 from FinData.store.quality import QualityGate, QualityReport
 from FinData.store.repository import CanonicalStore
-from FinData.store.schemas import CANONICAL_COLUMNS, store_version
+from FinData.store.schemas import CANONICAL_COLUMNS, STORE_VERSION
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ class TestFdSingleton:
 
 class TestSchemas:
     def test_store_version_is_set(self):
-        assert store_version == "1.0"
+        assert STORE_VERSION == "1.0"
 
     def test_canonical_columns_contains_required_fields(self):
         required = {"asset_id", "date", "open", "high", "low", "close", "adj_close", "volume", "currency", "source", "timezone"}
