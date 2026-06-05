@@ -600,78 +600,86 @@ class AlertEngine:
 
     # ── Orchestrator ─────────────────────────────────────────────────────
 
-    def run_all(self, context: Dict[str, Any]) -> List[Alert]:
+    def run_all(self, context: Optional[Dict[str, Any]] = None, **kwargs: Any) -> List[Alert]:
         """Run all applicable checks from a single context dictionary.
 
-        Each check is skipped silently when its required data is missing from
-        *context*.
+        Each check is skipped silently when its required data is missing.
 
         Args:
-            context: Dictionary that may contain any of:
-                * ``equity_curve`` (pd.DataFrame) — for drawdown check
-                * ``products`` (List[Dict]) — for maturity check
-                * ``fx_exposure_report`` — for FX loss check
-                * ``current_concentration`` (Dict) — for concentration creep
-                * ``previous_concentration`` (Dict) — for concentration creep
-                * ``fund_statuses`` (List[Dict]) — for open-window check
-                * ``drawdown_threshold_pct`` (float) — override default
-                * ``maturity_within_days`` (int) — override default
-                * ``fx_loss_threshold_pct`` (float) — override default
-                * ``concentration_creep_threshold`` (float) — override default
-                * ``open_window_days`` (int) — override default
+            context: Optional dictionary with check-specific data (see below).
+            **kwargs: Keyword overrides that are merged into *context*
+                (kwargs take precedence).
+
+        Context keys:
+            * ``equity_curve`` (pd.DataFrame) — for drawdown check
+            * ``products`` (List[Dict]) — for maturity check
+            * ``fx_exposure_report`` — for FX loss check
+            * ``current_concentration`` (Dict) — for concentration creep
+            * ``previous_concentration`` (Dict) — for concentration creep
+            * ``fund_statuses`` (List[Dict]) — for open-window check
+            * ``quality_summary`` (Dict) — for stale-price check
+            * ``drawdown_threshold_pct`` (float) — override default
+            * ``maturity_within_days`` (int) — override default
+            * ``fx_loss_threshold_pct`` (float) — override default
+            * ``concentration_creep_threshold`` (float) — override default
+            * ``open_window_days`` (int) — override default
 
         Returns:
             List of all triggered ``Alert`` objects.
         """
+        # Combine context and kwargs, with kwargs taking precedence
+        ctx: Dict[str, Any] = dict(context or {})
+        ctx.update(kwargs)
+
         alerts: List[Alert] = []
 
         # ── Drawdown ─────────────────────────────────────────────────────
-        equity_curve = context.get("equity_curve")
+        equity_curve = ctx.get("equity_curve")
         if equity_curve is not None:
             result = self.check_drawdown(
                 equity_curve,
                 threshold_pct=float(
-                    context.get("drawdown_threshold_pct", self.DEFAULT_DRAWDOWN_THRESHOLD_PCT)
+                    ctx.get("drawdown_threshold_pct", self.DEFAULT_DRAWDOWN_THRESHOLD_PCT)
                 ),
             )
             if result is not None:
                 alerts.append(result)
 
         # ── Maturity ─────────────────────────────────────────────────────
-        as_of = context.get("as_of")
-        products = context.get("products")
+        as_of = ctx.get("as_of")
+        products = ctx.get("products")
         if products and as_of is not None:
             alerts.extend(
                 self.check_maturity(
                     products,
                     as_of=as_of,
                     within_days=int(
-                        context.get("maturity_within_days", self.DEFAULT_MATURITY_WINDOW_DAYS)
+                        ctx.get("maturity_within_days", self.DEFAULT_MATURITY_WINDOW_DAYS)
                     ),
                 )
             )
 
         # ── FX loss ──────────────────────────────────────────────────────
-        fx_report = context.get("fx_exposure_report")
+        fx_report = ctx.get("fx_exposure_report")
         if fx_report is not None:
             result = self.check_fx_loss(
                 fx_report,
                 loss_threshold_pct=float(
-                    context.get("fx_loss_threshold_pct", self.DEFAULT_FX_LOSS_THRESHOLD_PCT)
+                    ctx.get("fx_loss_threshold_pct", self.DEFAULT_FX_LOSS_THRESHOLD_PCT)
                 ),
             )
             if result is not None:
                 alerts.append(result)
 
         # ── Concentration creep ──────────────────────────────────────────
-        cur_conc = context.get("current_concentration")
-        prev_conc = context.get("previous_concentration")
+        cur_conc = ctx.get("current_concentration")
+        prev_conc = ctx.get("previous_concentration")
         if cur_conc is not None and prev_conc is not None:
             result = self.check_concentration_creep(
                 cur_conc,
                 prev_conc,
                 increase_threshold=float(
-                    context.get(
+                    ctx.get(
                         "concentration_creep_threshold",
                         self.DEFAULT_CONCENTRATION_CREEP_THRESHOLD,
                     )
@@ -681,12 +689,12 @@ class AlertEngine:
                 alerts.append(result)
 
         # ── Stale prices ─────────────────────────────────────────────────
-        quality_summary = context.get("quality_summary")
+        quality_summary = ctx.get("quality_summary")
         if quality_summary is not None:
             result = self.check_stale_prices(
                 quality_summary,
                 threshold_pct=float(
-                    context.get(
+                    ctx.get(
                         "stale_price_threshold_pct",
                         self.DEFAULT_STALE_PRICE_THRESHOLD_PCT,
                     )
@@ -696,14 +704,14 @@ class AlertEngine:
                 alerts.append(result)
 
         # ── Open windows ─────────────────────────────────────────────────
-        fund_statuses = context.get("fund_statuses")
+        fund_statuses = ctx.get("fund_statuses")
         if fund_statuses and as_of is not None:
             alerts.extend(
                 self.check_open_windows(
                     fund_statuses,
                     as_of=as_of,
                     window_days=int(
-                        context.get("open_window_days", self.DEFAULT_OPEN_WINDOW_DAYS)
+                        ctx.get("open_window_days", self.DEFAULT_OPEN_WINDOW_DAYS)
                     ),
                 )
             )

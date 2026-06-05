@@ -7,9 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-from .interfaces import AsyncBaseFetcher
-
-class BocFetcher(AsyncBaseFetcher):
+class BocFetcher:
     """
     Bank of China Wealth Management Product (理财产品) Fetcher.
     

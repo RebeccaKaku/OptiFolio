@@ -3,7 +3,7 @@
 import os
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -49,19 +49,6 @@ _ERROR_CODE_STATUS = {
     "LIQUIDITY_ERROR": 500,
     "GHOSTFOLIO_EXPORT_ERROR": 500,
 }
-
-
-def _alert_to_dict(alert) -> dict:
-    """Serialize an Alert dataclass to a JSON-safe dict."""
-    return {
-        "alert_id": alert.alert_id,
-        "title": alert.title,
-        "reason": alert.reason,
-        "evidence": alert.evidence,
-        "severity": alert.severity,
-        "suggested_action": alert.suggested_action,
-        "created_at": alert.created_at,
-    }
 
 
 def _json_response(payload: dict) -> JSONResponse:
@@ -222,19 +209,14 @@ def create_app() -> FastAPI:
     @app.get("/api/alerts", tags=["alerts"])
     def list_alerts() -> JSONResponse:
         """Run all risk checks and return any triggered alerts."""
-        alerts = get_application_services().alerts.run_all({})
-        return _json_response(
-            {"alerts": [_alert_to_dict(a) for a in alerts], "count": len(alerts)}
-        )
+        alerts = get_application_services().alerts.run_all()
+        return _json_response(success([a.to_dict() for a in alerts]))
 
     @app.post("/api/alerts/run", tags=["alerts"])
-    def run_alerts(payload: Dict[str, Any]) -> JSONResponse:
-        """Run risk checks with optional context data."""
-        ctx = payload or {}
-        alerts = get_application_services().alerts.run_all(ctx)
-        return _json_response(
-            {"alerts": [_alert_to_dict(a) for a in alerts], "count": len(alerts)}
-        )
+    def run_alerts(ctx: Optional[Dict[str, Any]] = Body(None)) -> JSONResponse:
+        """Run all risk checks with the provided context dictionary."""
+        alerts = get_application_services().alerts.run_all(**(ctx or {}))
+        return _json_response(success([a.to_dict() for a in alerts]))
 
     @app.get("/api/data/ingestion/runs", tags=["data"])
     def ingestion_runs() -> JSONResponse:

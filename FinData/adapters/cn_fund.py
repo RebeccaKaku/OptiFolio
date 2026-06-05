@@ -23,12 +23,8 @@ from typing import Optional
 import asyncio, pandas as pd
 from typing import Optional
 
-class AsyncBaseFetcher:
-    async def fetch(self, symbol, start_date, end_date, timeframe="1d", exchange=None, **kwargs):
-        raise NotImplementedError
 
-
-class CnFundFetcher(AsyncBaseFetcher):
+class CnFundFetcher:
     """
     中国公募基金抓取器 (带本地持久化缓存)
     

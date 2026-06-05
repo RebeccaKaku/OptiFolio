@@ -135,8 +135,14 @@ class TestLiveRun:
         """A successful run returns all expected keys and no errors."""
         with tempfile.TemporaryDirectory() as tmp:
             runner = DailyRunner(snapshot_dir=Path(tmp))
+            # Use a mock alert engine to avoid auto-wire via ApplicationServices
+            mock_alerts = MagicMock()
+            mock_alerts.run_all.return_value = []
             with patch.object(runner, "_run_ingestion"):
-                result = runner.run(portfolio_svc=_mock_portfolio_svc())
+                result = runner.run(
+                    portfolio_svc=_mock_portfolio_svc(),
+                    alert_engine=mock_alerts,
+                )
 
             assert result["dry_run"] is False
             assert result["date"] == date.today().isoformat()
@@ -222,7 +228,7 @@ class TestLiveRun:
 
 class TestAlertEngine:
     def test_alert_engine_none_skips_gracefully(self):
-        """When alert_engine is None, alerts step logs info and returns []."""
+        """When alert_engine is None and service graph unavailable, returns []."""
         runner = DailyRunner()
         result = runner.run(
             portfolio_svc=_mock_portfolio_svc(),
@@ -232,10 +238,14 @@ class TestAlertEngine:
         assert result["alerts"] == []
         assert "alerts" in result["steps_completed"]
 
-    def test_alert_engine_run_method_is_called(self):
-        """When alert_engine has a run() method, it should be called."""
+    def test_alert_engine_run_all_is_called(self):
+        """When alert_engine has run_all(), it should be called with **ctx."""
+        alert = MagicMock()
+        alert.alert_id = "stale_price_threshold"
+        alert.to_dict.return_value = {"alert_id": "stale_price_threshold", "severity": "warning"}
+
         alert_engine = MagicMock()
-        alert_engine.run.return_value = [{"severity": "warning", "message": "Test alert"}]
+        alert_engine.run_all.return_value = [alert]
 
         with tempfile.TemporaryDirectory() as tmp:
             runner = DailyRunner(snapshot_dir=Path(tmp))
@@ -244,28 +254,28 @@ class TestAlertEngine:
                     portfolio_svc=_mock_portfolio_svc(),
                     alert_engine=alert_engine,
                 )
-            alert_engine.run.assert_called_once()
-            assert result["alerts"] == [{"severity": "warning", "message": "Test alert"}]
+            alert_engine.run_all.assert_called_once()
+            assert len(result["alerts"]) == 1
+            assert result["alerts"][0]["alert_id"] == "stale_price_threshold"
 
-    def test_alert_engine_check_all_is_called(self):
-        """When alert_engine has check_all() but no run(), prefer check_all."""
-        alert_engine = MagicMock(spec=[])  # no methods by default
-        alert_engine.check_all = MagicMock(return_value=[])
+    def test_alert_engine_receives_kwargs(self):
+        """run_all receives kwargs from the scheduler."""
+        alert_engine = MagicMock()
+        alert_engine.run_all.return_value = []
 
         with tempfile.TemporaryDirectory() as tmp:
             runner = DailyRunner(snapshot_dir=Path(tmp))
             with patch.object(runner, "_run_ingestion"):
-                result = runner.run(
+                runner.run(
                     portfolio_svc=_mock_portfolio_svc(),
                     alert_engine=alert_engine,
                 )
-            alert_engine.check_all.assert_called_once()
-            assert result["alerts"] == []
+            alert_engine.run_all.assert_called_once()
 
     def test_alert_engine_error_is_caught(self):
         """If alert_engine raises, the error is captured."""
         alert_engine = MagicMock()
-        alert_engine.run.side_effect = RuntimeError("Alert failure")
+        alert_engine.run_all.side_effect = RuntimeError("Alert failure")
 
         with tempfile.TemporaryDirectory() as tmp:
             runner = DailyRunner(snapshot_dir=Path(tmp))
