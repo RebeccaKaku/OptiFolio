@@ -50,7 +50,13 @@ class IngestionLog:
             existing_df = pd.read_parquet(self.log_path)
             # Remove existing run_id if it's an update
             existing_df = existing_df[existing_df["run_id"] != run.run_id]
-            df = pd.concat([existing_df, df], ignore_index=True)
+
+            if existing_df.empty:
+                pass  # df is already the new run
+            elif df.empty:
+                df = existing_df
+            else:
+                df = pd.concat([existing_df, df], ignore_index=True)
 
         df.to_parquet(self.log_path, index=False)
 
