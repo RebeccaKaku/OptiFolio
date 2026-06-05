@@ -69,7 +69,7 @@ class ConcentrationItem:
         dimension: Grouping axis (e.g. "currency", "asset_class", "issuer").
         key: Group value (e.g. "USD", "equity", "Apple Inc.").
         value: Market value in base currency.
-        pct: Percentage of total portfolio value (0–100).
+        pct: Fraction of total portfolio value (0.0–1.0).
         asset_ids: Asset IDs that belong to this group.
     """
 
@@ -165,7 +165,7 @@ class ConcentrationAnalyzer:
                     dimension="currency",
                     key=cur,
                     value=bucket["value"],
-                    pct=round(bucket["value"] / total_value * 100, 2),
+                    pct=round(bucket["value"] / total_value, 4),
                     asset_ids=bucket["asset_ids"],
                 )
                 for cur, bucket in currency_buckets.items()
@@ -191,7 +191,7 @@ class ConcentrationAnalyzer:
                     dimension="asset_class",
                     key=cls,
                     value=bucket["value"],
-                    pct=round(bucket["value"] / total_value * 100, 2),
+                    pct=round(bucket["value"] / total_value, 4),
                     asset_ids=bucket["asset_ids"],
                 )
                 for cls, bucket in class_buckets.items()
@@ -216,7 +216,7 @@ class ConcentrationAnalyzer:
                     dimension="issuer",
                     key=issuer,
                     value=bucket["value"],
-                    pct=round(bucket["value"] / total_value * 100, 2),
+                    pct=round(bucket["value"] / total_value, 4),
                     asset_ids=bucket["asset_ids"],
                 )
                 for issuer, bucket in issuer_buckets.items()
@@ -230,23 +230,23 @@ class ConcentrationAnalyzer:
 
         # Single currency > 80%
         for item in by_currency:
-            if item.pct > _SINGLE_CURRENCY_PCT * 100:
+            if item.pct > _SINGLE_CURRENCY_PCT:
                 warnings.append(
-                    f"单一币种 {item.key} 占比 {item.pct:.1f}%，超过 {_SINGLE_CURRENCY_PCT * 100:.0f}% 阈值"
+                    f"单一币种 {item.key} 占比 {item.pct * 100:.1f}%，超过 {_SINGLE_CURRENCY_PCT * 100:.0f}% 阈值"
                 )
 
         # Single issuer > 30%
         for item in by_issuer:
-            if item.pct > _SINGLE_ISSUER_PCT * 100:
+            if item.pct > _SINGLE_ISSUER_PCT:
                 warnings.append(
-                    f"单一发行方 {item.key} 占比 {item.pct:.1f}%，超过 {_SINGLE_ISSUER_PCT * 100:.0f}% 阈值"
+                    f"单一发行方 {item.key} 占比 {item.pct * 100:.1f}%，超过 {_SINGLE_ISSUER_PCT * 100:.0f}% 阈值"
                 )
 
         # Equity > 70%
         for item in by_asset_class:
-            if item.key == "equity" and item.pct > _EQUITY_PCT * 100:
+            if item.key == "equity" and item.pct > _EQUITY_PCT:
                 warnings.append(
-                    f"权益类资产占比 {item.pct:.1f}%，超过 {_EQUITY_PCT * 100:.0f}% 阈值"
+                    f"权益类资产占比 {item.pct * 100:.1f}%，超过 {_EQUITY_PCT * 100:.0f}% 阈值"
                 )
 
         return ConcentrationReport(

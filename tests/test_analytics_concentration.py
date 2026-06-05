@@ -1,4 +1,4 @@
-"""Tests for concentration risk analyzer."""
+﻿"""Tests for concentration risk analyzer."""
 
 from __future__ import annotations
 
@@ -91,13 +91,13 @@ class TestConcentrationItem:
             dimension="currency",
             key="USD",
             value=100000.0,
-            pct=60.0,
+            pct=0.6,
             asset_ids=["AAPL", "MSFT"],
         )
         assert item.dimension == "currency"
         assert item.key == "USD"
         assert item.value == 100000.0
-        assert item.pct == 60.0
+        assert item.pct == 0.6
         assert item.asset_ids == ["AAPL", "MSFT"]
         assert is_dataclass(item)
         _assert_frozen(item)
@@ -107,14 +107,14 @@ class TestConcentrationItem:
             dimension="issuer",
             key="Apple Inc.",
             value=50000.0,
-            pct=30.0,
+            pct=0.3,
             asset_ids=["AAPL"],
         )
         d = item.to_dict()
         assert d["dimension"] == "issuer"
         assert d["key"] == "Apple Inc."
         assert d["value"] == 50000.0
-        assert d["pct"] == 30.0
+        assert d["pct"] == 0.3
         assert d["asset_ids"] == ["AAPL"]
 
 
@@ -136,7 +136,7 @@ class TestConcentrationReport:
     def test_to_dict(self):
         item = ConcentrationItem(
             dimension="currency", key="USD", value=80000.0,
-            pct=80.0, asset_ids=["AAPL"],
+            pct=0.8, asset_ids=["AAPL"],
         )
         r = ConcentrationReport(
             as_of=date(2026, 6, 1),
@@ -192,12 +192,12 @@ class TestConcentrationAnalyzer:
 
         usd_item = next(i for i in report.by_currency if i.key == "USD")
         assert usd_item.value == 90000.0
-        assert usd_item.pct == 90.0
+        assert usd_item.pct == 0.9
         assert set(usd_item.asset_ids) == {"AAPL", "GOOGL"}
 
         cny_item = next(i for i in report.by_currency if i.key == "CNY")
         assert cny_item.value == 10000.0
-        assert cny_item.pct == 10.0
+        assert cny_item.pct == 0.1
 
     def test_asset_class_breakdown(self):
         analyzer = ConcentrationAnalyzer()
@@ -218,15 +218,15 @@ class TestConcentrationAnalyzer:
 
         equity_item = next(i for i in report.by_asset_class if i.key == "equity")
         assert equity_item.value == 50000.0
-        assert equity_item.pct == 50.0
+        assert equity_item.pct == 0.5
 
         fund_item = next(i for i in report.by_asset_class if i.key == "fund")
         assert fund_item.value == 30000.0
-        assert fund_item.pct == 30.0
+        assert fund_item.pct == 0.3
 
         bond_item = next(i for i in report.by_asset_class if i.key == "bond")
         assert bond_item.value == 20000.0
-        assert bond_item.pct == 20.0
+        assert bond_item.pct == 0.2
 
     def test_issuer_breakdown(self):
         analyzer = ConcentrationAnalyzer()
@@ -245,7 +245,7 @@ class TestConcentrationAnalyzer:
         assert len(report.by_issuer) == 3
         apple = next(i for i in report.by_issuer if i.key == "Apple Inc.")
         assert apple.value == 40000.0
-        assert apple.pct == 40.0
+        assert apple.pct == 0.4
         assert apple.asset_ids == ["AAPL"]
 
     def test_issuer_falls_back_to_name(self):
