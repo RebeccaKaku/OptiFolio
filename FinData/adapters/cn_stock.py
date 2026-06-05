@@ -51,14 +51,14 @@ class CnStockFetcher(FetcherProtocol):
         df = self._try_eastmoney(code, start_str, end_str, period, adjust)
 
         # 2. Sina (prefixed code)
-        if df.empty:
+        if len(df) == 0:
             df = self._try_sina(full_symbol, start_str, end_str, period)
 
         # 3. Tencent (bare numeric code, max 60 days)
-        if df.empty:
+        if len(df) == 0:
             df = self._try_tencent(code, start_str, end_str, period)
 
-        if df.empty:
+        if len(df) == 0:
             return pd.DataFrame()
 
         df = self._standardize_columns(df)
@@ -97,7 +97,7 @@ class CnStockFetcher(FetcherProtocol):
                 symbol=code, period=period,
                 start_date=start_date, end_date=end_date, adjust=adjust,
             )
-            if df.empty:
+            if len(df) == 0:
                 return pd.DataFrame()
             column_map = {
                 "日期": "Date", "开盘": "Open", "收盘": "Close",
@@ -120,7 +120,7 @@ class CnStockFetcher(FetcherProtocol):
                 symbol=full_symbol, start_date=start_date,
                 end_date=end_date, adjust="qfq",
             )
-            if df.empty:
+            if len(df) == 0:
                 return pd.DataFrame()
             column_map = {
                 "date": "Date", "open": "Open", "close": "Close",
@@ -145,7 +145,7 @@ class CnStockFetcher(FetcherProtocol):
                 symbol=code, period=period,
                 start_date=start_date, end_date=end_date, adjust="qfq",
             )
-            if df.empty:
+            if len(df) == 0:
                 return pd.DataFrame()
             column_map = {
                 "时间": "Date", "开盘": "Open", "收盘": "Close",
@@ -174,10 +174,10 @@ class CnStockFetcher(FetcherProtocol):
         code, full_symbol = self._parse_symbol(symbol)
         try:
             df = ak.stock_zh_a_spot_em()
-            if df.empty:
+            if len(df) == 0:
                 return {}
             stock_data = df[df["代码"] == code]
-            if not stock_data.empty:
+            if len(stock_data) > 0:
                 row = stock_data.iloc[0]
                 return {
                     "symbol": full_symbol, "name": row.get("名称", ""),

@@ -371,7 +371,6 @@ class TestOrchestratorSchedule:
 # Orchestrator — dispatch
 # ══════════════════════════════════════════════════════════════════════════
 
-@pytest.mark.skip(reason="Lazy imports need updating after orchestrator→orchestration rename")
 class TestOrchestratorDispatch:
     def test_dispatch_empty_tasks(self, tmp_path):
         from FinData.store.repository import CanonicalStore
@@ -559,7 +558,6 @@ class TestCrossDepartmentImports:
 # Orchestrator — end-to-end with mocked fetcher
 # ══════════════════════════════════════════════════════════════════════════
 
-@pytest.mark.skip(reason="Lazy imports need updating after orchestrator→orchestration rename")
 class TestOrchestratorEndToEnd:
     def test_dispatch_success_path(self, tmp_path, monkeypatch):
         """Full path: schedule → dispatch → store, with a mock fetcher."""
@@ -587,7 +585,7 @@ class TestOrchestratorEndToEnd:
                           success=True, latency_ms=10.0)
 
         # Patch the registry to return our mock
-        import FinData.adapters.registry as reg
+        import FinData.adapters as reg
         monkeypatch.setitem(reg.FETCHER_REGISTRY, "us_equity", MockFetcher())
 
         orch = Orchestrator(store=store)
@@ -614,7 +612,7 @@ class TestOrchestratorEndToEnd:
                 return FR(symbol=symbol, provider=self.PROVIDER,
                           data=pd.DataFrame(), success=True, latency_ms=5.0)
 
-        import FinData.adapters.registry as reg
+        import FinData.adapters as reg
         monkeypatch.setitem(reg.FETCHER_REGISTRY, "us_equity", MockFetcherEmptyData())
 
         orch = Orchestrator(store=store)

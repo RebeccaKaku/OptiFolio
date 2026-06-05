@@ -210,8 +210,15 @@ class TestAssetRegistry:
         assert retrieved.name == '贵州茅台'
     
     def test_register_conflict_assets(self):
-        """测试注册冲突资产 - 当前实现不支持冲突资产，跳过此测试"""
-        pytest.skip("当前AssetRegistry实现不支持冲突资产管理")
+        """测试注册冲突资产"""
+        asset1 = AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY')
+        asset2 = AssetDefinition('000001', 'cn_fund_open', '华夏成长混合', 'CNY')
+
+        self.registry.register_conflict_asset(asset1)
+        self.registry.register_conflict_asset(asset2)
+
+        assert '000001' in self.registry.conflicts
+        assert len(self.registry.conflicts['000001']) == 2
     
     def test_register_duplicate_asset(self):
         """测试注册重复资产"""
@@ -245,8 +252,17 @@ class TestAssetRegistry:
         assert retrieved.name == '贵州茅台(修改)'
     
     def test_find_assets_by_type(self):
-        """测试按类型查找资产 - 当前实现不支持此功能，跳过此测试"""
-        pytest.skip("当前AssetRegistry实现不支持按类型查找资产")
+        """测试按类型查找资产"""
+        assets = [
+            AssetDefinition('600519', 'cn_stock_sh', '贵州茅台', 'CNY'),
+            AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY'),
+        ]
+        for asset in assets:
+            self.registry.register_asset(asset)
+
+        stocks = self.registry.find_assets_by_type('cn_stock_sh')
+        assert len(stocks) == 1
+        assert stocks[0].symbol == '600519'
     
     def test_list_all_assets(self):
         """测试列出所有资产"""
@@ -287,8 +303,10 @@ class TestAssetRegistry:
         assert self.registry.get_asset('600519') is None
     
     def test_currency_detection(self):
-        """测试币种检测 - 当前实现不支持详细币种检测，跳过此测试"""
-        pytest.skip("当前AssetRegistry实现不支持详细币种检测")
+        """测试币种检测"""
+        assert self.registry.detect_currency_from_name('华夏移动互联(USD)') == 'USD'
+        assert self.registry.detect_currency_from_name('恒生ETF(HKD)') == 'HKD'
+        assert self.registry.detect_currency_from_name('贵州茅台') == 'CNY'
     
     def test_config_save_and_load(self):
         """测试配置保存和加载"""
@@ -421,7 +439,6 @@ class TestAssetDefinition:
         assert asset.source == 'test_api'
         assert asset.last_updated is not None
     
-    @pytest.mark.skip(reason="AssetDefinition.get_full_id 尚未实现，需 Codex 添加后启用")
     def test_get_full_id(self):
         """测试获取完整ID"""
         asset1 = AssetDefinition('600519', 'cn_stock_sh', '贵州茅台', 'CNY')

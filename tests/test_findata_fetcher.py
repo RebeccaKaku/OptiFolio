@@ -125,13 +125,11 @@ class TestThinAdapterConstraints:
 
     ADAPTER_FILES = [
         "FinData/adapters/cn_stock.py",
-        "FinData/adapters/cn_fund.py",
         "FinData/adapters/forex.py",
         "FinData/adapters/bank_wmp.py",
     ]
 
     @pytest.mark.parametrize("relpath", ADAPTER_FILES)
-    @pytest.mark.skip(reason="cn_fund adapter merged with backend — no longer thin")
     def test_no_empty_check_in_adapter(self, relpath):
         """Adapter source must not contain `.empty` — that is validation logic."""
         path = os.path.join(os.path.dirname(__file__), "..", relpath)
@@ -146,7 +144,6 @@ class TestThinAdapterConstraints:
             f"{relpath} contains .empty check — validation belongs elsewhere"
         )
 
-    @pytest.mark.skip(reason="cn_fund adapter merged with backend — no longer thin")
     @pytest.mark.parametrize("relpath", ADAPTER_FILES)
     def test_no_file_writes_in_adapter(self, relpath):
         """Adapter source must not write files."""

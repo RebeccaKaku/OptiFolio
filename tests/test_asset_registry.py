@@ -35,11 +35,6 @@ class TestAssetRegistryAdvanced:
         if os.path.exists(self.test_config_path):
             os.remove(self.test_config_path)
 
-    @pytest.mark.skip(
-        reason="AssetRegistry.conflicts 和 register_conflict_asset 尚未实现。"
-        "AssetDefinition 缺少 conflict_id / is_conflict 属性。"
-        "需 Codex 实现冲突资产功能后再启用。"
-    )
     def test_conflict_resolution_scenarios(self):
         """测试冲突解决的各种场景"""
         asset1 = AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY')
@@ -65,10 +60,6 @@ class TestAssetRegistryAdvanced:
         assert conflict1.asset_type == 'cn_stock_sz'
         assert conflict2.asset_type == 'cn_fund_open'
 
-    @pytest.mark.skip(
-        reason="AssetRegistry.conflicts, register_conflict_asset, remove_asset 尚未实现。"
-        "需 Codex 实现冲突资产管理功能后再启用。"
-    )
     def test_conflict_to_single_asset_conversion(self):
         """测试从冲突资产转换回单个资产"""
         asset1 = AssetDefinition('000001', 'cn_stock_sz', '平安银行', 'CNY')
@@ -94,11 +85,6 @@ class TestAssetRegistryAdvanced:
         assert final_asset.is_conflict is False
         assert final_asset.conflict_id is None
 
-    @pytest.mark.skip(
-        reason="AssetRegistry.conflicts 和 get_asset(symbol, conflict_id) 重载尚未实现。"
-        "AssetDefinition 缺少 conflict_id / is_conflict 属性。"
-        "需 Codex 实现冲突资产配置持久化后再启用。"
-    )
     def test_config_compatibility(self):
         """测试配置兼容性"""
         test_config = {
@@ -150,10 +136,6 @@ class TestAssetRegistryAdvanced:
         assert conflict1.is_conflict is True
         assert conflict2.is_conflict is True
 
-    @pytest.mark.skip(
-        reason="AssetRegistry.find_assets_by_type 尚未实现。"
-        "需 Codex 实现按资产类型过滤功能后再启用。"
-    )
     def test_asset_filtering(self):
         """测试资产过滤功能"""
         test_assets = [
@@ -181,11 +163,6 @@ class TestAssetRegistryAdvanced:
         non_existent = self.registry.find_assets_by_type('non_existent')
         assert len(non_existent) == 0
 
-    @pytest.mark.skip(
-        reason="AssetRegistry.detect_currency_from_name 尚未实现。"
-        "当前实现为 detect_currency(name, default)，仅在有 FundCurrencyDetector 时可用。"
-        "需 Codex 决定统一 API 后再启用。"
-    )
     def test_currency_operations(self):
         """测试币种相关操作"""
         test_assets = [
@@ -265,11 +242,6 @@ class TestAssetRegistryAdvanced:
         restored = AssetDefinition.from_dict(asset_dict)
         assert restored.attributes == retrieved.attributes
 
-    @pytest.mark.skip(
-        reason="AssetRegistry.remove_asset 尚未实现。"
-        "当前仅有 register_asset、get_asset、list_all_assets。"
-        "需 Codex 实现 remove_asset 后再启用。"
-    )
     def test_bulk_operations(self):
         """测试批量操作"""
         assets_to_register = [
@@ -296,11 +268,6 @@ class TestAssetRegistryAdvanced:
         for symbol in expected_symbols:
             assert symbol in remaining_symbols
 
-    @pytest.mark.skip(
-        reason="register_asset 当前不做输入校验（空符号、None 类型等仍会注册）。"
-        "register_conflict_asset 尚未实现。"
-        "需 Codex 添加输入校验逻辑后再启用。"
-    )
     def test_edge_cases(self):
         """测试边界情况"""
         empty_symbol_asset = AssetDefinition('', 'cn_stock_sh', '测试', 'CNY')
@@ -328,11 +295,6 @@ class TestAssetRegistryAdvanced:
         non_existent_conflict = self.registry.get_asset('CONFLICT', 'CONFLICT_999')
         assert non_existent_conflict is None
 
-    @pytest.mark.skip(
-        reason="register_conflict_asset 和冲突资产持久化尚未实现。"
-        "save_config 当前仅保存普通资产列表，不支持冲突资产。"
-        "需 Codex 实现冲突资产配置持久化后再启用。"
-    )
     def test_config_persistence(self):
         """测试配置持久化"""
         assets = [

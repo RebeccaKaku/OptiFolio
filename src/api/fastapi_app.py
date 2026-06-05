@@ -1,7 +1,7 @@
 """FastAPI entrypoint for the new OptiFolio HTTP API."""
 
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, Query
 from fastapi.encoders import jsonable_encoder
