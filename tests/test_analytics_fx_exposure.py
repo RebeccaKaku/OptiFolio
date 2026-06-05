@@ -37,7 +37,7 @@ def _seed_repo(repo: MarketDataRepository):
             "volume": [10000] * len(prices),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_raw(frame, asset_id=symbol, source="test", currency=currency)
+        repo.save_canonical(frame, asset_id=symbol, source="test", currency=currency)
 
 
 def _make_fx_provider() -> FxRateProvider:
@@ -320,7 +320,7 @@ class TestFxExposureIntegration:
             "volume": [10000] * len(dates),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_raw(frame, asset_id="510300", source="test", currency="CNY")
+        repo.save_canonical(frame, asset_id="510300", source="test", currency="CNY")
 
         fx = _make_fx_provider()
         engine = ValuationEngine(market_data=repo, fx_provider=fx)

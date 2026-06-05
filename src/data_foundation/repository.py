@@ -76,7 +76,34 @@ class MarketDataRepository:
         warnings.warn("No file locking available (msvcrt/fcntl not found). Concurrent writes may cause data loss.")
         return lock_file, lambda: None
 
-    def save_raw(
+    def save_bronze(
+        self,
+        frame: pd.DataFrame,
+        provider: str,
+        asset_id: str,
+        entity: str = "market_price",
+    ) -> Path:
+        """Save provider output AS-IS to the bronze layer (no normalization).
+
+        Bronze data is raw provider output, partitioned by provider/entity/date.
+        It serves as an audit trail and reprocessing source.
+        """
+        ingest_date = pd.Timestamp.now().strftime("%Y-%m-%d")
+        path = (
+            PROJECT_ROOT
+            / "FinData"
+            / "data"
+            / "bronze"
+            / f"provider={provider}"
+            / f"entity={entity}"
+            / f"ingest_date={ingest_date}"
+            / f"{asset_id}.parquet"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(path, compression="snappy", index=False)
+        return path
+
+    def save_canonical(
         self,
         frame: pd.DataFrame,
         asset_id: str | None = None,
@@ -84,6 +111,10 @@ class MarketDataRepository:
         currency: str | None = None,
         timezone: str | None = None,
     ) -> pd.DataFrame:
+        """Normalize, validate, and persist data to the canonical store.
+
+        Canonical data is the single source of truth for downstream consumers.
+        """
         canonical = normalize_market_frame(frame, asset_id=asset_id, source=source, currency=currency, timezone=timezone)
         canonical = validate_market_frame(canonical)
         lock_file, unlock = self._acquire_lock()
@@ -97,6 +128,17 @@ class MarketDataRepository:
             unlock()
             lock_file.close()
         return canonical
+
+    def save_raw(self, *args, **kwargs) -> pd.DataFrame:
+        """Deprecated — use save_canonical instead."""
+        import warnings
+
+        warnings.warn(
+            "save_raw is deprecated, use save_canonical instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.save_canonical(*args, **kwargs)
 
     def load_canonical(self) -> pd.DataFrame:
         if not self.price_path.exists():

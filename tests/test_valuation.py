@@ -31,7 +31,7 @@ def _seed_prices(repo: MarketDataRepository, assets: list[str], dates: list[str]
             index=pd.to_datetime(dates),
         )
         frame.index.name = "timestamp"
-        repo.save_raw(frame, asset_id=asset, source="test", currency="USD")
+        repo.save_canonical(frame, asset_id=asset, source="test", currency="USD")
 
 
 def _make_engine(tmp_path):
@@ -215,14 +215,14 @@ def _seed_fx_data(repo: MarketDataRepository) -> None:
         "date": ["2025-06-02", "2025-06-03", "2025-06-04"],
         "close": [7.1848, 7.1763, 7.1886],
     })
-    repo.save_raw(usd, asset_id="FX_USDCNY", source="test", currency="CNY")
+    repo.save_canonical(usd, asset_id="FX_USDCNY", source="test", currency="CNY")
 
     # EUR/CNY: 8.18 .. 8.20
     eur = pd.DataFrame({
         "date": ["2025-06-02", "2025-06-03", "2025-06-04"],
         "close": [8.1830, 8.1853, 8.1920],
     })
-    repo.save_raw(eur, asset_id="FX_EURCNY", source="test", currency="CNY")
+    repo.save_canonical(eur, asset_id="FX_EURCNY", source="test", currency="CNY")
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────

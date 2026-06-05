@@ -35,7 +35,7 @@ def _seed_repo(repo: MarketDataRepository):
             "volume": [10000] * len(prices),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_raw(frame, asset_id=symbol, source="test", currency="USD" if symbol != "510300" else "CNY")
+        repo.save_canonical(frame, asset_id=symbol, source="test", currency="USD" if symbol != "510300" else "CNY")
 
 
 def _make_temp_portfolio(tmp_path: Path) -> Path:

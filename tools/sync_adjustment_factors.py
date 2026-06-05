@@ -124,7 +124,7 @@ def main():
         df = df.reset_index()
 
         try:
-            repo.save_raw(
+            repo.save_canonical(
                 df,
                 asset_id=f"{symbol}_factor_{factor_type}",
                 source=f"akshare-{factor_type}-factor",

@@ -347,7 +347,7 @@ def test_normalize_market_frame_accepts_provider_columns():
 
 def test_market_data_repository_saves_and_queries_price_matrix(tmp_path):
     repo = MarketDataRepository(tmp_path)
-    repo.save_raw(
+    repo.save_canonical(
         pd.DataFrame(
             {
                 "date": ["2024-01-01", "2024-01-02", "2024-01-03"],
@@ -358,7 +358,7 @@ def test_market_data_repository_saves_and_queries_price_matrix(tmp_path):
         source="unit",
         currency="USD",
     )
-    repo.save_raw(
+    repo.save_canonical(
         pd.DataFrame(
             {
                 "date": ["2024-01-01", "2024-01-02", "2024-01-03"],

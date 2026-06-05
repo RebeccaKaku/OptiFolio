@@ -129,7 +129,7 @@ def sync_pair(
         return len(df)
 
     try:
-        repo.save_raw(
+        repo.save_canonical(
             df,
             asset_id=asset_id,
             source="akshare-boc-sina",

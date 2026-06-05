@@ -56,7 +56,7 @@ class CanonicalStore:
 
         # 3. If passed, normalize and save
         if report.passed:
-            self.repo.save_raw(
+            self.repo.save_canonical(
                 df,
                 asset_id=asset_id,
                 source=source,
