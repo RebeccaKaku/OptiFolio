@@ -315,37 +315,129 @@ async def ghostfolio_portfolio_holdings(
 @router.get("/portfolio/dividends", response_model=List[dict])
 async def ghostfolio_portfolio_dividends():
     """Dividends list for Ghostfolio."""
-    # Stub — will be wired once dividend service exposes history.
-    return []
+    try:
+        services = get_application_services()
+        res = services.portfolio_v2.get_corporate_actions()
+        if not res.get("success"):
+            return []
+
+        actions = res.get("data", {}).get("actions", [])
+        dividends = []
+        for action in actions:
+            if action.get("action_type") == "dividend":
+                dividends.append(
+                    {
+                        "symbol": action.get("asset_id"),
+                        "date": action.get("ex_date"),
+                        "amount": action.get("dividend_per_share"),
+                        "currency": action.get("dividend_currency"),
+                    }
+                )
+        return dividends
+    except Exception as exc:
+        logger.warning("Ghostfolio dividends failed: %s", exc)
+        return []
 
 
 @router.get("/portfolio/investments", response_model=GhostfolioInvestmentsResponse)
 async def ghostfolio_portfolio_investments():
     """Investment timeline for Ghostfolio."""
     try:
-        services = get_application_services()
-        value_res = await asyncio.to_thread(
-            services.portfolio.get_value, base_currency="CNY"
-        )
+        from FinData.store.portfolio_ledger import PortfolioLedgerStore
+        import pandas as pd
+        from datetime import datetime
+
+        store = PortfolioLedgerStore()
+        df = store.load_entries()
+
+        if df.empty:
+            return {
+                "investments": [],
+                "streaks": {"currentStreak": 0, "longestStreak": 0},
+            }
+
+        # Ensure as_of is datetime
+        df["as_of"] = pd.to_datetime(df["as_of"])
+
+        # Group by date and sum cost_basis for total investment timeline
+        daily = df.groupby(df["as_of"].dt.date)["cost_basis"].sum().reset_index()
+        daily = daily.sort_values("as_of")
+
+        investments = []
+        for _, row in daily.iterrows():
+            investments.append(
+                {"date": row["as_of"].isoformat(), "investment": float(row["cost_basis"])}
+            )
+
+        # Streaks: consecutive months with data
+        months = sorted(df["as_of"].dt.to_period("M").unique())
+        current_streak = 0
+        longest_streak = 0
+
+        if months:
+            streaks = []
+            curr = 1
+            for i in range(1, len(months)):
+                if months[i] == months[i - 1] + 1:
+                    curr += 1
+                else:
+                    streaks.append(curr)
+                    curr = 1
+            streaks.append(curr)
+
+            longest_streak = max(streaks) if streaks else 0
+
+            # Current streak: only if the latest month is recent (this month or last)
+            today_period = pd.Period(datetime.now(), freq="M")
+            if months[-1] >= today_period - 1:
+                current_streak = streaks[-1]
+            else:
+                current_streak = 0
+
+        return {
+            "investments": investments,
+            "streaks": {"currentStreak": current_streak, "longestStreak": longest_streak},
+        }
     except Exception as exc:
         logger.warning("Ghostfolio investments failed: %s", exc)
-        total_value = 0.0
-    else:
-        total_value = 0.0
-        if value_res.get("success"):
-            total_value = (value_res.get("data") or {}).get("total_value", 0.0)
-
-    from datetime import datetime
-
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    return {
-        "investments": [{"date": today, "investment": total_value}],
-        "streaks": {"currentStreak": 1, "longestStreak": 1},
-    }
+        return {
+            "investments": [],
+            "streaks": {"currentStreak": 0, "longestStreak": 0},
+        }
 
 
 @router.get("/portfolio/report", response_model=GhostfolioReportResponse)
 async def ghostfolio_portfolio_report():
     """Report stub for Ghostfolio."""
-    return {"xRay": {"categories": [], "statistics": {"totalCount": 0}}}
+    try:
+        services = get_application_services()
+        res = services.portfolio_v2.get_exposure_report()
+        if not res.get("success"):
+            return {"xRay": {"categories": [], "statistics": {"totalCount": 0}}}
+
+        data = res.get("data", {})
+        by_asset_class = data.get("by_asset_class", [])
+
+        categories = []
+        all_asset_ids = set()
+        for item in by_asset_class:
+            asset_ids = item.get("asset_ids", [])
+            all_asset_ids.update(asset_ids)
+            categories.append(
+                {
+                    "name": item.get("bucket"),
+                    "value": item.get("value"),
+                    "percentage": item.get("pct"),
+                    "assetIds": asset_ids,
+                }
+            )
+
+        return {
+            "xRay": {
+                "categories": categories,
+                "statistics": {"totalCount": len(all_asset_ids)},
+            }
+        }
+    except Exception as exc:
+        logger.warning("Ghostfolio report failed: %s", exc)
+        return {"xRay": {"categories": [], "statistics": {"totalCount": 0}}}
