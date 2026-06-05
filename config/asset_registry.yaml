@@ -3,7 +3,7 @@ assets:
   attributes:
     exchange: SZ
   currency: CNY
-  last_updated: '2026-06-04T15:12:16.429227'
+  last_updated: '2026-06-05T14:29:50.861246'
   name: 贵州茅台
   source: akshare_stock_info
   symbol: '600519'
@@ -75,5 +75,5 @@ assets:
   source: akshare_stock_info
   symbol: sh600519
 description: 资产注册表 (自动前缀+智能币种)
-last_updated: '2026-06-04T15:12:16.429285'
+last_updated: '2026-06-05T14:29:50.861297'
 version: '2.0'

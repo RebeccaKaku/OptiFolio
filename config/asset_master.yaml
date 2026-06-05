@@ -1,0 +1,69 @@
+version: '1.0'
+last_updated: '2026-06-05T14:32:10.164187'
+assets:
+- asset_type: cn_stock
+  attributes:
+    exchange: SH
+  currency: CNY
+  last_updated: '2026-05-22T03:43:51.811457'
+  source: akshare_stock_info
+  asset_id: CN_STOCK:000001
+  display_name: 平安银行
+  provider_symbol: sh000001
+- asset_type: cn_stock
+  attributes:
+    exchange: SH
+  currency: CNY
+  last_updated: '2026-02-13T21:11:15.725891'
+  source: akshare_stock_info
+  asset_id: CN_STOCK:600519
+  display_name: 贵州茅台
+  provider_symbol: sh600519
+- asset_type: currency
+  attributes:
+    base_currency: USD
+    pair_type: unknown
+    quote_currency: UNKNOWN
+  currency: USD
+  last_updated: '2026-05-22T03:43:51.816844'
+  source: currency_detector
+  asset_id: FX:EUR/USD
+  display_name: EUR/USD
+  provider_symbol: EUR/USD
+- asset_type: currency
+  attributes:
+    base_currency: USD
+    pair_type: major
+    quote_currency: CAD
+  currency: USD
+  last_updated: '2026-02-13T21:11:15.732378'
+  source: currency_detector
+  asset_id: FX:USDCAD
+  display_name: USD/CAD
+  provider_symbol: USDCAD
+- asset_type: us_equity
+  attributes: {}
+  currency: USD
+  asset_id: US_EQ:AAPL
+  display_name: AAPL
+  provider_symbol: AAPL
+- asset_type: us_equity
+  attributes:
+    exchange: NMS
+    sector: Communication Services
+  currency: USD
+  last_updated: '2026-02-18T00:16:40.855410'
+  source: yfinance
+  asset_id: US_EQ:GOOGL
+  display_name: Alphabet Inc.
+  provider_symbol: GOOGL
+- asset_type: us_equity
+  attributes:
+    exchange: NMS
+    sector: Technology
+  currency: USD
+  last_updated: '2026-02-18T00:25:30.188533'
+  source: yfinance
+  asset_id: US_EQ:MSFT
+  display_name: Microsoft Corporation
+  provider_symbol: MSFT
