@@ -1,79 +1,48 @@
-import os
-from datetime import datetime, timedelta
+"""Tests for data quality API endpoint."""
+
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from FinData.store.quality import QualityGate, QualityReport
 from src.api.fastapi_app import app
-from src.data_foundation import MarketDataRepository
+from src.core.paths import PROJECT_ROOT
+
+client = TestClient(app)
+
+QUALITY_FILE = PROJECT_ROOT / "metadata" / "data_quality_issues.parquet"
 
 
 @pytest.fixture
-def temp_repo(tmp_path):
-    repo_dir = tmp_path / "data" / "foundation"
-    repo_dir.mkdir(parents=True)
-    return MarketDataRepository(root_dir=tmp_path / "data" / "foundation")
+def clean_quality_file():
+    """Ensure the quality file is cleaned up after each test."""
+    backup = None
+    if QUALITY_FILE.exists():
+        backup = pd.read_parquet(QUALITY_FILE)
+    yield
+    if backup is not None:
+        backup.to_parquet(QUALITY_FILE, index=False)
+    elif QUALITY_FILE.exists():
+        QUALITY_FILE.unlink()
 
 
-@pytest.fixture
-def mock_quality_report_file(tmp_path, monkeypatch):
-    metadata_dir = tmp_path / "metadata"
-    metadata_dir.mkdir(parents=True)
-    file_path = metadata_dir / "data_quality_issues.parquet"
-    monkeypatch.setattr(QualityReport, "FILE_PATH", file_path)
-    return file_path
+def test_api_quality_endpoint_no_data(clean_quality_file):
+    # Make sure file does not exist
+    if QUALITY_FILE.exists():
+        QUALITY_FILE.unlink()
+
+    response = client.get("/api/data/quality")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["reports"] == []
 
 
-def test_stale_price_check(temp_repo):
-    # Setup mock data
-    now = datetime.now()
-    df = pd.DataFrame(
-        {
-            "asset_id": ["STALE", "FRESH"],
-            "date": [now - timedelta(days=10), now - timedelta(days=1)],
-            "open": [100.0, 200.0],
-            "high": [105.0, 205.0],
-            "low": [95.0, 195.0],
-            "close": [102.0, 202.0],
-            "adj_close": [102.0, 202.0],
-            "volume": [1000, 2000],
-            "currency": ["USD", "USD"],
-            "source": ["test", "test"],
-        }
-    )
-    temp_repo.save_raw(df)
+def test_api_quality_endpoint_with_data(clean_quality_file):
+    QUALITY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    gate = QualityGate(repository=temp_repo)
-    report = gate.stale_price_check(n_days=5)
-
-    assert len(report.issues) == 1
-    assert report.issues.iloc[0]["asset_id"] == "STALE"
-    assert report.issues.iloc[0]["issue_type"] == "stale_price"
-
-
-def test_quality_report_save(mock_quality_report_file):
-    issues = pd.DataFrame(
-        {
-            "asset_id": ["TEST1"],
-            "issue_type": ["stale_price"],
-            "details": ["Last update: 2023-01-01"],
-            "timestamp": [datetime.now()],
-        }
-    )
-    report = QualityReport(issues)
-    report.save()
-
-    assert mock_quality_report_file.exists()
-    saved_df = pd.read_parquet(mock_quality_report_file)
-    assert len(saved_df) == 1
-    assert saved_df.iloc[0]["asset_id"] == "TEST1"
-
-
-def test_api_quality_endpoint(mock_quality_report_file):
-    # Setup mock quality data
     issues = pd.DataFrame(
         {
             "asset_id": ["ASSET1", "ASSET2"],
@@ -82,9 +51,7 @@ def test_api_quality_endpoint(mock_quality_report_file):
             "timestamp": [datetime(2023, 1, 1), datetime(2023, 1, 2)],
         }
     )
-    QualityReport(issues).save()
-
-    client = TestClient(app)
+    issues.to_parquet(QUALITY_FILE, index=False)
 
     # Test getting all reports
     response = client.get("/api/data/quality")

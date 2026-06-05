@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from src.api.enhanced_api_service import get_enhanced_api_service
+from src.analytics.alerts import AlertEngine
 
 from .asset_service import AssetService
 from .dashboard_service import DashboardService
@@ -21,6 +22,7 @@ class ApplicationServices:
     portfolio_v2: PortfolioServiceV2
     assets: AssetService
     research: ResearchService
+    alerts: AlertEngine
 
 
 @lru_cache(maxsize=1)
@@ -33,4 +35,5 @@ def get_application_services() -> ApplicationServices:
         portfolio_v2=PortfolioServiceV2(api_service),
         assets=AssetService(api_service),
         research=ResearchService(),
+        alerts=AlertEngine(),
     )

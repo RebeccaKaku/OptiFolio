@@ -1,7 +1,7 @@
 """FastAPI entrypoint for the new OptiFolio HTTP API."""
 
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.encoders import jsonable_encoder
@@ -32,6 +32,17 @@ class OptimizationPayload(BaseModel):
     method: str = "mean_variance"
     objective: str = "max_sharpe"
     risk_free_rate: float = 0.02
+
+
+class AlertRunPayload(BaseModel):
+    quality_summary: Optional[Dict[str, Any]] = None
+    concentration_report: Optional[Dict[str, Any]] = None
+    fx_exposure_report: Optional[Dict[str, Any]] = None
+    liquidity_report: Optional[Dict[str, Any]] = None
+    returns_summary: Optional[Dict[str, Any]] = None
+    fund_statuses: Optional[List[Dict[str, Any]]] = None
+    maturity_dates: Optional[List[Dict[str, Any]]] = None
+    threshold_overrides: Optional[Dict[str, float]] = None
 
 
 def _json_response(payload: dict) -> JSONResponse:
@@ -202,6 +213,22 @@ def create_app() -> FastAPI:
                 risk_free_rate=payload.risk_free_rate,
             )
         )
+
+    @app.get("/api/alerts", tags=["alerts"])
+    def list_alerts() -> JSONResponse:
+        alerts = get_application_services().alerts.run_all()
+        return _json_response(success([a.to_dict() for a in alerts]))
+
+    @app.post("/api/alerts/run", tags=["alerts"])
+    def run_alerts(payload: Optional[AlertRunPayload] = None) -> JSONResponse:
+        context = payload.dict(exclude_unset=True) if payload else {}
+        # Flatten threshold_overrides if present
+        if "threshold_overrides" in context:
+            overrides = context.pop("threshold_overrides")
+            context.update(overrides)
+
+        alerts = get_application_services().alerts.run_all(**context)
+        return _json_response(success([a.to_dict() for a in alerts]))
 
     app.include_router(ghostfolio_router)
 
