@@ -63,3 +63,56 @@ def test_research_backtest_route_uses_service_layer(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["data"]["assets"] == ["AAA", "BBB"]
+
+
+def test_list_alerts_returns_empty_list_by_default(monkeypatch):
+    class FakeAlertEngine:
+        def run_all(self, **kwargs):
+            return []
+
+    fake_services = SimpleNamespace(alerts=FakeAlertEngine())
+    monkeypatch.setattr(fastapi_app, "get_application_services", lambda: fake_services)
+    client = TestClient(fastapi_app.create_app())
+
+    response = client.get("/api/alerts")
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert response.json()["data"] == []
+
+
+def test_run_alerts_with_context(monkeypatch):
+    from src.analytics.alerts import Alert
+
+    class FakeAlertEngine:
+        def run_all(self, **context):
+            if context.get("quality_summary", {}).get("stale_assets") == ["AAPL"]:
+                return [Alert(
+                    alert_id="stale_price_threshold",
+                    title="Stale prices detected",
+                    reason="AAPL is stale",
+                    evidence=context["quality_summary"],
+                    severity="warning",
+                    suggested_action="Fix it",
+                    created_at="2023-01-01T00:00:00Z"
+                )]
+            return []
+
+    fake_services = SimpleNamespace(alerts=FakeAlertEngine())
+    monkeypatch.setattr(fastapi_app, "get_application_services", lambda: fake_services)
+    client = TestClient(fastapi_app.create_app())
+
+    payload = {
+        "quality_summary": {
+            "threshold_pct": 50.0,
+            "stale_assets": ["AAPL"],
+            "n_days": 5
+        }
+    }
+    response = client.post("/api/alerts/run", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert len(data) == 1
+    assert data[0]["alert_id"] == "stale_price_threshold"
+    assert data[0]["evidence"]["stale_assets"] == ["AAPL"]
