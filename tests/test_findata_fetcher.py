@@ -201,12 +201,12 @@ class TestProtocolConformance:
     def test_all_fetchers_implement_protocol(self):
         from FinData.adapters import FetcherProtocol
         from FinData.adapters.us_equity import UsEquityFetcher
-        from FinData.adapters.cn_stock import CnStockFetcherAdapter
+        from FinData.adapters.cn_stock import CnStockFetcher
         from FinData.adapters.cn_fund import CnFundFetcherAdapter
         from FinData.adapters.forex import ForexFetcher
         from FinData.adapters.bank_wmp import BankWmpFetcher
 
-        for cls in [UsEquityFetcher, CnStockFetcherAdapter,
+        for cls in [UsEquityFetcher, CnStockFetcher,
                     CnFundFetcherAdapter, ForexFetcher, BankWmpFetcher]:
             assert issubclass(cls, FetcherProtocol), f"{cls.__name__} must subclass FetcherProtocol"
 

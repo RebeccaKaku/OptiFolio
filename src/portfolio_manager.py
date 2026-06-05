@@ -1,4 +1,4 @@
-"""
+﻿"""
 Legacy portfolio manager. DEPRECATED — use src/core/valuation.py
 (ValuationEngine) and src/services/portfolio_service_v2.py instead.
 """
@@ -18,7 +18,7 @@ if project_root not in sys.path:
 # 导入工厂
 try:
     from src.data_core.fetchers.factory import get_factory
-    from src.data_core.fetchers.currency import CurrencyFetcher
+    from FinData.adapters.forex import CurrencyFetcher
 except ImportError:
     print(">>> [System] 导入 Fetcher 失败，请检查文件路径")
     raise

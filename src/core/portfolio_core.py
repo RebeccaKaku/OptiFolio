@@ -34,7 +34,7 @@ except ImportError as e:
     get_factory = None
 
 try:
-    from src.data_core.fetchers.currency import CurrencyFetcher
+    from FinData.adapters.forex import CurrencyFetcher
 except ImportError as e:
     print(f"[PortfolioCore] 汇率数据获取器不可用: {e}")
     CurrencyFetcher = None

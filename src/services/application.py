@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict
 
+from src.analytics.alerts import AlertEngine
 from src.api.enhanced_api_service import get_enhanced_api_service
 
 from .asset_service import AssetService
@@ -29,6 +30,7 @@ class ApplicationServices:
     assets: AssetService
     research: ResearchService
     ingestion: IngestionService
+    alerts: AlertEngine              # risk alert checks
 
 
 @lru_cache(maxsize=1)
@@ -42,4 +44,5 @@ def get_application_services() -> ApplicationServices:
         assets=AssetService(api_service),
         research=ResearchService(),
         ingestion=IngestionService(),
+        alerts=AlertEngine(),
     )

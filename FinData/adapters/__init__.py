@@ -27,17 +27,17 @@ Fetch for supported types only. None = not yet implemented.
 """
 
 from .us_equity import UsEquityFetcher
-from .cn_stock import CnStockFetcherAdapter
+from .cn_stock import CnStockFetcher
 from .cn_fund import CnFundFetcherAdapter
-from .forex import ForexFetcher
+from .forex import CurrencyFetcher, ForexFetcher
 from .bank_wmp import BankWmpFetcher
 
 FETCHER_REGISTRY = {
     "us_equity": UsEquityFetcher(),
     "us_etf": UsEquityFetcher(),                   # US ETFs use same fetcher as US equities
-    "cn_stock": CnStockFetcherAdapter(),
-    "cn_stock_sh": CnStockFetcherAdapter(),
-    "cn_stock_sz": CnStockFetcherAdapter(),
+    "cn_stock": CnStockFetcher(),
+    "cn_stock_sh": CnStockFetcher(),
+    "cn_stock_sz": CnStockFetcher(),
     "cn_fund": CnFundFetcherAdapter(),
     "cn_fund_open": CnFundFetcherAdapter(),
     "cn_fund_etf": CnFundFetcherAdapter(),

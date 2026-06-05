@@ -51,6 +51,19 @@ _ERROR_CODE_STATUS = {
 }
 
 
+def _alert_to_dict(alert) -> dict:
+    """Serialize an Alert dataclass to a JSON-safe dict."""
+    return {
+        "alert_id": alert.alert_id,
+        "title": alert.title,
+        "reason": alert.reason,
+        "evidence": alert.evidence,
+        "severity": alert.severity,
+        "suggested_action": alert.suggested_action,
+        "created_at": alert.created_at,
+    }
+
+
 def _json_response(payload: dict) -> JSONResponse:
     if payload.get("success", True):
         status_code = 200
@@ -204,6 +217,23 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         return _json_response(
             get_application_services().research.get_missing_report(assets, start, end)
+        )
+
+    @app.get("/api/alerts", tags=["alerts"])
+    def list_alerts() -> JSONResponse:
+        """Run all risk checks and return any triggered alerts."""
+        alerts = get_application_services().alerts.run_all({})
+        return _json_response(
+            {"alerts": [_alert_to_dict(a) for a in alerts], "count": len(alerts)}
+        )
+
+    @app.post("/api/alerts/run", tags=["alerts"])
+    def run_alerts(payload: Dict[str, Any]) -> JSONResponse:
+        """Run risk checks with optional context data."""
+        ctx = payload or {}
+        alerts = get_application_services().alerts.run_all(ctx)
+        return _json_response(
+            {"alerts": [_alert_to_dict(a) for a in alerts], "count": len(alerts)}
         )
 
     @app.get("/api/data/ingestion/runs", tags=["data"])

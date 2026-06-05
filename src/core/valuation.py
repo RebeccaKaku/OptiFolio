@@ -170,7 +170,7 @@ class FxRateProvider:
 
     def _get_live_rate(self, from_curr: str, to_curr: str) -> float:
         """Fetch live rate from CurrencyFetcher (blocking, network I/O)."""
-        from src.data_core.fetchers.currency import CurrencyFetcher
+        from FinData.adapters.forex import CurrencyFetcher
 
         fetcher = CurrencyFetcher()
         rate = fetcher.get_realtime_rate(from_curr, to_curr)
