@@ -136,10 +136,8 @@ class CnFundFetcher(AsyncBaseFetcher):
                     self._fetch_open_fund, symbol, start_date, end_date
                 )
             
-            # 标准化输出格式 (只有ETF保持OHLCV)
-            if 'ETF' in f_name.upper() and '联接' not in f_name:
-                return self._standardize_output(df)
-            return df
+            # 标准化输出格式
+            return self._standardize_output(df)
             
         except Exception as e:
             print(f"    [Error] {symbol} 抓取异常: {e}")
@@ -203,12 +201,17 @@ class CnFundFetcher(AsyncBaseFetcher):
         if df.empty:
             return pd.DataFrame()
         
-        df = df.rename(columns={'净值日期': 'Date', '累计净值': 'acc_nav', '单位净值': 'unit_nav'})
+        df = df.rename(columns={'净值日期': 'Date', '累计净值': 'Close'})
         df['Date'] = pd.to_datetime(df['Date'])
         df.set_index('Date', inplace=True)
         
-        cols = [c for c in ['unit_nav', 'acc_nav'] if c in df.columns]
-        return df.loc[start_date:end_date][cols]
+        # 公募基金只有净值，没有 OHLCV，用 Close 填充
+        df['Open'] = df['Close']
+        df['High'] = df['Close']
+        df['Low'] = df['Close']
+        df['Volume'] = 0.0
+
+        return df.loc[start_date:end_date][['Open', 'High', 'Low', 'Close', 'Volume']]
 
     def _fetch_money_fund(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """抓取货币基金数据"""
@@ -216,7 +219,7 @@ class CnFundFetcher(AsyncBaseFetcher):
         if df.empty:
             return pd.DataFrame()
         
-        df = df.rename(columns={'净值日期': 'Date', '每万份收益': 'Per10kYield', '日收益率': 'daily_return'})
+        df = df.rename(columns={'净值日期': 'Date', '每万份收益': 'Per10kYield'})
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df['Per10kYield'] = pd.to_numeric(df['Per10kYield'], errors='coerce')
         
@@ -225,8 +228,11 @@ class CnFundFetcher(AsyncBaseFetcher):
         df.set_index('Date', inplace=True)
         
         # 全量历史累加计算复利净值 (基准设为 1.0)
-        df['acc_nav'] = 1.0 + (df['Per10kYield'].cumsum() / 10000.0)
-        df['unit_nav'] = 1.0
+        df['Close'] = 1.0 + (df['Per10kYield'].cumsum() / 10000.0)
         
-        cols = [c for c in ['unit_nav', 'acc_nav', 'daily_return'] if c in df.columns]
-        return df.loc[start_date:end_date][cols]
+        df['Open'] = df['Close']
+        df['High'] = df['Close']
+        df['Low'] = df['Close']
+        df['Volume'] = 0.0
+
+        return df.loc[start_date:end_date][['Open', 'High', 'Low', 'Close', 'Volume']]

@@ -256,16 +256,13 @@ class DashboardEngine(IAnalyticsEngine):
         # 计算累计收益
         cumulative_returns = (1 + daily_returns).cumprod() - 1
         
-        # 将 numpy 数组转换为 pandas Series 以便使用 expanding()
-        cumulative_returns_series = pd.Series(cumulative_returns)
-
         # 创建数据系列
         chart_data = {
             "dates": [d.strftime("%Y-%m-%d") for d in dates],
             "daily_returns": daily_returns.tolist(),
             "cumulative_returns": cumulative_returns.tolist(),
-            "running_max": cumulative_returns_series.expanding().max().tolist(),
-            "drawdown": (cumulative_returns_series - cumulative_returns_series.expanding().max()).tolist(),
+            "running_max": cumulative_returns.expanding().max().tolist(),
+            "drawdown": (cumulative_returns - cumulative_returns.expanding().max()).tolist(),
             "period": f"{days}天",
             "start_date": start_date.strftime("%Y-%m-%d"),
             "end_date": end_date.strftime("%Y-%m-%d"),

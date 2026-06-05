@@ -113,7 +113,7 @@ class IcbcFetcher(AsyncBaseFetcher):
         if not all_items:
             return pd.DataFrame()
             
-        return self._transform_to_nav(all_items, start_date, end_date)
+        return self._transform_to_ohlcv(all_items, start_date, end_date)
 
     def _save_raw_page(self, symbol: str, page_index: int, items: List[Dict]):
         """Save raw JSON items for a specific page."""
@@ -124,28 +124,30 @@ class IcbcFetcher(AsyncBaseFetcher):
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(items, f, ensure_ascii=False, indent=2)
 
-    def _transform_to_nav(self, items: List[Dict], start_date: str, end_date: str) -> pd.DataFrame:
-        """Transform ICBC API items to standardized NAV DataFrame."""
+    def _transform_to_ohlcv(self, items: List[Dict], start_date: str, end_date: str) -> pd.DataFrame:
+        """Transform ICBC API items to standardized OHLCV DataFrame."""
         df = pd.DataFrame(items)
         
         # Rename columns to standardized names
         # ICBC fields: workDate, value (net value), totValue (accumulated)
         df = df.rename(columns={
-            "workDate": "date",
-            "value": "unit_nav",
-            "totValue": "acc_nav"
+            "workDate": "timestamp",
+            "value": "close"
         })
         
-        df["date"] = pd.to_datetime(df["date"])
-        df["unit_nav"] = pd.to_numeric(df["unit_nav"], errors="coerce")
-        if "acc_nav" in df.columns:
-            df["acc_nav"] = pd.to_numeric(df["acc_nav"], errors="coerce")
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["close"] = pd.to_numeric(df["close"], errors="coerce")
         
-        df = df.set_index("date").sort_index()
+        # Set other OHLC values to close for funds
+        df["open"] = df["close"]
+        df["high"] = df["close"]
+        df["low"] = df["close"]
+        df["volume"] = 0.0
+
+        df = df.set_index("timestamp").sort_index()
         
         # Filter by date range
-        cols = [c for c in ["unit_nav", "acc_nav"] if c in df.columns]
-        return df.loc[start_date:end_date][cols]
+        return df.loc[start_date:end_date][["open", "high", "low", "close", "volume"]]
 
     async def sync(self, symbols: Optional[List[str]] = None):
         """Trigger update for a list of products. If None, syncs all found in processed_dir and some default codes."""

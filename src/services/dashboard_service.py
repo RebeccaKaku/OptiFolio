@@ -48,12 +48,3 @@ class DashboardService:
             )
         except Exception as exc:
             return failure(str(exc), "ASSET_TYPE_DISTRIBUTION_ERROR")
-
-    def get_performance_chart_data(self, days: int = 365) -> Dict[str, Any]:
-        try:
-            return normalize_response(
-                self.api_service.get_performance_chart_data(days),
-                default_message="Performance chart data loaded",
-            )
-        except Exception as exc:
-            return failure(str(exc), "PERFORMANCE_CHART_ERROR")

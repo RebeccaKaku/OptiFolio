@@ -9,17 +9,7 @@ import pandas as pd
 
 from src.core.paths import PROJECT_ROOT
 
-from .schemas import (
-    CANONICAL_MARKET_COLUMNS,
-    FUND_NAV_COLUMNS,
-    WEALTH_NAV_COLUMNS,
-    normalize_fund_nav_frame,
-    normalize_market_frame,
-    normalize_wealth_nav_frame,
-    validate_fund_nav_frame,
-    validate_market_frame,
-    validate_wealth_nav_frame,
-)
+from .schemas import CANONICAL_MARKET_COLUMNS, normalize_market_frame, validate_market_frame
 
 
 class MarketDataRepository:
@@ -29,8 +19,6 @@ class MarketDataRepository:
         self.root_dir = Path(root_dir) if root_dir else PROJECT_ROOT / "data" / "foundation"
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self.price_path = self.root_dir / "market_prices.parquet"
-        self.fund_path = self.root_dir / "fund_nav.parquet"
-        self.wealth_path = self.root_dir / "wealth_nav.parquet"
 
     def save_raw(
         self,
@@ -53,48 +41,6 @@ class MarketDataRepository:
             return pd.DataFrame(columns=CANONICAL_MARKET_COLUMNS)
         return pd.read_parquet(self.price_path)
 
-    def save_fund_nav(
-        self,
-        frame: pd.DataFrame,
-        asset_id: str | None = None,
-        source: str = "manual",
-        currency: str | None = None,
-    ) -> pd.DataFrame:
-        canonical = normalize_fund_nav_frame(frame, asset_id=asset_id, source=source, currency=currency)
-        canonical = validate_fund_nav_frame(canonical)
-        existing = self.load_fund_nav()
-        combined = canonical if existing.empty else pd.concat([existing, canonical], ignore_index=True)
-        combined = combined.drop_duplicates(["asset_id", "date", "source"], keep="last")
-        combined = combined.sort_values(["asset_id", "date", "source"]).reset_index(drop=True)
-        validate_fund_nav_frame(combined).to_parquet(self.fund_path, compression="snappy", index=False)
-        return canonical
-
-    def load_fund_nav(self) -> pd.DataFrame:
-        if not self.fund_path.exists():
-            return pd.DataFrame(columns=FUND_NAV_COLUMNS)
-        return pd.read_parquet(self.fund_path)
-
-    def save_wealth_nav(
-        self,
-        frame: pd.DataFrame,
-        asset_id: str | None = None,
-        source: str = "manual",
-        currency: str | None = None,
-    ) -> pd.DataFrame:
-        canonical = normalize_wealth_nav_frame(frame, asset_id=asset_id, source=source, currency=currency)
-        canonical = validate_wealth_nav_frame(canonical)
-        existing = self.load_wealth_nav()
-        combined = canonical if existing.empty else pd.concat([existing, canonical], ignore_index=True)
-        combined = combined.drop_duplicates(["asset_id", "date", "source"], keep="last")
-        combined = combined.sort_values(["asset_id", "date", "source"]).reset_index(drop=True)
-        validate_wealth_nav_frame(combined).to_parquet(self.wealth_path, compression="snappy", index=False)
-        return canonical
-
-    def load_wealth_nav(self) -> pd.DataFrame:
-        if not self.wealth_path.exists():
-            return pd.DataFrame(columns=WEALTH_NAV_COLUMNS)
-        return pd.read_parquet(self.wealth_path)
-
     def get_prices(
         self,
         assets: Sequence[str],
@@ -102,56 +48,35 @@ class MarketDataRepository:
         end: str | None = None,
         fields: Sequence[str] = ("adj_close",),
     ) -> pd.DataFrame:
-        if not assets:
+        if not assets or not self.price_path.exists():
             return pd.DataFrame()
         if len(fields) != 1:
             raise ValueError("get_prices currently returns one field at a time")
 
         field = fields[0]
+        if field not in CANONICAL_MARKET_COLUMNS:
+            raise ValueError(f"Unknown market data field: {field}")
 
-        # Determine which tables to search
-        paths = []
-        if self.price_path.exists():
-            paths.append((self.price_path, field if field in CANONICAL_MARKET_COLUMNS else None))
-        if self.fund_path.exists():
-            paths.append(
-                (self.fund_path, "unit_nav" if field in ["adj_close", "close", "unit_nav"] else None)
-            )
-        if self.wealth_path.exists():
-            paths.append(
-                (self.wealth_path, "unit_nav" if field in ["adj_close", "close", "unit_nav"] else None)
-            )
+        where_parts = ["asset_id IN $assets"]
+        params: dict[str, object] = {"assets": list(assets), "path": str(self.price_path)}
+        if start:
+            where_parts.append("date >= $start")
+            params["start"] = pd.Timestamp(start).to_pydatetime()
+        if end:
+            where_parts.append("date <= $end")
+            params["end"] = pd.Timestamp(end).to_pydatetime()
 
-        valid_paths = [p for p in paths if p[1] is not None]
-        if not valid_paths:
+        query = f"""
+            SELECT date, asset_id, {field} AS value
+            FROM read_parquet($path)
+            WHERE {" AND ".join(where_parts)}
+            ORDER BY date, asset_id
+        """
+        rows = self._query(query, params)
+        if rows.empty:
             return pd.DataFrame()
 
-        all_rows = []
-        for path, col in valid_paths:
-            where_parts = ["asset_id IN $assets"]
-            params: dict[str, object] = {"assets": list(assets), "path": str(path)}
-            if start:
-                where_parts.append("date >= $start")
-                params["start"] = pd.Timestamp(start).to_pydatetime()
-            if end:
-                where_parts.append("date <= $end")
-                params["end"] = pd.Timestamp(end).to_pydatetime()
-
-            query = f"""
-                SELECT date, asset_id, {col} AS value
-                FROM read_parquet($path)
-                WHERE {" AND ".join(where_parts)}
-                ORDER BY date, asset_id
-            """
-            rows = self._query(query, params)
-            if not rows.empty:
-                all_rows.append(rows)
-
-        if not all_rows:
-            return pd.DataFrame()
-
-        combined_rows = pd.concat(all_rows).drop_duplicates(["date", "asset_id"], keep="last")
-        matrix = combined_rows.pivot(index="date", columns="asset_id", values="value")
+        matrix = rows.pivot(index="date", columns="asset_id", values="value")
         matrix.index = pd.to_datetime(matrix.index)
         return matrix.reindex(columns=list(assets)).sort_index()
 
@@ -192,13 +117,11 @@ class MarketDataRepository:
         return report
 
     def list_assets(self) -> list[str]:
-        assets = set()
-        for path in [self.price_path, self.fund_path, self.wealth_path]:
-            if path.exists():
-                query = "SELECT DISTINCT asset_id FROM read_parquet($path) ORDER BY asset_id"
-                rows = self._query(query, {"path": str(path)})
-                assets.update(rows["asset_id"].tolist())
-        return sorted(list(assets))
+        if not self.price_path.exists():
+            return []
+        query = "SELECT DISTINCT asset_id FROM read_parquet($path) ORDER BY asset_id"
+        rows = self._query(query, {"path": str(self.price_path)})
+        return rows["asset_id"].tolist()
 
     def _query(self, query: str, params: dict[str, object]) -> pd.DataFrame:
         try:

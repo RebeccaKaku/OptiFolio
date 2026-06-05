@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 
 from src.services import get_application_services
 from src.services.response import success
-from .ghostfolio_compat import router as ghostfolio_router
 
 
 class BacktestPayload(BaseModel):
@@ -96,14 +95,6 @@ def create_app() -> FastAPI:
     def portfolio_holdings() -> JSONResponse:
         return _json_response(get_application_services().portfolio.get_holdings())
 
-    @app.get("/api/portfolio/v2/risk/exposure", tags=["portfolio"])
-    def portfolio_exposure(
-        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3)
-    ) -> JSONResponse:
-        return _json_response(
-            get_application_services().portfolio_v2.get_exposure_report(base_currency)
-        )
-
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
         return _json_response(get_application_services().assets.get_overview())
@@ -167,13 +158,9 @@ def create_app() -> FastAPI:
             get_application_services().research.get_missing_report(assets, start, end)
         )
 
-    @app.get("/api/data/quality", tags=["market"])
-    def data_quality(
-        asset_id: Optional[str] = Query(default=None),
-    ) -> JSONResponse:
-        return _json_response(
-            get_application_services().research.get_quality_reports(asset_id)
-        )
+    @app.get("/api/data/ingestion/runs", tags=["data"])
+    def ingestion_runs() -> JSONResponse:
+        return _json_response(get_application_services().ingestion.get_runs())
 
     @app.post("/api/research/backtest", tags=["research"])
     def run_backtest(payload: BacktestPayload) -> JSONResponse:
@@ -202,8 +189,6 @@ def create_app() -> FastAPI:
                 risk_free_rate=payload.risk_free_rate,
             )
         )
-
-    app.include_router(ghostfolio_router)
 
     return app
 
