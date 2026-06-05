@@ -7,6 +7,7 @@ from src.api.enhanced_api_service import get_enhanced_api_service
 
 from .asset_service import AssetService
 from .dashboard_service import DashboardService
+from .market_data_service import MarketDataIngestionService
 from .portfolio_service import PortfolioService
 from .research_service import ResearchService
 from .system_service import SystemService
@@ -19,6 +20,7 @@ class ApplicationServices:
     portfolio: PortfolioService
     assets: AssetService
     research: ResearchService
+    ingestion: MarketDataIngestionService
 
 
 @lru_cache(maxsize=1)
@@ -30,4 +32,5 @@ def get_application_services() -> ApplicationServices:
         portfolio=PortfolioService(api_service),
         assets=AssetService(api_service),
         research=ResearchService(),
+        ingestion=MarketDataIngestionService(),
     )
