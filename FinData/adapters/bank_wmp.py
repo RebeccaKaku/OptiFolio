@@ -20,16 +20,16 @@ class BankWmpFetcher(FetcherProtocol):
     # ── classification ──────────────────────────────────────────────
     _RE_ICBC = re.compile(r"^\d{2}[A-Z0-9]{6}$")                      # 2 digits + 6 alnum = 8 chars
     _RE_BOSC = re.compile(r"^[A-Z]{1,6}\d+[A-Z0-9]*$")                # letter prefix + digits (covers GKF/J/W/MPJF/...)
-    _RE_BOC  = re.compile(r"^[A-Z][A-Z0-9]{9,}$")                     # uppercase, 10+ chars
+    _RE_BOC  = re.compile(r"^[A-Z]{5,}[A-Z0-9]{5,}$")                 # 5+ leading letters + 5+ alnum = 10+ total, digits delayed
 
     @staticmethod
     def _classify(symbol: str) -> str:
         if BankWmpFetcher._RE_ICBC.match(symbol):
             return "icbc"
-        if BankWmpFetcher._RE_BOSC.match(symbol):
-            return "bosc"
         if BankWmpFetcher._RE_BOC.match(symbol):
             return "boc"
+        if BankWmpFetcher._RE_BOSC.match(symbol):
+            return "bosc"
         return ""
 
     # ── lazy sub-fetchers ───────────────────────────────────────────

@@ -589,26 +589,6 @@ def create_app() -> FastAPI:
             )
         )
 
-    @app.get("/api/market/assets", tags=["market"])
-    def market_assets() -> JSONResponse:
-        """List all asset IDs currently in canonical storage."""
-        return _json_response(
-            get_application_services().research.list_market_assets()
-        )
-
-    @app.get("/api/market/prices", tags=["market"])
-    def market_prices(
-        assets: List[str] = Query(min_length=1),
-        start: Optional[str] = None,
-        end: Optional[str] = None,
-        field: str = "adj_close",
-    ) -> JSONResponse:
-        """Price matrix for requested assets from canonical storage."""
-        return _json_response(
-            get_application_services().research.get_prices(
-                assets, start=start, end=end, field=field
-            )
-        )
 
     app.include_router(ghostfolio_router)
     app.include_router(dashboard_router)

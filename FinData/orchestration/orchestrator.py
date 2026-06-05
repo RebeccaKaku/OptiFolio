@@ -124,7 +124,7 @@ class Orchestrator:
             ``{asset_id: FetchResult}`` for every asset that was
             successfully fetched and stored.
         """
-        from FinData.adapters.registry import get_fetcher
+        from FinData.adapters import get_fetcher
 
         results: dict[str, object] = {}
 
