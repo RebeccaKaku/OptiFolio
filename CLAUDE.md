@@ -15,6 +15,9 @@ OptiFolio v0.2.0 — personal multi-asset portfolio risk engine. Python 3.14.2 o
 6. **Every adapter returns `FetchResult`** — never an empty DataFrame without metadata.
 7. **QualityGate runs 8 checks** on every write — empty data NEVER overwrites good data.
 8. **Do not import private names across packages** — use re-export layers (e.g. `FinData/store/schemas.py`).
+9. **Prefer simplicity over compatibility.** This is pre-1.0. Delete dead code; remove unnecessary abstractions; don't keep "just in case" inheritance. Duck typing is sufficient when no `isinstance` checks exist. A deleted file is better than a kept compatibility shim.
+10. **Method signatures: optional > required.** Use `context=None, **kwargs` instead of `context: Dict`. Let callers omit what they don't need. Use `Body(None)` for optional JSON bodies in FastAPI.
+11. **Don't nest adapters.** Put fetcher logic directly in the `FetcherProtocol` implementation. No "thin wrapper → real fetcher" two-level delegation. No `BaseFetcher → FetcherAdapter` inheritance chains when a single class suffices.
 
 ## Reliable Test Command
 
@@ -65,6 +68,14 @@ src/api/          ← FastAPI routes (no business logic here)
 src/core/         ← domain logic (valuation, calendars, corporate actions)
 portfolio/        ← optimization algorithms (PyPortfolioOpt, cvxpy)
 ```
+
+## Design Principles (learned from Jules code review 2026-06-05)
+
+- **Duck typing beats ABC inheritance.** `BocFetcher`, `IcbcFetcher`, etc. are looked up via `FETCHER_REGISTRY` and called by duck typing. No code ever does `isinstance(x, AsyncBaseFetcher)`. The abstract base class added complexity without value. Deleted.
+- **`to_dict()` lives on the dataclass.** Don't create standalone serialization helpers (`_alert_to_dict(a)`) when the class already has `.to_dict()`. One source of truth for serialization.
+- **Auto-wire services.** `get_application_services().alerts` automatically provides dependencies. Don't require callers to pass them manually.
+- **Inline, don't delegate.** `CnStockFetcher` was a thin wrapper → real fetcher. Now it's a single class implementing `FetcherProtocol` with all the logic. One file, one class, no delegation.
+- **Kill backwards-compat shims before 1.0.** `store_version = STORE_VERSION` alias → just use `STORE_VERSION` in tests. `save_raw` → rename to `save_canonical`, keep `save_raw` only as deprecated wrapper with warning.
 
 ## Naming Conventions
 
