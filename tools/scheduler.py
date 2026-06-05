@@ -247,6 +247,13 @@ class DailyRunner:
         logger.info("[Step 6/6] Checking alerts …")
         alerts_data: List[Dict[str, Any]] = []
 
+        if alert_engine is None:
+            try:
+                from src.services.application import get_application_services
+                alert_engine = get_application_services().alerts
+            except Exception as exc:
+                logger.info("  AlertEngine not available through get_application_services: %s", exc)
+
         if alert_engine is not None:
             if dry_run:
                 logger.info("  Would run alert_engine checks")
@@ -263,10 +270,10 @@ class DailyRunner:
                     elif hasattr(alert_engine, "run_all") and callable(getattr(alert_engine, "run_all", None)):
                         from src.analytics.alerts import AlertEngine
                         if isinstance(alert_engine, AlertEngine):
-                            raw_alerts = alert_engine.run_all(alert_ctx)
+                            raw_alerts = alert_engine.run_all(**alert_ctx)
                             alerts_data = [a.to_dict() for a in raw_alerts]
                         else:
-                            alerts_data = alert_engine.run_all(alert_ctx)
+                            alerts_data = alert_engine.run_all(**alert_ctx)
                     elif hasattr(alert_engine, "check_all") and callable(getattr(alert_engine, "check_all", None)):
                         alerts_data = alert_engine.check_all()
                     else:

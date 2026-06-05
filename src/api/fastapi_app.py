@@ -1,9 +1,9 @@
 """FastAPI entrypoint for the new OptiFolio HTTP API."""
 
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -589,6 +589,19 @@ def create_app() -> FastAPI:
             )
         )
 
+    # ── Alerts ──────────────────────────────────────────────────────────
+
+    @app.get("/api/alerts", tags=["alerts"])
+    def list_alerts() -> JSONResponse:
+        """Return recent alerts by running the engine with an empty context."""
+        alerts = get_application_services().alerts.run_all()
+        return _json_response(success([a.to_dict() for a in alerts]))
+
+    @app.post("/api/alerts/run", tags=["alerts"])
+    def run_alerts(ctx: Optional[Dict[str, Any]] = Body(None)) -> JSONResponse:
+        """Run all alerts with the provided context dictionary."""
+        alerts = get_application_services().alerts.run_all(**(ctx or {}))
+        return _json_response(success([a.to_dict() for a in alerts]))
 
     app.include_router(ghostfolio_router)
     app.include_router(dashboard_router)

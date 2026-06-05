@@ -63,3 +63,36 @@ def test_research_backtest_route_uses_service_layer(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["data"]["assets"] == ["AAA", "BBB"]
+
+def test_alerts_get_endpoint(monkeypatch):
+    from src.analytics.alerts import AlertEngine
+    fake_services = SimpleNamespace(alerts=AlertEngine())
+    monkeypatch.setattr(fastapi_app, "get_application_services", lambda: fake_services)
+    client = TestClient(fastapi_app.create_app())
+
+    response = client.get("/api/alerts")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert isinstance(payload["data"], list)
+
+
+def test_alerts_run_endpoint_stale_price(monkeypatch):
+    from src.analytics.alerts import AlertEngine
+    fake_services = SimpleNamespace(alerts=AlertEngine())
+    monkeypatch.setattr(fastapi_app, "get_application_services", lambda: fake_services)
+    client = TestClient(fastapi_app.create_app())
+
+    payload = {
+        "quality_summary": {
+            "threshold_pct": 50.0,
+            "stale_assets": ["AAPL"],
+            "n_days": 5
+        }
+    }
+    response = client.post("/api/alerts/run", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert any(a["alert_id"] == "stale_price_threshold" for a in data)

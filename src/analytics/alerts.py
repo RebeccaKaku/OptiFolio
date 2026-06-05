@@ -600,14 +600,15 @@ class AlertEngine:
 
     # ── Orchestrator ─────────────────────────────────────────────────────
 
-    def run_all(self, context: Dict[str, Any]) -> List[Alert]:
+    def run_all(self, context: Optional[Dict[str, Any]] = None, **kwargs: Any) -> List[Alert]:
         """Run all applicable checks from a single context dictionary.
 
         Each check is skipped silently when its required data is missing from
         *context*.
 
         Args:
-            context: Dictionary that may contain any of:
+            context: Optional dictionary that may contain any of the below.
+            **kwargs: Keyword arguments that override or complement *context*.
                 * ``equity_curve`` (pd.DataFrame) — for drawdown check
                 * ``products`` (List[Dict]) — for maturity check
                 * ``fx_exposure_report`` — for FX loss check
@@ -623,6 +624,11 @@ class AlertEngine:
         Returns:
             List of all triggered ``Alert`` objects.
         """
+        # Combine context and kwargs, with kwargs taking precedence
+        ctx = dict(context or {})
+        ctx.update(kwargs)
+        context = ctx
+
         alerts: List[Alert] = []
 
         # ── Drawdown ─────────────────────────────────────────────────────
