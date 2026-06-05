@@ -123,7 +123,7 @@ function badge(t) {
 
 async function loadPortfolio() {
   const el = document.getElementById('port-summary');
-  const res = await get('/api/portfolio/v2/risk/exposure?as_of=2024-02-07');
+  const res = await get('/api/portfolio/v2/risk/exposure?as_of=' + new Date().toISOString().slice(0, 10));
   if (!res.success) { el.innerHTML = '<div class="error">' + (res.message || res.error) + '</div>'; return; }
   const d = res.data;
   let html = '<div class="metric"><span class="metric-label">Total Value</span><span class="metric-value green">' + money(d.total_value) + '</span></div>';
@@ -145,12 +145,9 @@ async function loadPortfolio() {
   // Positions table from exposure data
   const posEl = document.getElementById('pos-table');
   let rows = '';
-  const total = d.total_value;
   d.by_asset_class.forEach(ac => {
-    ac.asset_ids.forEach(sym => {
-      const val = ac.value / Math.max(ac.asset_ids.length, 1);
-      rows += '<tr><td>' + sym + '</td><td>' + badge(ac.bucket) + '</td><td>' + money(val) + '</td><td>' + fmt(val/total*100,1) + '%</td></tr>';
-    });
+    const syms = ac.asset_ids.join(', ');
+    rows += '<tr><td>' + syms + '</td><td>' + badge(ac.bucket) + '</td><td>' + money(ac.value) + '</td><td>' + fmt(ac.pct*100, 1) + '%</td></tr>';
   });
   posEl.innerHTML = rows || '<tr><td colspan="4" class="small">No positions</td></tr>';
 }
