@@ -13,6 +13,12 @@ from .research_service import ResearchService
 from .system_service import SystemService
 
 
+class IngestionService:
+    """Stub for ingestion metadata API."""
+    def get_runs(self) -> Dict[str, Any]:
+        return {"runs": [], "message": "Ingestion pipeline not yet wired"}
+
+
 @dataclass(frozen=True)
 class ApplicationServices:
     system: SystemService
@@ -21,6 +27,7 @@ class ApplicationServices:
     portfolio_v2: PortfolioServiceV2  # NEW — date-aware valuation
     assets: AssetService
     research: ResearchService
+    ingestion: IngestionService
 
 
 @lru_cache(maxsize=1)
@@ -33,4 +40,5 @@ def get_application_services() -> ApplicationServices:
         portfolio_v2=PortfolioServiceV2(),
         assets=AssetService(api_service),
         research=ResearchService(),
+        ingestion=IngestionService(),
     )

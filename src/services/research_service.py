@@ -53,6 +53,55 @@ class ResearchService:
         except Exception as exc:
             return failure(str(exc), "RETURN_MATRIX_ERROR", {"assets": list(assets)})
 
+    def get_quality_reports(self, asset_id: Optional[str] = None) -> Dict[str, Any]:
+        try:
+            from FinData.store.quality import QualityIssueStore
+
+            store = QualityIssueStore()
+            df = store.load()
+            if asset_id:
+                df = df[df["asset_id"] == asset_id]
+
+            if not df.empty and "timestamp" in df.columns:
+                df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+            return success({"reports": df.to_dict(orient="records")}, "Quality reports loaded")
+        except Exception as exc:
+            return failure(str(exc), "QUALITY_REPORT_ERROR")
+
+    def run_stale_price_check(self, n_days: int = 3) -> Dict[str, Any]:
+        """Execute stale-price check and persist results.
+
+        Returns a summary dict with ``issues_found``, ``stale_assets``,
+        and ``threshold_pct`` (percentage of tracked assets that are stale).
+        """
+        try:
+            from FinData.store.quality import QualityGate, QualityIssueStore
+
+            gate = QualityGate(repository=self.market_data)
+            issues = gate.stale_price_check(n_days=n_days)
+
+            store = QualityIssueStore()
+            store.append(issues)
+
+            tracked = self.market_data.list_assets()
+            stale_count = len(issues)
+            threshold_pct = (stale_count / len(tracked) * 100) if tracked else 0.0
+
+            return success(
+                {
+                    "issues_found": stale_count,
+                    "stale_assets": issues["asset_id"].tolist() if not issues.empty else [],
+                    "threshold_pct": round(threshold_pct, 2),
+                    "n_days": n_days,
+                },
+                f"Stale-price check complete — {stale_count} stale asset(s)",
+            )
+        except Exception as exc:
+            return failure(str(exc), "STALE_PRICE_CHECK_ERROR")
+
     def get_missing_report(
         self,
         assets: Sequence[str],
@@ -178,7 +227,7 @@ class ResearchService:
         )
 
     def _equal_weights(self, assets: Sequence[str]) -> Dict[str, float]:
-        if not assets:
+        if len(assets) == 0:
             return {}
         weight = 1.0 / len(assets)
         return {asset: weight for asset in assets}

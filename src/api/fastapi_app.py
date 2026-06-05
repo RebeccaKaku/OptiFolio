@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.services import get_application_services
+from .ghostfolio_compat import router as ghostfolio_router
+from .static_dashboard import router as dashboard_router
 from src.services.response import success
 
 
@@ -117,8 +119,8 @@ def create_app() -> FastAPI:
 
     @app.get("/api/portfolio/v2/performance/fx-decomposition", tags=["portfolio"])
     def fx_decomposition(
-        start: str = Query(..., regex=r"^\d{4}-\d{2}-\d{2}$"),
-        end: str = Query(..., regex=r"^\d{4}-\d{2}-\d{2}$"),
+        start: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        end: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
     ) -> JSONResponse:
         from datetime import datetime
@@ -207,6 +209,14 @@ def create_app() -> FastAPI:
     @app.get("/api/data/ingestion/runs", tags=["data"])
     def ingestion_runs() -> JSONResponse:
         return _json_response(get_application_services().ingestion.get_runs())
+
+    @app.get("/api/data/quality", tags=["data"])
+    def data_quality(
+        asset_id: Optional[str] = Query(default=None),
+    ) -> JSONResponse:
+        return _json_response(
+            get_application_services().research.get_quality_reports(asset_id)
+        )
 
     @app.post("/api/research/backtest", tags=["research"])
     def run_backtest(payload: BacktestPayload) -> JSONResponse:
@@ -476,6 +486,20 @@ def create_app() -> FastAPI:
             )
         )
 
+    @app.get("/api/portfolio/v2/risk/exposure", tags=["portfolio"])
+    def portfolio_v2_exposure(
+        as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+    ) -> JSONResponse:
+        """Level 0 exposure analysis — product label only, no look-through."""
+        from datetime import date as date_cls
+        as_of_date = date_cls.fromisoformat(as_of) if as_of else None
+        return _json_response(
+            get_application_services().portfolio_v2.get_exposure_report(
+                as_of=as_of_date, base_currency=base_currency,
+            )
+        )
+
     @app.get("/api/portfolio/v2/risk/concentration", tags=["portfolio"])
     def portfolio_v2_concentration(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
@@ -564,6 +588,30 @@ def create_app() -> FastAPI:
                 end=date_cls.fromisoformat(end) if end else None,
             )
         )
+
+    @app.get("/api/market/assets", tags=["market"])
+    def market_assets() -> JSONResponse:
+        """List all asset IDs currently in canonical storage."""
+        return _json_response(
+            get_application_services().research.list_market_assets()
+        )
+
+    @app.get("/api/market/prices", tags=["market"])
+    def market_prices(
+        assets: List[str] = Query(min_length=1),
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        field: str = "adj_close",
+    ) -> JSONResponse:
+        """Price matrix for requested assets from canonical storage."""
+        return _json_response(
+            get_application_services().research.get_prices(
+                assets, start=start, end=end, field=field
+            )
+        )
+
+    app.include_router(ghostfolio_router)
+    app.include_router(dashboard_router)
 
     return app
 

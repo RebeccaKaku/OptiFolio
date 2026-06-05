@@ -19,7 +19,7 @@ class BankWmpFetcher(FetcherProtocol):
 
     # ── classification ──────────────────────────────────────────────
     _RE_ICBC = re.compile(r"^\d{2}[A-Z0-9]{6}$")                      # 2 digits + 6 alnum = 8 chars
-    _RE_BOSC = re.compile(r"^[A-Z]{2,6}\d{2,4}[A-Z]\d+[A-Z0-9]*$")   # letters→digits→letter→digits
+    _RE_BOSC = re.compile(r"^[A-Z]{1,6}\d+[A-Z0-9]*$")                # letter prefix + digits (covers GKF/J/W/MPJF/...)
     _RE_BOC  = re.compile(r"^[A-Z][A-Z0-9]{9,}$")                     # uppercase, 10+ chars
 
     @staticmethod

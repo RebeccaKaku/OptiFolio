@@ -103,6 +103,7 @@ class AlertEngine:
     DEFAULT_FX_LOSS_THRESHOLD_PCT: float = 2.0
     DEFAULT_CONCENTRATION_CREEP_THRESHOLD: float = 5.0  # percentage points
     DEFAULT_OPEN_WINDOW_DAYS: int = 30
+    DEFAULT_STALE_PRICE_THRESHOLD_PCT: float = 10.0  # % of tracked assets
 
     # ── Individual checks ─────────────────────────────────────────────────
 
@@ -432,6 +433,50 @@ class AlertEngine:
             created_at=_now_iso(),
         )
 
+    def check_stale_prices(
+        self,
+        quality_summary: Dict[str, Any],
+        threshold_pct: float = DEFAULT_STALE_PRICE_THRESHOLD_PCT,
+    ) -> Optional[Alert]:
+        """Alert if a significant percentage of tracked assets have stale prices.
+
+        Args:
+            quality_summary: Dict from ``ResearchService.run_stale_price_check``
+                with keys ``threshold_pct`` (float) and ``stale_assets`` (list).
+            threshold_pct: Percentage of tracked assets that triggers an alert
+                (default 10.0).
+
+        Returns:
+            An ``Alert`` if the stale percentage exceeds the threshold, else ``None``.
+        """
+        stale_pct = float(quality_summary.get("threshold_pct", 0.0))
+        if stale_pct <= threshold_pct:
+            return None
+
+        stale_assets = quality_summary.get("stale_assets", [])
+        n_days = quality_summary.get("n_days", 3)
+
+        return Alert(
+            alert_id="stale_price_threshold",
+            title=f"Stale prices detected on {len(stale_assets)} asset(s)",
+            reason=(
+                f"{stale_pct:.1f}% of tracked assets have not been updated in the last "
+                f"{n_days} day(s). This may indicate a broken data source or ingestion pipeline."
+            ),
+            evidence={
+                "stale_assets": stale_assets[:20],  # cap for readability
+                "stale_count": len(stale_assets),
+                "threshold_pct": stale_pct,
+                "n_days": n_days,
+            },
+            severity="warning" if stale_pct < 50.0 else "critical",
+            suggested_action=(
+                "Review data source health and re-run ingestion for the listed assets. "
+                "If the source is permanently broken, consider switching to an alternative fetcher."
+            ),
+            created_at=_now_iso(),
+        )
+
     def check_open_windows(
         self,
         fund_statuses: List[Dict[str, Any]],
@@ -624,6 +669,21 @@ class AlertEngine:
                     context.get(
                         "concentration_creep_threshold",
                         self.DEFAULT_CONCENTRATION_CREEP_THRESHOLD,
+                    )
+                ),
+            )
+            if result is not None:
+                alerts.append(result)
+
+        # ── Stale prices ─────────────────────────────────────────────────
+        quality_summary = context.get("quality_summary")
+        if quality_summary is not None:
+            result = self.check_stale_prices(
+                quality_summary,
+                threshold_pct=float(
+                    context.get(
+                        "stale_price_threshold_pct",
+                        self.DEFAULT_STALE_PRICE_THRESHOLD_PCT,
                     )
                 ),
             )

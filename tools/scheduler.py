@@ -174,7 +174,7 @@ class DailyRunner:
         steps_completed.append("history")
 
         # ── Step 4: Run risk rules ─────────────────────────────────────
-        logger.info("[Step 4/5] Running risk rules …")
+        logger.info("[Step 4/6] Running risk rules …")
         rules_data: Optional[Dict[str, Any]] = None
 
         if dry_run:
@@ -213,8 +213,38 @@ class DailyRunner:
                 logger.warning("  Risk rule error (continuing): %s", exc)
                 errors.append(f"risk_rules: {exc}")
 
-        # ── Step 5: Check alerts ───────────────────────────────────────
-        logger.info("[Step 5/5] Checking alerts …")
+        # ── Step 5: Data quality checks ────────────────────────────────
+        logger.info("[Step 5/6] Running data quality checks …")
+        quality_data: Optional[Dict[str, Any]] = None
+
+        if dry_run:
+            logger.info("  Would run stale-price check (n_days=3)")
+            quality_data = {"issues_found": 0, "stale_assets": [], "threshold_pct": 0.0}
+            steps_completed.append("data_quality")
+        else:
+            try:
+                from src.services.application import get_application_services
+
+                dq_result = get_application_services().research.run_stale_price_check(n_days=3)
+                if dq_result.get("success"):
+                    quality_data = dq_result["data"]
+                    stale = quality_data.get("issues_found", 0)
+                    pct = quality_data.get("threshold_pct", 0.0)
+                    logger.info("  Data quality: %s stale asset(s) (%.1f%%)", stale, pct)
+                    if pct > 10.0:
+                        logger.warning(
+                            "  >10%% of tracked assets are stale — consider reviewing data sources"
+                        )
+                else:
+                    logger.warning("  Data quality check failed: %s", dq_result.get("message"))
+                    errors.append(f"data_quality: {dq_result.get('message')}")
+                steps_completed.append("data_quality")
+            except Exception as exc:
+                logger.warning("  Data quality error (continuing): %s", exc)
+                errors.append(f"data_quality: {exc}")
+
+        # ── Step 6: Check alerts ───────────────────────────────────────
+        logger.info("[Step 6/6] Checking alerts …")
         alerts_data: List[Dict[str, Any]] = []
 
         if alert_engine is not None:
@@ -222,13 +252,26 @@ class DailyRunner:
                 logger.info("  Would run alert_engine checks")
             else:
                 try:
-                    if hasattr(alert_engine, "run"):
+                    # Build context for AlertEngine.run_all()
+                    alert_ctx: Dict[str, Any] = {}
+                    if quality_data is not None:
+                        alert_ctx["quality_summary"] = quality_data
+
+                    # Priority: run() (legacy / mock) > run_all() (AlertEngine) > check_all()
+                    if hasattr(alert_engine, "run") and callable(getattr(alert_engine, "run", None)):
                         alerts_data = alert_engine.run()
-                    elif hasattr(alert_engine, "check_all"):
+                    elif hasattr(alert_engine, "run_all") and callable(getattr(alert_engine, "run_all", None)):
+                        from src.analytics.alerts import AlertEngine
+                        if isinstance(alert_engine, AlertEngine):
+                            raw_alerts = alert_engine.run_all(alert_ctx)
+                            alerts_data = [a.to_dict() for a in raw_alerts]
+                        else:
+                            alerts_data = alert_engine.run_all(alert_ctx)
+                    elif hasattr(alert_engine, "check_all") and callable(getattr(alert_engine, "check_all", None)):
                         alerts_data = alert_engine.check_all()
                     else:
                         logger.info(
-                            "  AlertEngine has no run()/check_all() method — skipped"
+                            "  AlertEngine has no run()/run_all()/check_all() method — skipped"
                         )
                 except Exception as exc:
                     logger.warning("  Alert check error (continuing): %s", exc)

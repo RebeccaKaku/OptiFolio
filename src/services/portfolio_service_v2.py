@@ -12,12 +12,17 @@ Portfolio loading order (same as the existing convention):
 from __future__ import annotations
 
 import os
+from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
 
+from src.analytics.concentration import ConcentrationAnalyzer
+from src.analytics.exposure import ExposureAnalyzer
+from src.analytics.fx_exposure import FxExposureAnalyzer
+from src.analytics.liquidity import LiquidityAnalyzer
 from src.core.corporate_actions import CorporateActionProcessor
 from src.core.fees import FeeProcessor
 from src.core.paths import PROJECT_ROOT
@@ -28,10 +33,49 @@ from src.core.valuation import (
     ValuationEngine,
 )
 from src.data_foundation.repository import MarketDataRepository
-from src.analytics.concentration import ConcentrationAnalyzer
-from src.analytics.fx_exposure import FxExposureAnalyzer
-from src.analytics.liquidity import LiquidityAnalyzer
 from src.domain import ProductDefinition, ValuationRequest
+
+
+class _AssetTypeResolver:
+    """Light-weight resolver that feeds ExposureAnalyzer from YAML registries.
+
+    The registry data is loaded once per process and cached at class level
+    to avoid repeated YAML I/O on every exposure report request.
+    """
+
+    _cache: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def __init__(self) -> None:
+        if _AssetTypeResolver._cache is None:
+            _AssetTypeResolver._cache = self._load()
+
+    @classmethod
+    def _load(cls) -> Dict[str, Dict[str, Any]]:
+        cache: Dict[str, Dict[str, Any]] = {}
+        for fname in ("asset_registry.yaml", "candidates.yaml"):
+            path = PROJECT_ROOT / "config" / fname
+            if not path.exists():
+                continue
+            with open(path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            for entry in data.get("assets", []):
+                symbol = entry.get("symbol")
+                if symbol:
+                    cache[symbol] = {
+                        "exists": True,
+                        "asset_type": entry.get("asset_type", "unknown"),
+                        "currency": entry.get("currency", "USD"),
+                        **{k: v for k, v in entry.items() if k not in ("symbol", "asset_type", "currency")},
+                    }
+        return cache
+
+    @classmethod
+    def invalidate(cls) -> None:
+        """Force reload on next instantiation (useful after config changes)."""
+        cls._cache = None
+
+    def get_asset_info(self, symbol: str) -> Dict[str, Any]:
+        return (self._cache or {}).get(symbol, {"exists": False})
 
 
 class PortfolioServiceV2:
@@ -66,6 +110,8 @@ class PortfolioServiceV2:
         self._fx_analyzer = fx_exposure_analyzer or FxExposureAnalyzer()
         self._concentration_analyzer = concentration_analyzer or ConcentrationAnalyzer()
         self._liquidity_analyzer = liquidity_analyzer or LiquidityAnalyzer()
+        self._exposure_analyzer = ExposureAnalyzer()
+        self._asset_type_resolver = _AssetTypeResolver()
         self._holdings: Dict[str, float] = {}
         self._cash: Dict[str, float] = {}
         self._load_portfolio()
@@ -190,6 +236,43 @@ class PortfolioServiceV2:
             return {"success": False, "message": str(exc), "error_code": "FX_EXPOSURE_ERROR"}
 
         return {"success": True, "data": report.to_dict(), "message": "FX exposure computed"}
+
+    def get_exposure_report(
+        self,
+        as_of: Optional[date] = None,
+        base_currency: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return Level 0 exposure report (product label only, no look-through)."""
+        currency = base_currency or self.base_currency
+        target_date = as_of or date.today()
+
+        try:
+            result = self.valuation_engine.value(
+                self._holdings, self._cash,
+                ValuationRequest(as_of=target_date, base_currency=currency),
+            )
+            # Build positions dict expected by ExposureAnalyzer
+            positions: Dict[str, Dict[str, Any]] = {
+                asset_id: {"value": pv.value_base, "currency": pv.currency}
+                for asset_id, pv in result.positions.items()
+            }
+            # Cash is passed separately so it doesn't pollute asset_ids
+            cash_breakdown: Dict[str, float] = {
+                curr: ch.value_base for curr, ch in result.cash_breakdown.items()
+            }
+
+            report = self._exposure_analyzer.analyze(
+                positions=positions,
+                product_registry=self._asset_type_resolver,
+                total_value=result.total_value,
+                cash_breakdown=cash_breakdown,
+            )
+        except NoPriceDataError as exc:
+            return {"success": False, "message": str(exc), "error_code": "NO_PRICE_DATA"}
+        except Exception as exc:
+            return {"success": False, "message": str(exc), "error_code": "EXPOSURE_REPORT_ERROR"}
+
+        return {"success": True, "data": asdict(report), "message": "Exposure report computed"}
 
     def get_concentration_report(
         self,

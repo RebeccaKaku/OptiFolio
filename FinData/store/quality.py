@@ -3,19 +3,28 @@
 Every incoming DataFrame is inspected against 8 quality checks before
 it is allowed into canonical storage. Rejections are fatal; flags warn
 but do not block.
+
+Additionally, the module provides ``QualityIssueStore`` for persisting
+data-quality issues (e.g. stale prices) to a canonical parquet file.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
 
 _log = logging.getLogger(__name__)
 
+from src.core.paths import PROJECT_ROOT
 from src.data_foundation.schemas import _COLUMN_ALIASES, _canonical_column_name
+
+
+# ── Ingestion quality report (per-batch, in-memory) ──────────────────────────
 
 
 @dataclass
@@ -35,6 +44,66 @@ class QualityReport:
     flags: List[str] = field(default_factory=list)
 
 
+# ── Persistent issue store (cross-run, parquet-backed) ───────────────────────
+
+
+class QualityIssueStore:
+    """Handles persistence of data-quality issues to a canonical parquet file.
+
+    Typical workflow::
+
+        issues = gate.stale_price_check(n_days=3)
+        store = QualityIssueStore()
+        store.append(issues)
+        df = store.load()          # read back for API / alerting
+    """
+
+    DEFAULT_PATH: Path = PROJECT_ROOT / "metadata" / "data_quality_issues.parquet"
+
+    def __init__(self, file_path: Optional[Path] = None) -> None:
+        self.file_path = file_path or self.DEFAULT_PATH
+
+    def append(self, issues: pd.DataFrame) -> None:
+        """Merge *issues* into the existing store, deduplicating by
+        ``(asset_id, issue_type, date)``.
+        """
+        if issues.empty:
+            return
+
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        existing = self.load()
+        combined = pd.concat([existing, issues], ignore_index=True)
+
+        # Deduplicate: keep the latest record per (asset_id, issue_type, date)
+        if "timestamp" in combined.columns:
+            combined["timestamp"] = pd.to_datetime(combined["timestamp"], errors="coerce")
+            combined = combined.sort_values("timestamp")
+
+        dedup_cols = [c for c in ("asset_id", "issue_type", "date") if c in combined.columns]
+        if dedup_cols:
+            combined = combined.drop_duplicates(subset=dedup_cols, keep="last")
+
+        combined.to_parquet(self.file_path, compression="snappy", index=False)
+        _log.info("QualityIssueStore: persisted %d issue(s) to %s", len(combined), self.file_path)
+
+    def load(self) -> pd.DataFrame:
+        """Read all persisted issues."""
+        if not self.file_path.exists():
+            return pd.DataFrame(
+                columns=["asset_id", "issue_type", "details", "timestamp", "date"]
+            )
+        return pd.read_parquet(self.file_path)
+
+    def clear(self) -> None:
+        """Remove the store file (useful in tests)."""
+        if self.file_path.exists():
+            self.file_path.unlink()
+
+
+# ── Quality gate (inspection + stale-price monitoring) ───────────────────────
+
+
 class QualityGate:
     """Multi-check data quality inspector.
 
@@ -48,9 +117,28 @@ class QualityGate:
     7. Price spikes       → FLAG if any daily change exceeds 50%
     8. Duplicate data     → REJECT if identical to already-stored data
 
+    Additionally, ``stale_price_check`` monitors the repository for
+    assets whose latest price is older than a given threshold.
+
     All rejections are FATAL — data will NOT be stored.
     Flags are warnings — data is stored but flagged.
     """
+
+    def __init__(self, repository: Optional[Any] = None) -> None:
+        """
+        Args:
+            repository: A ``MarketDataRepository`` instance (or compatible
+                object with ``price_path``, ``fund_path``, ``wealth_path``
+                and a ``_query`` method).  When ``None``, a default
+                repository is created.
+        """
+        if repository is None:
+            from src.data_foundation import MarketDataRepository
+
+            repository = MarketDataRepository()
+        self.repository = repository
+
+    # ── Ingestion checks ──────────────────────────────────────────────────
 
     def inspect(
         self,
@@ -80,8 +168,10 @@ class QualityGate:
             reject_reasons.append("Empty DataFrame — likely network error")
             checks.append({"name": "non_empty", "passed": False, "detail": "DataFrame is empty"})
             return QualityReport(
-                passed=False, checks=checks,
-                reject_reasons=reject_reasons, flags=flags,
+                passed=False,
+                checks=checks,
+                reject_reasons=reject_reasons,
+                flags=flags,
             )
         checks.append({"name": "non_empty", "passed": True, "detail": ""})
 
@@ -89,10 +179,18 @@ class QualityGate:
         has_close = "close" in mapped or "adj_close" in mapped
         if not has_close:
             reject_reasons.append("Missing price column — need 'close' or 'adj_close'")
-            checks.append({"name": "price_column", "passed": False, "detail": str(list(df.columns))})
+            checks.append(
+                {
+                    "name": "price_column",
+                    "passed": False,
+                    "detail": str(list(df.columns)),
+                }
+            )
             return QualityReport(
-                passed=False, checks=checks,
-                reject_reasons=reject_reasons, flags=flags,
+                passed=False,
+                checks=checks,
+                reject_reasons=reject_reasons,
+                flags=flags,
             )
         checks.append({"name": "price_column", "passed": True, "detail": ""})
 
@@ -109,15 +207,19 @@ class QualityGate:
                     flags.append(
                         f"Suspiciously few rows: {len(df)} rows spanning {date_span} days"
                     )
-                    checks.append({
-                        "name": "row_count",
-                        "passed": True,
-                        "detail": f"FLAG: {len(df)} rows over {date_span} days",
-                    })
+                    checks.append(
+                        {
+                            "name": "row_count",
+                            "passed": True,
+                            "detail": f"FLAG: {len(df)} rows over {date_span} days",
+                        }
+                    )
                 else:
                     checks.append({"name": "row_count", "passed": True, "detail": ""})
             else:
-                checks.append({"name": "row_count", "passed": True, "detail": "insufficient date data"})
+                checks.append(
+                    {"name": "row_count", "passed": True, "detail": "insufficient date data"}
+                )
         else:
             checks.append({"name": "row_count", "passed": True, "detail": "no date column"})
 
@@ -126,15 +228,21 @@ class QualityGate:
         nan_rate = price_series.isna().mean()
         if nan_rate > 0.5:
             reject_reasons.append(f"Majority NaN values: {nan_rate:.1%} NaN in {price_col}")
-            checks.append({"name": "nan_check", "passed": False, "detail": f"{nan_rate:.1%} NaN"})
+            checks.append(
+                {"name": "nan_check", "passed": False, "detail": f"{nan_rate:.1%} NaN"}
+            )
         else:
-            checks.append({"name": "nan_check", "passed": True, "detail": f"{nan_rate:.1%} NaN"})
+            checks.append(
+                {"name": "nan_check", "passed": True, "detail": f"{nan_rate:.1%} NaN"}
+            )
 
         # ── Check 5: Positive prices ──────────────────────────────────
         valid_prices = price_series.dropna()
         if len(valid_prices) > 0 and (valid_prices <= 0).any():
             reject_reasons.append("Non-positive prices found — data is corrupt or invalid")
-            checks.append({"name": "positive_prices", "passed": False, "detail": "REJECT: close <= 0"})
+            checks.append(
+                {"name": "positive_prices", "passed": False, "detail": "REJECT: close <= 0"}
+            )
         else:
             checks.append({"name": "positive_prices", "passed": True, "detail": ""})
 
@@ -150,19 +258,31 @@ class QualityGate:
                             f"Newer data already exists: new max date {new_max.date()} "
                             f"< existing max date {existing_max.date()}"
                         )
-                        checks.append({
-                            "name": "time_reversal",
-                            "passed": False,
-                            "detail": f"new max {new_max.date()} < existing max {existing_max.date()}",
-                        })
+                        checks.append(
+                            {
+                                "name": "time_reversal",
+                                "passed": False,
+                                "detail": f"new max {new_max.date()} < existing max {existing_max.date()}",
+                            }
+                        )
                     else:
                         checks.append({"name": "time_reversal", "passed": True, "detail": ""})
                 else:
-                    checks.append({"name": "time_reversal", "passed": True, "detail": "no date in existing"})
+                    checks.append(
+                        {"name": "time_reversal", "passed": True, "detail": "no date in existing"}
+                    )
             else:
-                checks.append({"name": "time_reversal", "passed": True, "detail": "no valid dates"})
+                checks.append(
+                    {"name": "time_reversal", "passed": True, "detail": "no valid dates"}
+                )
         else:
-            checks.append({"name": "time_reversal", "passed": True, "detail": "no existing data to compare"})
+            checks.append(
+                {
+                    "name": "time_reversal",
+                    "passed": True,
+                    "detail": "no existing data to compare",
+                }
+            )
 
         # ── Check 7: Price spikes (daily change > 50%) ────────────────
         if "date" in mapped and len(mapped) >= 2:
@@ -178,27 +298,49 @@ class QualityGate:
                     flags.append(
                         f"Extreme price movements detected: {spike_count} day(s) with >50% daily change"
                     )
-                    checks.append({
-                        "name": "price_spikes",
-                        "passed": True,
-                        "detail": f"FLAG: {spike_count} spikes >50%",
-                    })
+                    checks.append(
+                        {
+                            "name": "price_spikes",
+                            "passed": True,
+                            "detail": f"FLAG: {spike_count} spikes >50%",
+                        }
+                    )
                 else:
                     checks.append({"name": "price_spikes", "passed": True, "detail": ""})
             else:
-                checks.append({"name": "price_spikes", "passed": True, "detail": "insufficient data after cleaning"})
+                checks.append(
+                    {
+                        "name": "price_spikes",
+                        "passed": True,
+                        "detail": "insufficient data after cleaning",
+                    }
+                )
         else:
-            checks.append({"name": "price_spikes", "passed": True, "detail": "no date column or single row"})
+            checks.append(
+                {
+                    "name": "price_spikes",
+                    "passed": True,
+                    "detail": "no date column or single row",
+                }
+            )
 
         # ── Check 8: Duplicate data ───────────────────────────────────
         if existing_data is not None and not existing_data.empty:
             if self._is_duplicate(mapped, existing_data):
                 reject_reasons.append("Duplicate data — identical to already-stored records")
-                checks.append({"name": "duplicate_check", "passed": False, "detail": "data already exists"})
+                checks.append(
+                    {"name": "duplicate_check", "passed": False, "detail": "data already exists"}
+                )
             else:
                 checks.append({"name": "duplicate_check", "passed": True, "detail": ""})
         else:
-            checks.append({"name": "duplicate_check", "passed": True, "detail": "no existing data to compare"})
+            checks.append(
+                {
+                    "name": "duplicate_check",
+                    "passed": True,
+                    "detail": "no existing data to compare",
+                }
+            )
 
         # ── Final report ──────────────────────────────────────────────
         passed = len(reject_reasons) == 0
@@ -208,6 +350,77 @@ class QualityGate:
             reject_reasons=reject_reasons,
             flags=flags,
         )
+
+    # ── Stale-price monitoring ────────────────────────────────────────────
+
+    def stale_price_check(self, n_days: int = 3) -> pd.DataFrame:
+        """Flag assets that haven't been updated in the last *n_days*.
+
+        Returns a DataFrame with columns
+        ``asset_id, issue_type, details, timestamp, date``.
+        """
+        now = datetime.now()
+        threshold = now - timedelta(days=n_days)
+
+        all_assets: list[str] = []
+        try:
+            all_assets = self.repository.list_assets()
+        except Exception as exc:
+            _log.warning("QualityGate: list_assets failed: %s", exc)
+            return pd.DataFrame(columns=["asset_id", "issue_type", "details", "timestamp", "date"])
+
+        if not all_assets:
+            return pd.DataFrame(columns=["asset_id", "issue_type", "details", "timestamp", "date"])
+
+        # Query last date per asset — aggregate across all available tables
+        rows: list[dict] = []
+        tables = [
+            (getattr(self.repository, "price_path", None), "adj_close"),
+            (getattr(self.repository, "fund_path", None), "unit_nav"),
+            (getattr(self.repository, "wealth_path", None), "unit_nav"),
+        ]
+        for path, _col in tables:
+            if path is None or not path.exists():
+                continue
+            query = """
+                SELECT asset_id, MAX(date) as last_date
+                FROM read_parquet($path)
+                GROUP BY asset_id
+            """
+            try:
+                df = self.repository._query(query, {"path": str(path)})
+                if not df.empty:
+                    rows.append(df)
+            except Exception as exc:
+                _log.warning("QualityGate: stale check query failed for %s: %s", path, exc)
+
+        if not rows:
+            return pd.DataFrame(columns=["asset_id", "issue_type", "details", "timestamp", "date"])
+
+        combined = pd.concat(rows, ignore_index=True)
+        combined["last_date"] = pd.to_datetime(combined["last_date"], errors="coerce")
+        combined = combined.dropna(subset=["last_date"])
+        # Keep the most recent date per asset across all tables
+        combined = combined.sort_values("last_date").drop_duplicates(subset=["asset_id"], keep="last")
+
+        stale = combined[combined["last_date"] < threshold].copy()
+        if stale.empty:
+            return pd.DataFrame(columns=["asset_id", "issue_type", "details", "timestamp", "date"])
+
+        issues = pd.DataFrame(
+            {
+                "asset_id": stale["asset_id"],
+                "issue_type": "stale_price",
+                "details": stale["last_date"].apply(
+                    lambda d: f"Last update: {d.strftime('%Y-%m-%d')}"
+                ),
+                "timestamp": now,
+                "date": now.date().isoformat(),
+            }
+        )
+        return issues
+
+    # ── Helpers ───────────────────────────────────────────────────────────
 
     @staticmethod
     def _map_columns(df: pd.DataFrame) -> pd.DataFrame:

@@ -302,3 +302,30 @@ class TestPortfolioServiceV2:
             "date", "rolling_sharpe", "rolling_volatility", "rolling_max_drawdown",
         }
         assert set(result.columns) == expected_cols
+
+    def test_get_exposure_report(self, tmp_path):
+        """End-to-end exposure report through PortfolioServiceV2."""
+        svc = _make_service(tmp_path)
+        result = svc.get_exposure_report(as_of=date(2025, 6, 15), base_currency="CNY")
+
+        assert result["success"], f"Exposure report failed: {result.get('message')}"
+        data = result["data"]
+        assert "by_asset_class" in data
+        assert "by_currency" in data
+        assert data["total_value"] > 0
+
+        # Asset class breakdown
+        ac_buckets = {item["bucket"]: item for item in data["by_asset_class"]}
+        assert "equity" in ac_buckets
+        # Cash should appear as its own bucket, not as a pseudo-symbol
+        assert "cash" in ac_buckets
+
+        # Currency breakdown
+        cur_buckets = {item["bucket"]: item for item in data["by_currency"]}
+        assert "USD" in cur_buckets
+        assert "CNY" in cur_buckets
+
+        # Verify cash does NOT leak into asset_ids as pseudo-symbols
+        for item in data["by_asset_class"]:
+            for asset_id in item.get("asset_ids", []):
+                assert not asset_id.startswith("CASH:")
