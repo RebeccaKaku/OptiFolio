@@ -246,13 +246,25 @@ class DatabaseManager:
     
     def search_assets(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """搜索资产（按代码或名称）"""
+        if not query:
+            return []
+
+        # 安全加固：限制查询长度，防止 ReDoS 和拒绝服务攻击
+        query = str(query)[:100]
+
+        # 安全加固：转义 LIKE 语句中的通配符
+        escaped_query = query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+        # 安全加固：限制返回的最大记录数
+        safe_limit = min(max(1, limit), 100)
+
         cursor = self._execute("""
             SELECT * FROM assets 
             WHERE is_active = 1 
-            AND (symbol LIKE ? OR name LIKE ?)
+            AND (symbol LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\')
             ORDER BY symbol
             LIMIT ?
-        """, (f"%{query}%", f"%{query}%", limit))
+        """, (f"%{escaped_query}%", f"%{escaped_query}%", safe_limit))
         
         return [self._row_to_dict(row) for row in cursor.fetchall()]
     

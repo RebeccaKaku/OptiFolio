@@ -9,17 +9,7 @@ import pandas as pd
 
 from src.core.paths import PROJECT_ROOT
 
-from .schemas import (
-    CANONICAL_MARKET_COLUMNS,
-    FUND_NAV_COLUMNS,
-    WEALTH_NAV_COLUMNS,
-    normalize_fund_nav_frame,
-    normalize_market_frame,
-    normalize_wealth_nav_frame,
-    validate_fund_nav_frame,
-    validate_market_frame,
-    validate_wealth_nav_frame,
-)
+from .schemas import CANONICAL_MARKET_COLUMNS, STORE_VERSION, normalize_market_frame, validate_market_frame
 
 
 class MarketDataRepository:
@@ -29,71 +19,131 @@ class MarketDataRepository:
         self.root_dir = Path(root_dir) if root_dir else PROJECT_ROOT / "data" / "foundation"
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self.price_path = self.root_dir / "market_prices.parquet"
-        self.fund_path = self.root_dir / "fund_nav.parquet"
-        self.wealth_path = self.root_dir / "wealth_nav.parquet"
+        self.check_version()
 
-    def save_raw(
+    def check_version(self) -> None:
+        """Verify stored data is compatible with current schema version."""
+        if not self.price_path.exists():
+            return
+        try:
+            df = pd.read_parquet(self.price_path)
+            required_cols = ["asset_id", "date", "close", "adj_close", "source"]
+            missing = [c for c in required_cols if c not in df.columns]
+            if missing:
+                raise ValueError(
+                    f"Stored data at {self.price_path} is missing required columns: {missing}. "
+                    f"Schema migration needed. Current store version: {STORE_VERSION}."
+                )
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to read stored market data at {self.price_path}. "
+                f"The file may be corrupted or from an incompatible version. "
+                f"Current store version: {STORE_VERSION}."
+            ) from exc
+
+    def _acquire_lock(self):
+        """Acquire an advisory lock for the price parquet file.
+
+        Returns a (lock_file, unlock_fn) tuple. Caller must call unlock_fn
+        or use the returned file as a context manager.
+        """
+        lock_path = str(self.price_path) + ".lock"
+        lock_file = open(lock_path, "w")
+        lock_file.write("L")  # ensure at least 1 byte for msvcrt locking
+        lock_file.flush()
+
+        try:
+            import msvcrt
+
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            return lock_file, lambda: msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        except ImportError:
+            pass
+
+        try:
+            import fcntl
+
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            return lock_file, lambda: fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        except ImportError:
+            pass
+
+        # Fallback: no OS-level lock available — use a simple warning
+        import warnings
+
+        warnings.warn("No file locking available (msvcrt/fcntl not found). Concurrent writes may cause data loss.")
+        return lock_file, lambda: None
+
+    def save_bronze(
+        self,
+        frame: pd.DataFrame,
+        provider: str,
+        asset_id: str,
+        entity: str = "market_price",
+    ) -> Path:
+        """Save provider output AS-IS to the bronze layer (no normalization).
+
+        Bronze data is raw provider output, partitioned by provider/entity/date.
+        It serves as an audit trail and reprocessing source.
+        """
+        ingest_date = pd.Timestamp.now().strftime("%Y-%m-%d")
+        path = (
+            PROJECT_ROOT
+            / "FinData"
+            / "data"
+            / "bronze"
+            / f"provider={provider}"
+            / f"entity={entity}"
+            / f"ingest_date={ingest_date}"
+            / f"{asset_id}.parquet"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(path, compression="snappy", index=False)
+        return path
+
+    def save_canonical(
         self,
         frame: pd.DataFrame,
         asset_id: str | None = None,
         source: str = "manual",
         currency: str | None = None,
+        timezone: str | None = None,
     ) -> pd.DataFrame:
-        canonical = normalize_market_frame(frame, asset_id=asset_id, source=source, currency=currency)
+        """Normalize, validate, and persist data to the canonical store.
+
+        Canonical data is the single source of truth for downstream consumers.
+        """
+        canonical = normalize_market_frame(frame, asset_id=asset_id, source=source, currency=currency, timezone=timezone)
         canonical = validate_market_frame(canonical)
-        existing = self.load_canonical()
-        combined = canonical if existing.empty else pd.concat([existing, canonical], ignore_index=True)
-        combined = combined.drop_duplicates(["asset_id", "date", "source"], keep="last")
-        combined = combined.sort_values(["asset_id", "date", "source"]).reset_index(drop=True)
-        validate_market_frame(combined).to_parquet(self.price_path, compression="snappy", index=False)
+        lock_file, unlock = self._acquire_lock()
+        try:
+            existing = self.load_canonical()
+            combined = canonical if existing.empty else pd.concat([existing, canonical], ignore_index=True)
+            combined = combined.drop_duplicates(["asset_id", "date", "source"], keep="last")
+            combined = combined.sort_values(["asset_id", "date", "source"]).reset_index(drop=True)
+            validate_market_frame(combined).to_parquet(self.price_path, compression="snappy", index=False)
+        finally:
+            unlock()
+            lock_file.close()
         return canonical
+
+    def save_raw(self, *args, **kwargs) -> pd.DataFrame:
+        """Deprecated — use save_canonical instead."""
+        import warnings
+
+        warnings.warn(
+            "save_raw is deprecated, use save_canonical instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.save_canonical(*args, **kwargs)
 
     def load_canonical(self) -> pd.DataFrame:
         if not self.price_path.exists():
             return pd.DataFrame(columns=CANONICAL_MARKET_COLUMNS)
         return pd.read_parquet(self.price_path)
-
-    def save_fund_nav(
-        self,
-        frame: pd.DataFrame,
-        asset_id: str | None = None,
-        source: str = "manual",
-        currency: str | None = None,
-    ) -> pd.DataFrame:
-        canonical = normalize_fund_nav_frame(frame, asset_id=asset_id, source=source, currency=currency)
-        canonical = validate_fund_nav_frame(canonical)
-        existing = self.load_fund_nav()
-        combined = canonical if existing.empty else pd.concat([existing, canonical], ignore_index=True)
-        combined = combined.drop_duplicates(["asset_id", "date", "source"], keep="last")
-        combined = combined.sort_values(["asset_id", "date", "source"]).reset_index(drop=True)
-        validate_fund_nav_frame(combined).to_parquet(self.fund_path, compression="snappy", index=False)
-        return canonical
-
-    def load_fund_nav(self) -> pd.DataFrame:
-        if not self.fund_path.exists():
-            return pd.DataFrame(columns=FUND_NAV_COLUMNS)
-        return pd.read_parquet(self.fund_path)
-
-    def save_wealth_nav(
-        self,
-        frame: pd.DataFrame,
-        asset_id: str | None = None,
-        source: str = "manual",
-        currency: str | None = None,
-    ) -> pd.DataFrame:
-        canonical = normalize_wealth_nav_frame(frame, asset_id=asset_id, source=source, currency=currency)
-        canonical = validate_wealth_nav_frame(canonical)
-        existing = self.load_wealth_nav()
-        combined = canonical if existing.empty else pd.concat([existing, canonical], ignore_index=True)
-        combined = combined.drop_duplicates(["asset_id", "date", "source"], keep="last")
-        combined = combined.sort_values(["asset_id", "date", "source"]).reset_index(drop=True)
-        validate_wealth_nav_frame(combined).to_parquet(self.wealth_path, compression="snappy", index=False)
-        return canonical
-
-    def load_wealth_nav(self) -> pd.DataFrame:
-        if not self.wealth_path.exists():
-            return pd.DataFrame(columns=WEALTH_NAV_COLUMNS)
-        return pd.read_parquet(self.wealth_path)
 
     def get_prices(
         self,
@@ -102,58 +152,42 @@ class MarketDataRepository:
         end: str | None = None,
         fields: Sequence[str] = ("adj_close",),
     ) -> pd.DataFrame:
-        if not assets:
-            return pd.DataFrame()
-        if len(fields) != 1:
-            raise ValueError("get_prices currently returns one field at a time")
-
-        field = fields[0]
-
-        # Determine which tables to search
-        paths = []
-        if self.price_path.exists():
-            paths.append((self.price_path, field if field in CANONICAL_MARKET_COLUMNS else None))
-        if self.fund_path.exists():
-            paths.append(
-                (self.fund_path, "unit_nav" if field in ["adj_close", "close", "unit_nav"] else None)
-            )
-        if self.wealth_path.exists():
-            paths.append(
-                (self.wealth_path, "unit_nav" if field in ["adj_close", "close", "unit_nav"] else None)
-            )
-
-        valid_paths = [p for p in paths if p[1] is not None]
-        if not valid_paths:
+        if not assets or not self.price_path.exists():
             return pd.DataFrame()
 
-        all_rows = []
-        for path, col in valid_paths:
-            where_parts = ["asset_id IN $assets"]
-            params: dict[str, object] = {"assets": list(assets), "path": str(path)}
-            if start:
-                where_parts.append("date >= $start")
-                params["start"] = pd.Timestamp(start).to_pydatetime()
-            if end:
-                where_parts.append("date <= $end")
-                params["end"] = pd.Timestamp(end).to_pydatetime()
+        for f in fields:
+            if f not in CANONICAL_MARKET_COLUMNS:
+                raise ValueError(f"Unknown market data field: {f}")
 
-            query = f"""
-                SELECT date, asset_id, {col} AS value
-                FROM read_parquet($path)
-                WHERE {" AND ".join(where_parts)}
-                ORDER BY date, asset_id
-            """
-            rows = self._query(query, params)
-            if not rows.empty:
-                all_rows.append(rows)
+        where_parts = ["asset_id IN $assets"]
+        params: dict[str, object] = {"assets": list(assets), "path": str(self.price_path)}
+        if start:
+            where_parts.append("date >= $start")
+            params["start"] = pd.Timestamp(start).to_pydatetime()
+        if end:
+            where_parts.append("date <= $end")
+            params["end"] = pd.Timestamp(end).to_pydatetime()
 
-        if not all_rows:
+        col_list = ", ".join(fields)
+        query = f"""
+            SELECT date, asset_id, {col_list}
+            FROM read_parquet($path)
+            WHERE {" AND ".join(where_parts)}
+            ORDER BY date, asset_id
+        """
+        rows = self._query(query, params)
+        if rows.empty:
             return pd.DataFrame()
 
-        combined_rows = pd.concat(all_rows).drop_duplicates(["date", "asset_id"], keep="last")
-        matrix = combined_rows.pivot(index="date", columns="asset_id", values="value")
-        matrix.index = pd.to_datetime(matrix.index)
-        return matrix.reindex(columns=list(assets)).sort_index()
+        if len(fields) == 1:
+            # Single field: return pivoted date × asset_id matrix (backwards compatible)
+            matrix = rows.pivot(index="date", columns="asset_id", values=fields[0])
+            matrix.index = pd.to_datetime(matrix.index)
+            return matrix.reindex(columns=list(assets)).sort_index()
+        else:
+            # Multiple fields: return flat (date, asset_id, field1, field2, ...) DataFrame
+            rows["date"] = pd.to_datetime(rows["date"])
+            return rows.set_index("date").sort_index()
 
     def get_returns(
         self,
@@ -192,13 +226,11 @@ class MarketDataRepository:
         return report
 
     def list_assets(self) -> list[str]:
-        assets = set()
-        for path in [self.price_path, self.fund_path, self.wealth_path]:
-            if path.exists():
-                query = "SELECT DISTINCT asset_id FROM read_parquet($path) ORDER BY asset_id"
-                rows = self._query(query, {"path": str(path)})
-                assets.update(rows["asset_id"].tolist())
-        return sorted(list(assets))
+        if not self.price_path.exists():
+            return []
+        query = "SELECT DISTINCT asset_id FROM read_parquet($path) ORDER BY asset_id"
+        rows = self._query(query, {"path": str(self.price_path)})
+        return rows["asset_id"].tolist()
 
     def _query(self, query: str, params: dict[str, object]) -> pd.DataFrame:
         try:

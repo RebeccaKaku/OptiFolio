@@ -49,6 +49,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.pytest_tmp/
 cover/
 
 # Translations
@@ -180,3 +181,6 @@ local/*
 # Secrets and local config
 config/secrets.yaml
 config/portfolio.yaml
+
+# Scratch / temp files
+scratch/

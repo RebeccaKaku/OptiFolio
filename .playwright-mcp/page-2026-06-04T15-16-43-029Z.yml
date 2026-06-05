@@ -1,0 +1,330 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#start-of-content"
+    - banner [ref=e6]:
+      - heading "Navigation Menu" [level=2] [ref=e7]
+      - generic [ref=e8]:
+        - link "Homepage" [ref=e10] [cursor=pointer]:
+          - /url: /
+          - img [ref=e11]
+        - generic [ref=e13]:
+          - navigation "Global" [ref=e16]:
+            - list [ref=e17]:
+              - listitem [ref=e18]:
+                - button "Platform" [ref=e20] [cursor=pointer]:
+                  - text: Platform
+                  - img [ref=e21]
+              - listitem [ref=e23]:
+                - button "Solutions" [ref=e25] [cursor=pointer]:
+                  - text: Solutions
+                  - img [ref=e26]
+              - listitem [ref=e28]:
+                - button "Resources" [ref=e30] [cursor=pointer]:
+                  - text: Resources
+                  - img [ref=e31]
+              - listitem [ref=e33]:
+                - button "Open Source" [ref=e35] [cursor=pointer]:
+                  - text: Open Source
+                  - img [ref=e36]
+              - listitem [ref=e38]:
+                - button "Enterprise" [ref=e40] [cursor=pointer]:
+                  - text: Enterprise
+                  - img [ref=e41]
+              - listitem [ref=e43]:
+                - link "Pricing" [ref=e44] [cursor=pointer]:
+                  - /url: https://github.com/pricing
+                  - generic [ref=e45]: Pricing
+          - generic [ref=e46]:
+            - button "Search or jump to…" [ref=e49] [cursor=pointer]:
+              - img [ref=e51]
+            - link "Sign in" [ref=e54] [cursor=pointer]:
+              - /url: /login?return_to=https%3A%2F%2Fgithub.com%2FRebeccaKaku%2FOptiFolio%2Fpulls
+            - link "Sign up" [ref=e55] [cursor=pointer]:
+              - /url: /signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2F%3Cuser-name%3E%2F%3Crepo-name%3E%2Fpull_requests%2Findex&source=header-repo&source_repo=RebeccaKaku%2FOptiFolio
+            - button "Appearance settings" [disabled] [ref=e58]:
+              - img
+  - main [ref=e62]:
+    - generic [ref=e63]:
+      - generic [ref=e64]:
+        - generic [ref=e66]:
+          - img [ref=e67]
+          - link "RebeccaKaku" [ref=e70] [cursor=pointer]:
+            - /url: /RebeccaKaku
+          - generic [ref=e71]: /
+          - strong [ref=e72]:
+            - link "OptiFolio" [ref=e73] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio
+          - generic [ref=e74]: Public
+        - generic [ref=e75]:
+          - list:
+            - listitem [ref=e76]:
+              - link "You must be signed in to change notification settings" [ref=e77] [cursor=pointer]:
+                - /url: /login?return_to=%2FRebeccaKaku%2FOptiFolio
+                - img [ref=e78]
+                - text: Notifications
+            - listitem [ref=e80]:
+              - link "Fork 0" [ref=e81] [cursor=pointer]:
+                - /url: /login?return_to=%2FRebeccaKaku%2FOptiFolio
+                - img [ref=e82]
+                - text: Fork
+                - generic "0" [ref=e84]
+            - listitem [ref=e85]:
+              - link "You must be signed in to star a repository" [ref=e87] [cursor=pointer]:
+                - /url: /login?return_to=%2FRebeccaKaku%2FOptiFolio
+                - img [ref=e88]
+                - text: Star
+                - generic "0 users starred this repository" [ref=e90]: "0"
+      - navigation "Repository" [ref=e91]:
+        - list [ref=e92]:
+          - listitem [ref=e93]:
+            - link "Code" [ref=e94] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio
+              - img [ref=e95]
+              - generic [ref=e97]: Code
+          - listitem [ref=e98]:
+            - link "Issues 12" [ref=e99] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/issues
+              - img [ref=e100]
+              - generic [ref=e103]: Issues
+              - generic "12" [ref=e104]
+          - listitem [ref=e105]:
+            - link "Pull requests 5" [ref=e106] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/pulls
+              - img [ref=e107]
+              - generic [ref=e109]: Pull requests
+              - generic "5" [ref=e110]
+          - listitem [ref=e111]:
+            - link "Actions" [ref=e112] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/actions
+              - img [ref=e113]
+              - generic [ref=e115]: Actions
+          - listitem [ref=e116]:
+            - link "Projects" [ref=e117] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/projects
+              - img [ref=e118]
+              - generic [ref=e120]: Projects
+          - listitem [ref=e121]:
+            - link "Security and quality" [ref=e122] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/security
+              - img [ref=e123]
+              - generic [ref=e125]: Security and quality
+          - listitem [ref=e126]:
+            - link "Insights" [ref=e127] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/pulse
+              - img [ref=e128]
+              - generic [ref=e130]: Insights
+    - generic [ref=e133]:
+      - 'heading "Pull requests: RebeccaKaku/OptiFolio" [level=1] [ref=e134]'
+      - generic [ref=e135]:
+        - search [ref=e136]:
+          - search "Issues" [ref=e137]:
+            - textbox "Search all issues" [ref=e138]: is:pr is:open
+            - img
+          - navigation "Issue" [ref=e140]:
+            - link "Labels 10" [ref=e141] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/labels
+              - img [ref=e142]
+              - text: Labels 10
+            - link "Milestones 0" [ref=e144] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/milestones
+              - img [ref=e145]
+              - text: Milestones 0
+        - link "New pull request" [ref=e149] [cursor=pointer]:
+          - /url: /RebeccaKaku/OptiFolio/compare
+          - generic [ref=e152]: New pull request
+      - generic [ref=e153]:
+        - generic [ref=e155]:
+          - generic [ref=e157]:
+            - link "5 Open" [ref=e158] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/pulls?q=is%3Aopen+is%3Apr
+              - img [ref=e159]
+              - text: 5 Open
+            - link "15 Closed" [ref=e161] [cursor=pointer]:
+              - /url: /RebeccaKaku/OptiFolio/pulls?q=is%3Apr+is%3Aclosed
+              - img [ref=e162]
+              - text: 15 Closed
+          - generic [ref=e164]:
+            - group [ref=e165]:
+              - button "Author" [ref=e166] [cursor=pointer]: Author
+            - group [ref=e168]:
+              - button "Label" [ref=e169] [cursor=pointer]: Label
+            - generic [ref=e171]:
+              - group [ref=e172]:
+                - button "Projects" [ref=e173] [cursor=pointer]: Projects
+              - group [ref=e175]:
+                - button "Milestones" [ref=e176] [cursor=pointer]: Milestones
+              - group [ref=e178]:
+                - button "Reviews" [ref=e179] [cursor=pointer]: Reviews
+            - group [ref=e181]:
+              - button "Assignee" [ref=e182] [cursor=pointer]: Assignee
+            - group [ref=e184]:
+              - button "Sort" [ref=e185] [cursor=pointer]: Sort
+        - heading "Pull requests list" [level=2] [ref=e187]
+        - group "Issues" [ref=e188]:
+          - generic [ref=e189]:
+            - generic [ref=e191]:
+              - generic "Open Pull Request" [ref=e193]:
+                - img [ref=e194]
+              - generic [ref=e196]:
+                - link "Portfolio ledger persistence and API implementation" [ref=e197] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/37
+                - generic [ref=e199]:
+                  - text: "#37 opened Jun 4, 20261 minute ago by"
+                  - link "RebeccaKaku" [ref=e200] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues?q=is%3Apr+is%3Aopen+author%3ARebeccaKaku
+                  - generic "This user is the owner of the OptiFolio repository." [ref=e201]:
+                    - generic [ref=e202]: Owner
+              - generic [ref=e203]:
+                - generic "1 linked issue" [ref=e205]:
+                  - link "1 issue" [ref=e206] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues/37/linked_closing_reference?reference_location=REPO_ISSUES_INDEX
+                    - generic [ref=e207]:
+                      - img [ref=e208]
+                      - text: "1"
+                - generic [ref=e212]:
+                  - generic "Assigned to"
+                - link "1 comment" [ref=e214] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/37
+                  - img [ref=e215]
+                  - text: "1"
+            - generic [ref=e218]:
+              - generic "Open Pull Request" [ref=e220]:
+                - img [ref=e221]
+              - generic [ref=e223]:
+                - link "Add Ghostfolio-compatible API adapter" [ref=e224] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/36
+                - generic [ref=e226]:
+                  - text: "#36 opened Jun 4, 20264 minutes ago by"
+                  - link "RebeccaKaku" [ref=e227] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues?q=is%3Apr+is%3Aopen+author%3ARebeccaKaku
+                  - generic "This user is the owner of the OptiFolio repository." [ref=e228]:
+                    - generic [ref=e229]: Owner
+              - generic [ref=e230]:
+                - generic "1 linked issue" [ref=e232]:
+                  - link "1 issue" [ref=e233] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues/36/linked_closing_reference?reference_location=REPO_ISSUES_INDEX
+                    - generic [ref=e234]:
+                      - img [ref=e235]
+                      - text: "1"
+                - generic [ref=e239]:
+                  - generic "Assigned to"
+                - link "1 comment" [ref=e241] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/36
+                  - img [ref=e242]
+                  - text: "1"
+            - generic [ref=e245]:
+              - generic "Open Pull Request" [ref=e247]:
+                - img [ref=e248]
+              - generic [ref=e250]:
+                - link "Integrate FX return decomposition into portfolio performance API" [ref=e251] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/35
+                - generic [ref=e253]:
+                  - text: "#35 opened Jun 4, 202612 minutes ago by"
+                  - link "RebeccaKaku" [ref=e254] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues?q=is%3Apr+is%3Aopen+author%3ARebeccaKaku
+                  - generic "This user is the owner of the OptiFolio repository." [ref=e255]:
+                    - generic [ref=e256]: Owner
+              - generic [ref=e257]:
+                - generic "1 linked issue" [ref=e259]:
+                  - link "1 issue" [ref=e260] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues/35/linked_closing_reference?reference_location=REPO_ISSUES_INDEX
+                    - generic [ref=e261]:
+                      - img [ref=e262]
+                      - text: "1"
+                - generic [ref=e266]:
+                  - generic "Assigned to"
+                - link "1 comment" [ref=e268] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/35
+                  - img [ref=e269]
+                  - text: "1"
+            - generic [ref=e272]:
+              - generic "Open Pull Request" [ref=e274]:
+                - img [ref=e275]
+              - generic [ref=e277]:
+                - link "Build Level 0 exposure panel from product labels" [ref=e278] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/34
+                - generic [ref=e280]:
+                  - text: "#34 opened Jun 4, 202616 minutes ago by"
+                  - link "RebeccaKaku" [ref=e281] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues?q=is%3Apr+is%3Aopen+author%3ARebeccaKaku
+                  - generic "This user is the owner of the OptiFolio repository." [ref=e282]:
+                    - generic [ref=e283]: Owner
+              - generic [ref=e284]:
+                - generic "1 linked issue" [ref=e286]:
+                  - link "1 issue" [ref=e287] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues/34/linked_closing_reference?reference_location=REPO_ISSUES_INDEX
+                    - generic [ref=e288]:
+                      - img [ref=e289]
+                      - text: "1"
+                - generic [ref=e293]:
+                  - generic "Assigned to"
+                - link "1 comment" [ref=e295] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/34
+                  - img [ref=e296]
+                  - text: "1"
+            - generic [ref=e299]:
+              - generic "Open Pull Request" [ref=e301]:
+                - img [ref=e302]
+              - generic [ref=e304]:
+                - link "⚡ Optimize _test_us_symbols with asyncio.to_thread" [ref=e305] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/26
+                  - text: ⚡ Optimize
+                  - code [ref=e306]: _test_us_symbols
+                  - text: with asyncio.to_thread
+                - generic [ref=e308]:
+                  - text: "#26 opened Jun 4, 202632 minutes ago by"
+                  - link "RebeccaKaku" [ref=e309] [cursor=pointer]:
+                    - /url: /RebeccaKaku/OptiFolio/issues?q=is%3Apr+is%3Aopen+author%3ARebeccaKaku
+                  - generic "This user is the owner of the OptiFolio repository." [ref=e310]:
+                    - generic [ref=e311]: Owner
+              - generic [ref=e312]:
+                - generic [ref=e315]:
+                  - generic "Assigned to"
+                - link "1 comment" [ref=e317] [cursor=pointer]:
+                  - /url: /RebeccaKaku/OptiFolio/pull/26
+                  - img [ref=e318]
+                  - text: "1"
+      - generic [ref=e320]:
+        - img [ref=e321]
+        - strong [ref=e323]: ProTip!
+        - text: Type
+        - generic [ref=e324]: g
+        - generic [ref=e325]: p
+        - text: on any issue or pull request to go back to the pull request listing page.
+  - contentinfo [ref=e326]:
+    - heading "Footer" [level=2] [ref=e327]
+    - generic [ref=e328]:
+      - generic [ref=e329]:
+        - link "GitHub Homepage" [ref=e330] [cursor=pointer]:
+          - /url: https://github.com
+          - img [ref=e331]
+        - generic [ref=e333]: © 2026 GitHub, Inc.
+      - navigation "Footer" [ref=e334]:
+        - heading "Footer navigation" [level=3] [ref=e335]
+        - list "Footer navigation" [ref=e336]:
+          - listitem [ref=e337]:
+            - link "Terms" [ref=e338] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/github-terms/github-terms-of-service
+          - listitem [ref=e339]:
+            - link "Privacy" [ref=e340] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/privacy-policies/github-privacy-statement
+          - listitem [ref=e341]:
+            - link "Security" [ref=e342] [cursor=pointer]:
+              - /url: https://github.com/security
+          - listitem [ref=e343]:
+            - link "Status" [ref=e344] [cursor=pointer]:
+              - /url: https://www.githubstatus.com/
+          - listitem [ref=e345]:
+            - link "Community" [ref=e346] [cursor=pointer]:
+              - /url: https://github.community/
+          - listitem [ref=e347]:
+            - link "Docs" [ref=e348] [cursor=pointer]:
+              - /url: https://docs.github.com/
+          - listitem [ref=e349]:
+            - link "Contact" [ref=e350] [cursor=pointer]:
+              - /url: https://support.github.com?tags=dotcom-footer
+          - listitem [ref=e351]:
+            - button "Manage cookies" [ref=e353] [cursor=pointer]
+          - listitem [ref=e354]:
+            - button "Do not share my personal information" [ref=e356] [cursor=pointer]

@@ -1,264 +1,155 @@
 # OptiFolio AI Context Document
 
-> This document is intended for AI assistants to understand the codebase structure, design patterns, and implementation details.
+> This document is the source of truth for AI assistants working on this codebase.
+> Last updated: 2026-06-05. Always cross-check with `docs/CURRENT_STATE_2026-06-05.md`.
 
-## Project Overview
+## Project Identity
 
-OptiFolio is a financial data processing and portfolio optimization framework. It provides:
-- Multi-source data fetching (crypto, stocks, funds)
-- Data cleaning and alignment pipeline
-- Portfolio optimization with Black-Litterman model
+- **Name**: OptiFolio v0.2.0
+- **Purpose**: Personal multi-asset portfolio risk engine and allocation advice system
+- **Tagline**: "Risk engine first, allocation advice second"
+- **Runtime**: Python 3.14.2 (Windows), >=3.11,<3.14 supported
+- **Build**: Hatchling (`pyproject.toml`)
+- **Tests**: 592 passed, 30 skipped, 0 failures (use `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`)
 
-## Architecture Summary
+## Architecture (Current — 2026-06-05)
 
 ```
-OptiFolio/
-├── fetchers/          # Data source adapters
-├── downloader/        # Raw data download with caching
-├── processor/         # Data cleaning and alignment
-├── portfolio/         # Portfolio optimization
-├── api_checker/       # API connectivity testing
-└── docs/              # Documentation
+FinData/                       # Self-contained data department — the ONLY data path
+  __init__.py                  # fd singleton — import from FinData import fd
+  adapters/                    # 10 provider fetchers + FetcherProtocol + FETCHER_REGISTRY
+  store/                       # CanonicalStore, QualityGate (8 checks), ingestion log, portfolio ledger
+  orchestration/               # Orchestrator, cadence, rate limiter, fallback chains, ingest.py
+  serving/                     # DataProvider — fd.prices(), fd.panel(), fd.returns(), fd.metrics(), fd.ohlcv()
+
+src/
+  analytics/                   # alerts, concentration, exposure, fx_exposure, liquidity, returns, rule_engine, screening
+  api/                         # fastapi_app.py (port 8011), ghostfolio_compat.py, static_dashboard.py
+  core/                        # valuation, calendars, corporate_actions, fees, dashboard_engine, config_manager
+  data_foundation/             # canonical schema + MarketDataRepository (DuckDB/Parquet) — used BY FinData, not instead of it
+  domain/                      # products, positions, instruments, series, observations, cashflows
+  research/                    # BacktestEngine (vectorbt + pandas fallback), qlib_adapter (placeholder)
+  services/                    # application.py (service graph), portfolio_service_v2.py (canonical), research_service.py
+
+app.py                         # LEGACY Streamlit dashboard — FROZEN, do NOT edit
+config/                        # YAML configs (settings, candidates, asset_registry, *.example.yaml)
+tools/                         # CLI: start_app.py, scheduler.py, ingest_portfolio_prices.py, export_to_ghostfolio.py, privacy_scan.py
+tests/                         # 31 test files, all pytest
 ```
 
-## Module Details
+## Key Rules (CRITICAL — violations will be rejected)
 
-### 1. Fetchers Module (`fetchers/`)
-
-**Purpose**: Abstract data fetching from multiple sources into a unified interface.
-
-**Key Interface**: [`AsyncBaseFetcher`](fetchers/interfaces.py:9)
-```python
-class AsyncBaseFetcher(ABC):
-    @abstractmethod
-    async def fetch(
-        self, 
-        symbol: str, 
-        start_date: str, 
-        end_date: str, 
-        timeframe: str = '1d',
-        exchange: Optional[str] = None,
-        **kwargs
-    ) -> pd.DataFrame:
-        pass
-```
-
-**Implementations**:
-| Class | Source | Data Types |
-|-------|--------|------------|
-| `CryptoFetcher` | CCXT | Cryptocurrency OHLCV |
-| `YahooFinanceFetcher` | yfinance | Stocks, ETFs, Forex |
-| `CnFundFetcher` | akshare | Chinese funds (ETF, open-end, money market) |
-
-**Output Format**: All fetchers return DataFrame with:
-- Index: DatetimeIndex named 'timestamp'
-- Columns: `open`, `high`, `low`, `close`, `volume` (lowercase)
-
-### 2. Downloader Module (`downloader/`)
-
-**Purpose**: Orchestrate data downloads with caching and batch support.
-
-**Key Classes**:
-
-[`DownloadTask`](downloader/models.py:12) - Request model:
-```python
-@dataclass
-class DownloadTask:
-    symbol: str
-    source: str  # 'crypto', 'yahoo', 'cn_fund'
-    start_date: str
-    end_date: str
-    timeframe: str = '1d'
-    exchange: Optional[str] = None
-```
-
-[`DownloadResult`](downloader/models.py:42) - Response model:
-```python
-@dataclass
-class DownloadResult:
-    task: DownloadTask
-    data: Optional[pd.DataFrame]
-    success: bool
-    error_message: Optional[str]
-    latency_ms: float
-    is_cached: bool = False
-```
-
-[`DataCache`](downloader/cache.py:15) - File-based caching:
-- Cache key: `{source}_{symbol}_{start}_{end}_{timeframe}.parquet`
-- TTL support via `.meta` companion files
-- Parquet format for efficiency
-
-[`DownloadManager`](downloader/manager.py:18) - Main orchestrator:
-```python
-class DownloadManager:
-    def register_fetcher(self, name: str, fetcher: AsyncBaseFetcher)
-    async def download(self, task: DownloadTask) -> DownloadResult
-    async def download_batch(self, tasks: List[DownloadTask], max_concurrent: int = 5) -> List[DownloadResult]
-```
-
-**Concurrency Pattern**: Uses `asyncio.Semaphore` for rate limiting.
-
-### 3. Processor Module (`processor/`)
-
-**Purpose**: Clean, align, and standardize financial data.
-
-**Design Pattern**: Chain of Responsibility via [`ProcessingPipeline`](processor/base.py:35)
-
-**Processing Steps**:
-
-[`DataCleaner`](processor/cleaner.py:15):
-- `handle_missing_values()` - ffill, bfill, drop, interpolate, mean
-- `remove_outliers()` - IQR method, z-score method
-- `fill_gaps()` - Forward fill up to max_gap_days
-- `validate_ohlcv()` - High >= Low, prices within range
-
-[`DataAligner`](processor/aligner.py:15):
-- `align_timezone()` - Convert to target timezone
-- `align_frequency()` - Resample to target frequency
-- `align_business_days()` - SSE, NYSE, HKEX, LSE calendars
-- `align_multiple()` - Align multiple DataFrames to common dates
-
-[`CorpActionHandler`](processor/corporate_actions.py:20):
-- `adjust_for_splits()` - Price adjustment for stock splits
-- `adjust_for_dividends()` - Dividend adjustment
-- `calculate_adjusted_prices()` - Full corporate action handling
-
-[`DataStandardizer`](processor/standardizer.py:15):
-- `standardize_columns()` - Lowercase column names
-- `standardize_index()` - DatetimeIndex named 'timestamp'
-- `standardize_dtypes()` - Float for prices, numeric for volume
-
-### 4. Portfolio Module (`portfolio/`)
-
-**Purpose**: Portfolio optimization using pyportfolioopt.
-
-**Key Classes**:
-
-[`OptimizationResult`](portfolio/base.py:12) - Result model:
-```python
-@dataclass
-class OptimizationResult:
-    weights: Dict[str, float]
-    expected_return: float
-    volatility: float
-    sharpe_ratio: float
-    method_used: str
-```
-
-[`MeanVarianceOptimizer`](portfolio/mean_variance.py:15):
-- Classical Markowitz optimization
-- Methods: max_sharpe, min_volatility, max_return, min_risk
-- Risk models: sample_cov, ledoit_wolf, exp_cov
-- Expected returns: mean_historical, ema, capm
-
-[`BlackLittermanOptimizer`](portfolio/black_litterman.py:18):
-- Black-Litterman model implementation
-- Views format: `{symbol: (expected_return, confidence)}`
-- Omega calculation using Idzorek method
-- Market equilibrium from market caps
-
-[`RiskCalculator`](portfolio/risk.py:12):
-- VaR (historical, parametric, cornish_fisher)
-- CVaR (Expected Shortfall)
-- Sharpe, Sortino, Calmar ratios
-- Maximum drawdown
-
-[`ConstraintsBuilder`](portfolio/constraints.py:15):
-- Long-only constraint
-- Weight bounds
-- Sector limits
-- Target volatility/return
+1. **FinData is the ONLY data path.** All market data flows through `from FinData import fd`. Never import fetchers directly.
+2. **Do NOT edit `app.py`.** It is frozen legacy Streamlit. All new work → `src/api/`, `src/services/`, `src/analytics/`.
+3. **Services use `success()` / `failure()`** from `src/services/response.py`. API handlers use `_json_response()` from `fastapi_app.py`.
+4. **Use `logging`**, not `print()`. Import: `import logging; _log = logging.getLogger(__name__)`.
+5. **Keep private data out of git.** `local/`, `config/secrets.yaml`, `.parquet`, `.db`, `.csv` are git-ignored.
+6. **Run tests before submitting.** `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`.
+7. **Run privacy scan.** `python tools/privacy_scan.py --strict --with-detect-secrets`.
+8. **One PR = one task.** Keep changes small, single-purpose, with tests.
 
 ## Data Flow
 
 ```
-1. User Request
-       ↓
-2. DownloadManager.download(task)
-       ↓
-3. Check Cache → Hit: Return cached data
-       ↓ Miss
-4. Fetcher.fetch() → Raw DataFrame
-       ↓
-5. Save to Cache
-       ↓
-6. ProcessingPipeline.run()
-       ↓
-   DataCleaner → DataAligner → DataStandardizer
-       ↓
-7. Clean DataFrame
-       ↓
-8. PortfolioOptimizer.run(prices)
-       ↓
-9. OptimizationResult
+Provider (akshare/yfinance/ccxt/BOC/BOSC/ICBC)
+    │
+    ▼
+FinData/adapters/   →  FetchResult (never empty DataFrame without metadata)
+    │
+    ▼
+FinData/store/      →  QualityGate.inspect() → 8 checks → accept/reject
+    │                    CanonicalStore.accept() → normalize → save_raw (Parquet + DuckDB)
+    ▼
+FinData/serving/    →  DataProvider → prices(), ohlcv(), panel(), returns(), metrics(), fx_rate()
+    │
+    ▼
+src/services/       →  PortfolioServiceV2, ResearchService, DashboardService
+    │
+    ▼
+src/api/            →  FastAPI → JSONResponse
 ```
 
-## Error Handling Patterns
+## Module Contracts
 
-1. **Fetcher errors**: Return empty DataFrame with error logged
-2. **Cache errors**: Fall back to fresh download
-3. **Processing errors**: Raise with descriptive message
-4. **Optimization errors**: Return result with success=False
+### FinData adapters
+- Every adapter returns `FetchResult` (symbol, dataframe, metadata, success, error).
+- `FetcherProtocol` is the sync interface (in `FinData/adapters/__init__.py`).
+- `FETCHER_REGISTRY` maps asset_type → fetcher class.
+- `get_fetcher(asset_type)` returns a fetcher instance or None for unsupported types.
 
-## Configuration Points
+### FinData store
+- `CanonicalStore` wraps `MarketDataRepository` with `QualityGate`.
+- `QualityGate.inspect(df, existing)` runs 8 checks, returns `QualityReport`.
+- `MarketDataRepository` does DuckDB queries + Parquet reads/writes.
+- `get_prices(assets, fields=("adj_close",))` — single field → pivoted matrix; multi-field → flat DataFrame.
 
-| Module | Configuration | Default |
-|--------|--------------|---------|
-| DataCache | cache_dir | `.cache/` |
-| DataCache | ttl_hours | 24 |
-| DownloadManager | max_concurrent | 5 |
-| DataCleaner | max_gap_days | 5 |
-| PortfolioOptimizer | risk_free_rate | 0.025 |
-| BlackLittermanOptimizer | tau | 0.05 |
+### FinData serving
+- `DataProvider` is the public API. `from FinData import fd` returns its singleton.
+- `fd.prices("AAPL")` → Series. `fd.panel(["AAPL","QQQ"])` → pivoted DataFrame.
+- `fd.ohlcv("AAPL")` → flat DataFrame with open/high/low/close/adj_close/volume columns.
+- `fd.returns("AAPL")` → Series of daily returns.
+- `fd.metrics("AAPL")` → dict of computed metrics.
+- `fd.fx_rate("USD", "CNY")` → float.
+- `mode="live"` triggers orchestrator refresh (wired, may fail gracefully).
 
-## Dependencies
+### src/services
+- `ApplicationServices` is the service graph (dataclass, `@lru_cache` singleton).
+- `PortfolioServiceV2` is the CANONICAL portfolio service — date-aware, corporate-action-aware.
+- `AlertEngine` (in `src/analytics/alerts.py`) is implemented but not yet wired into services (Task 6 pending).
 
+### src/api
+- `fastapi_app.py` on port 8011. CORS allows GET/OPTIONS only (POST needs adding).
+- `_json_response(payload)` wraps service responses for HTTP.
+- Ghostfolio compat routes at `/api/v1/portfolio/*` (some endpoints still stubs).
+- New endpoints should use `@app.get`/`@app.post` with `tags` kwarg.
+
+## Recent Changes (2026-06-05)
+
+- Crossroads bugs fixed: QualityGate repo sharing (H2), `_is_duplicate` canonicalization (H3), `check_stale_prices` envelope unwrap (H5), `ohlcv()` multi-field (H1), `_trigger_refresh` wired (H4).
+- `MarketDataRepository.get_prices()` now supports multi-field queries.
+- `bank_wmp.py` regex tightened: BOC `^[A-Z]{5,}[A-Z0-9]{5,}$`, BOC checked before BOSC.
+- Duplicate FastAPI routes removed. `application.py` typing imports fixed.
+- `orchestrator.py` import path fixed.
+
+## Known Issues (Post-Audit)
+
+See `docs/CURRENT_STATE_2026-06-05.md` for full catalogue. Quick reference:
+- **H6**: AlertEngine never wired (Task 6 pending)
+- **H7**: static_dashboard hardcoded date (Task 8 pending)
+- **H8**: dashboard_engine returns np.random dummy data
+- **H9**: Ghostfolio compat stubs return empty data
+- **M2**: `FinData/adapters/interfaces.py` is dead code (Task 7 pending)
+- **M9**: ExposureItem.pct (0-1) vs ConcentrationItem.pct (0-100) inconsistent (Task 10 pending)
+- **L3**: `breakdiown` typo in `valuation.py:379`
+
+## Test Commands
+
+```powershell
+# Full suite (reliable command for this workspace)
+python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider
+
+# Single file
+python -m pytest tests/test_findata_serving.py -v
+
+# Single test
+python -m pytest tests/test_findata_fetcher.py::TestBankWmpClassification -v
 ```
-pyportfolioopt>=1.5.0  # Portfolio optimization
-yfinance>=0.2.0        # Yahoo Finance data
-ccxt>=4.0.0            # Crypto exchange data
-akshare>=1.10.0        # Chinese financial data
-pandas>=2.0.0          # Data manipulation
-numpy>=1.24.0          # Numerical operations
-scipy>=1.10.0          # Optimization routines
-```
 
-## Extension Points
+## File Inventory (key files only)
 
-1. **New Data Source**: Create class implementing `AsyncBaseFetcher`
-2. **Processing Step**: Create class inheriting from `ProcessingStep`
-3. **Optimization Method**: Create class inheriting from `BaseOptimizer`
-4. **Risk Metric**: Add static method to `RiskCalculator`
-
-## Common Tasks for AI
-
-### Adding a new fetcher
-1. Create new file in `fetchers/`
-2. Inherit from `AsyncBaseFetcher`
-3. Implement `fetch()` method
-4. Register in `fetchers/__init__.py`
-5. Register with `DownloadManager` for use
-
-### Adding a new processing step
-1. Create class inheriting from `ProcessingStep`
-2. Implement `process(df) -> pd.DataFrame`
-3. Add to pipeline: `pipeline.add_step(MyStep())`
-
-### Adding a new optimization method
-1. Create class inheriting from `BaseOptimizer`
-2. Implement `optimize(prices) -> OptimizationResult`
-3. Add to `PortfolioOptimizer` method selection
-
-## Testing
-
-Run test script:
-```bash
-python test_portfolio_optimization.py
-```
-
-This validates:
-- Data fetching from Chinese funds
-- Data processing pipeline
-- Portfolio optimization (Mean-Variance and Black-Litterman)
-- Risk metrics calculation
+| File | Lines | Role |
+|------|-------|------|
+| `FinData/__init__.py` | ~80 | fd singleton |
+| `FinData/adapters/__init__.py` | ~70 | FetcherProtocol, FETCHER_REGISTRY |
+| `FinData/store/repository.py` | ~120 | CanonicalStore |
+| `FinData/store/quality.py` | ~500 | QualityGate (8 checks) |
+| `FinData/serving/provider.py` | ~250 | DataProvider |
+| `FinData/orchestration/orchestrator.py` | ~260 | Orchestrator |
+| `src/api/fastapi_app.py` | ~610 | FastAPI entrypoint |
+| `src/services/application.py` | ~45 | Service graph |
+| `src/services/portfolio_service_v2.py` | ~760 | Canonical portfolio service |
+| `src/core/valuation.py` | ~420 | ValuationEngine |
+| `src/analytics/alerts.py` | ~500 | AlertEngine |
+| `src/analytics/exposure.py` | 209 | ExposureAnalyzer |
+| `src/core/dashboard_engine.py` | ~560 | Dashboard (mostly np.random — needs rewrite) |
+| `app.py` | 1550 | FROZEN Streamlit legacy |

@@ -1,0 +1,459 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - link "金融消费者权益保护" [ref=e7] [cursor=pointer]:
+          - /url: /zh/sy/jrxfzqy/jrxfzqy/
+        - link "客户服务" [ref=e9] [cursor=pointer]:
+          - /url: /zh/sy/khfw/lxwm/
+        - link "人才招聘" [ref=e11] [cursor=pointer]:
+          - /url: https://bosc.zhiye.com
+        - generic [ref=e12]:
+          - link "繁體" [ref=e13] [cursor=pointer]:
+            - /url: javascript:StranBody()
+          - text: "|"
+          - link "简体" [ref=e14] [cursor=pointer]:
+            - /url: javascript:StranBody1()
+        - link "EN" [ref=e16] [cursor=pointer]:
+          - /url: /en/
+      - generic [ref=e18]:
+        - link:
+          - /url: /zh/
+          - img [ref=e19] [cursor=pointer]
+        - generic [ref=e20]:
+          - generic:
+            - textbox [ref=e21]: 请输入关键词
+            - button [ref=e22] [cursor=pointer]
+      - generic [ref=e25]:
+        - link "首页" [ref=e27] [cursor=pointer]:
+          - /url: /zh/
+        - link "个人业务" [ref=e29] [cursor=pointer]:
+          - /url: /zh/gryw/
+        - link "信用卡" [ref=e31] [cursor=pointer]:
+          - /url: /zh/xyk/
+        - link "公司金融" [ref=e33] [cursor=pointer]:
+          - /url: /zh/gsjr/
+        - link "普惠金融" [ref=e35] [cursor=pointer]:
+          - /url: /zh/phjr/
+        - link "信息公开" [ref=e37] [cursor=pointer]:
+          - /url: /zh/jrsh/
+    - generic [ref=e39]:
+      - list [ref=e41]:
+        - link [ref=e42] [cursor=pointer]:
+          - /url: javascript:;
+          - listitem [ref=e43]
+        - listitem [ref=e44]:
+          - generic:
+            - list:
+              - listitem [ref=e45]:
+                - paragraph [ref=e46]: 手机银行
+              - listitem [ref=e47]:
+                - paragraph [ref=e48]: 企业银行
+        - listitem [ref=e49]:
+          - generic:
+            - list:
+              - listitem [ref=e50]:
+                - paragraph [ref=e51]: 个人微信银行
+              - listitem [ref=e52]:
+                - paragraph [ref=e53]: 企业微信银行
+        - listitem [ref=e54]:
+          - generic:
+            - list:
+              - listitem [ref=e55]:
+                - link "外汇牌价" [ref=e56] [cursor=pointer]:
+                  - /url: /zh/dtjr/whpj/
+              - listitem [ref=e57]:
+                - link "贵金属收盘价" [ref=e58] [cursor=pointer]:
+                  - /url: /zh/dtjr/gjsspj/
+              - listitem [ref=e59]:
+                - link "存贷款利率" [ref=e60] [cursor=pointer]:
+                  - /url: /zh/dtjr/cdkll/
+              - listitem [ref=e61]:
+                - link "代销基金净值" [ref=e62] [cursor=pointer]:
+                  - /url: /zh/dtjr/dxjj/
+              - listitem [ref=e63]:
+                - link "公司理财产品" [ref=e64] [cursor=pointer]:
+                  - /url: /zh/dtjr/gslc/
+              - listitem [ref=e65]:
+                - link "个人理财产品" [ref=e66] [cursor=pointer]:
+                  - /url: /zh/dtjr/grlc/
+              - listitem [ref=e67]:
+                - link "服务价目" [ref=e68] [cursor=pointer]:
+                  - /url: /zh/dtjr/fwjmb/
+        - listitem [ref=e69]
+      - generic [ref=e70]:
+        - generic [ref=e73]:
+          - generic [ref=e74]:
+            - link "个人网银登录" [ref=e77] [cursor=pointer]:
+              - /url: https://ebanks.bankofshanghai.com/pweb/prelogin.do?LoginType=R&_locale=zh_CN
+            - link "个人手机银行下载" [ref=e80] [cursor=pointer]:
+              - /url: /zh/gryw/grdzyh/grsjyh/202003/t20200329_12854.shtml
+            - link "企业网银登录" [ref=e83] [cursor=pointer]:
+              - /url: javascript:;
+            - link "企业手机银行下载" [ref=e86] [cursor=pointer]:
+              - /url: https://www.bosc.cn/zh/gsjr/qydzyh/qysjyh/202003/t20200329_12998.shtml
+            - link "现金管理平台" [ref=e89] [cursor=pointer]:
+              - /url: https://ibank.bosc.cn:6074/eib/?#/login
+          - generic [ref=e90]:
+            - generic [ref=e92]:
+              - generic [ref=e94]:
+                - link "PC首页.png":
+                  - /url: "#"
+                  - img "PC首页.png" [ref=e95]
+              - generic [ref=e97]:
+                - link "PC首页.png":
+                  - /url: "#"
+                  - img "PC首页.png" [ref=e98]
+              - generic [ref=e100]:
+                - link "PC首页.png":
+                  - /url: "#"
+                  - img "PC首页.png" [ref=e101]
+            - generic [ref=e108]:
+              - img [ref=e109]
+              - link "更多公告" [ref=e110] [cursor=pointer]:
+                - /url: /zh/sy/tzgg/
+        - generic [ref=e113]:
+          - list [ref=e114]:
+            - listitem [ref=e115]:
+              - link "咨询投诉 投诉渠道及处理流程":
+                - /url: ./sy/sy_menu/202302/t20230220_58367.shtml
+                - generic [ref=e117] [cursor=pointer]:
+                  - heading "咨询投诉" [level=3] [ref=e118]
+                  - paragraph [ref=e119]: 投诉渠道及处理流程
+            - listitem [ref=e120]:
+              - link "服务价目表 服务价目收费标准":
+                - /url: /zh/dtjr/fwjmb/fwjmb1/
+                - generic [ref=e122] [cursor=pointer]:
+                  - heading "服务价目表" [level=3] [ref=e123]
+                  - paragraph [ref=e124]: 服务价目收费标准
+            - listitem [ref=e125]:
+              - link "网点查询 网点查询快速申请":
+                - /url: /zh/sy/sy_menu/wdcx/
+                - generic [ref=e127] [cursor=pointer]:
+                  - heading "网点查询" [level=3] [ref=e128]
+                  - paragraph [ref=e129]: 网点查询快速申请
+          - list [ref=e130]:
+            - listitem [ref=e131]:
+              - link "在线申请 快速查询各类账户信息":
+                - /url: /zh/sy/sy_menu/register/
+                - generic [ref=e133] [cursor=pointer]:
+                  - heading "在线申请" [level=3] [ref=e134]
+                  - paragraph [ref=e135]: 快速查询各类账户信息
+            - listitem [ref=e136]:
+              - link "产品服务 最新产品信息":
+                - /url: /zh/sy/sy_menu/cpfw/
+                - generic [ref=e138] [cursor=pointer]:
+                  - heading "产品服务" [level=3] [ref=e139]
+                  - paragraph [ref=e140]: 最新产品信息
+            - listitem [ref=e141]:
+              - link "动态金融信息 行情 牌价":
+                - /url: /zh/dtjr/
+                - generic [ref=e143] [cursor=pointer]:
+                  - heading "动态金融信息" [level=3] [ref=e144]
+                  - paragraph [ref=e145]: 行情 牌价
+          - link:
+            - /url: /zh/sy/tzgg/202011/t20201128_39176.shtml
+            - img [ref=e146] [cursor=pointer]
+      - generic [ref=e148]:
+        - generic [ref=e151]:
+          - generic [ref=e154]:
+            - generic [ref=e155]: 信用卡
+            - generic [ref=e156]: 提供更多金融服务场景
+          - link "更多" [ref=e158] [cursor=pointer]:
+            - /url: ./xyk/
+        - generic [ref=e159]:
+          - list [ref=e160]:
+            - link "信用卡申请 选卡种、填资料 , 3分钟完成":
+              - /url: /zh/xyk/xyksq/kzjs/
+              - listitem [ref=e161] [cursor=pointer]:
+                - heading "信用卡申请" [level=5] [ref=e162]
+                - paragraph [ref=e163]: 选卡种、填资料 , 3分钟完成
+            - link "积分专区 海量商品随心换":
+              - /url: /zh/xyk/hxsh/jfzq/
+              - listitem [ref=e164] [cursor=pointer]:
+                - heading "积分专区" [level=5] [ref=e165]
+                - paragraph [ref=e166]: 海量商品随心换
+            - link "VISA全球支付信用卡 限时申请免年费":
+              - /url: /zh/xyk/xyksq/kzjs/202004/t20200426_12486.shtml
+              - listitem [ref=e167] [cursor=pointer]:
+                - generic [ref=e168]:
+                  - heading "VISA全球支付信用卡" [level=3] [ref=e169]
+                  - generic [ref=e170]: 限时申请免年费
+          - list [ref=e172]:
+            - link "绑自动还款享3重礼 上海银行信用卡、借记卡专属":
+              - /url: /zh/xyk/hxsh/rmhd/202604/t20260403_394262.shtml
+              - listitem [ref=e173] [cursor=pointer]:
+                - generic [ref=e174]:
+                  - heading "绑自动还款享3重礼" [level=3] [ref=e175]
+                  - generic [ref=e176]: 上海银行信用卡、借记卡专属
+            - link "分期付款 账单轻松分 还款更灵活":
+              - /url: /zh/xyk/fqyw/
+              - listitem [ref=e178] [cursor=pointer]:
+                - heading "分期付款" [level=5] [ref=e179]
+                - paragraph [ref=e180]: 账单轻松分 还款更灵活
+            - link "热门活动 缤纷优惠享不停":
+              - /url: /zh/xyk/hxsh/rmhd/
+              - listitem [ref=e181] [cursor=pointer]:
+                - heading "热门活动" [level=5] [ref=e182]
+                - paragraph [ref=e183]: 缤纷优惠享不停
+      - generic [ref=e185]:
+        - generic [ref=e187]:
+          - generic [ref=e188]:
+            - generic [ref=e191]:
+              - generic [ref=e192]: 个人业务
+              - generic [ref=e193]: 智慧引领财富 · 专业服务大众
+            - link "更多" [ref=e195] [cursor=pointer]:
+              - /url: ./gryw/
+          - generic [ref=e196]:
+            - generic [ref=e197] [cursor=pointer]: 投资
+            - generic [ref=e198] [cursor=pointer]: 贷款
+        - generic [ref=e200]:
+          - generic [ref=e201]:
+            - generic [ref=e202]:
+              - link "理财 优选资产" [ref=e204] [cursor=pointer]:
+                - /url: ./gryw/tzlc/lc/
+                - heading "理财" [level=3] [ref=e205]
+                - paragraph [ref=e206]: 优选资产
+              - link "基金 投资便捷 轻松交易" [ref=e208] [cursor=pointer]:
+                - /url: ./gryw/tzlc/jj/zxcp/
+                - heading "基金" [level=3] [ref=e209]
+                - paragraph [ref=e210]: 投资便捷 轻松交易
+              - link "存款 安全 稳健" [ref=e212] [cursor=pointer]:
+                - /url: ./gryw/yhkyckfw/grck/
+                - heading "存款" [level=3] [ref=e213]
+                - paragraph [ref=e214]: 安全 稳健
+              - link "保险 高保障 好规划" [ref=e216] [cursor=pointer]:
+                - /url: ./gryw/tzlc/bx/
+                - heading "保险" [level=3] [ref=e217]
+                - paragraph [ref=e218]: 高保障 好规划
+            - generic [ref=e219]:
+              - link "上银中证同业存单AAA指数7天持有期 混合型基金 1.0513 产品最新净值 查看详情":
+                - /url: https://ebanks.bankofshanghai.com/pweb/FundProductDetail.do?CheckFlag=0&PortalFlag=fund&FundCode=017888&_locale=zh_CN
+                - generic [ref=e220] [cursor=pointer]:
+                  - generic [ref=e222]: 上银中证同业存单AAA指数7天持有期
+                  - generic [ref=e223]: 混合型基金
+                  - generic [ref=e224]: "1.0513"
+                  - generic [ref=e225]: 产品最新净值
+                  - generic [ref=e227]: 查看详情
+          - generic [ref=e228]:
+            - generic [ref=e229]: 上银理财易精灵1号
+            - generic [ref=e230]:
+              - generic [ref=e231]: 快赎1万元最快实时到账
+              - generic [ref=e232]: 买入下个工作日查持仓
+            - generic [ref=e233]: 1.09%
+            - generic [ref=e234]: 七日年化
+            - generic [ref=e235]: 0.01元起购
+            - link "查看详情" [ref=e237] [cursor=pointer]:
+              - /url: https://ebanks.bankofshanghai.com/pweb/OpenDetailRule.do?PortalFlag=finance&PrdCode=W2009901A&_locale=zh_CN
+      - generic [ref=e239]:
+        - generic [ref=e242]:
+          - generic [ref=e245]:
+            - generic [ref=e246]: 公司金融
+            - generic [ref=e247]: 创造 · 分享 · 共同成长
+          - link "更多" [ref=e249] [cursor=pointer]:
+            - /url: ./gsjr/
+        - generic [ref=e250]:
+          - list [ref=e251]:
+            - link "公司业务 提供企业全面的金融服务" [ref=e252] [cursor=pointer]:
+              - /url: /zh/gsjr/gsyw/
+              - listitem [ref=e253]:
+                - generic [ref=e255]:
+                  - heading "公司业务" [level=4] [ref=e256]
+                  - paragraph [ref=e257]: 提供企业全面的金融服务
+            - link "金融同业 同业合作 托管服务" [ref=e258] [cursor=pointer]:
+              - /url: /zh/gsjr/tyjr/thyw/
+              - listitem [ref=e259]:
+                - generic [ref=e261]:
+                  - heading "金融同业" [level=4] [ref=e262]
+                  - paragraph [ref=e263]: 同业合作 托管服务
+            - link "跨境业务 提供个性化、高质量的跨境金融服务" [ref=e264] [cursor=pointer]:
+              - /url: /zh/gsjr/kjyw/
+              - listitem [ref=e265]:
+                - generic [ref=e267]:
+                  - heading "跨境业务" [level=4] [ref=e268]
+                  - paragraph [ref=e269]: 提供个性化、高质量的跨境金融服务
+            - link "投行业务 债券融资 并购重组" [ref=e270] [cursor=pointer]:
+              - /url: /zh/gsjr/shyw/
+              - listitem [ref=e271]:
+                - generic [ref=e273]:
+                  - heading "投行业务" [level=4] [ref=e274]
+                  - paragraph [ref=e275]: 债券融资 并购重组
+          - link "上行“e”链 在线供应链金融服务平台 上行“e”链以“更智慧的金融“ 和“更专业的服务”, 服务实体经济 、助力普惠金融 查看详情" [ref=e276] [cursor=pointer]:
+            - /url: /zh/gsjr/jyyh/gyljryw/202003/t20200329_12925.shtml
+            - generic [ref=e277]:
+              - heading "上行“e”链 在线供应链金融服务平台" [level=4] [ref=e278]:
+                - text: 上行“e”链
+                - text: 在线供应链金融服务平台
+              - paragraph [ref=e279]: 上行“e”链以“更智慧的金融“ 和“更专业的服务”, 服务实体经济 、助力普惠金融
+              - generic [ref=e280]: 查看详情
+      - generic [ref=e282]:
+        - generic [ref=e285]:
+          - generic [ref=e288]:
+            - generic [ref=e289]: 普惠金融
+            - generic [ref=e290]: 惠企发展 携手共赢
+          - link "更多" [ref=e292] [cursor=pointer]:
+            - /url: ./phjr/
+        - generic [ref=e293]:
+          - link "宅即贷 快贷助经营 续贷不还本 查看详情":
+            - /url: https://www.bosc.cn/zh/phjr/cpfw/jcjrl/202004/t20200414_13102.shtml
+            - list [ref=e294] [cursor=pointer]:
+              - heading "宅即贷" [level=4] [ref=e295]
+              - paragraph [ref=e296]: 快贷助经营 续贷不还本
+              - generic [ref=e297]: 查看详情
+          - list [ref=e298]:
+            - link "在线金融类 普惠全在线金融产品":
+              - /url: /zh/phjr/cpfw/zxjrl/202007/t20200703_33345.shtml
+              - listitem [ref=e299] [cursor=pointer]:
+                - heading "在线金融类" [level=4] [ref=e300]
+                - paragraph [ref=e301]: 普惠全在线金融产品
+            - link "科创金融类 为科创小微企业量身定制":
+              - /url: /zh/phjr/cpfw/kjjrl/
+              - listitem [ref=e302] [cursor=pointer]:
+                - heading "科创金融类" [level=4] [ref=e303]
+                - paragraph [ref=e304]: 为科创小微企业量身定制
+            - link "基础融资类 标准化融资产品，多种担保方式":
+              - /url: /zh/phjr/cpfw/jcjrl/
+              - listitem [ref=e305] [cursor=pointer]:
+                - heading "基础融资类" [level=4] [ref=e306]
+                - paragraph [ref=e307]: 标准化融资产品，多种担保方式
+            - link "综合金融服务类 涵盖结算、理财、跨境等多方位服务":
+              - /url: /zh/phjr/cpfw/zhjrfwl/
+              - listitem [ref=e308] [cursor=pointer]:
+                - heading "综合金融服务类" [level=4] [ref=e309]
+                - paragraph [ref=e310]: 涵盖结算、理财、跨境等多方位服务
+      - generic [ref=e312]:
+        - generic [ref=e315]:
+          - generic [ref=e318]:
+            - generic [ref=e319]: 今日上行
+            - generic [ref=e320]: 智慧金融 专业服务
+          - link "更多" [ref=e322] [cursor=pointer]:
+            - /url: ./jrsh/
+        - list [ref=e324]:
+          - link "上海银行概况" [ref=e325] [cursor=pointer]:
+            - /url: /zh/jrsh/shyhgk/gk/
+            - listitem [ref=e326]:
+              - heading "上海银行概况" [level=4] [ref=e328]
+          - link "公司公告" [ref=e329] [cursor=pointer]:
+            - /url: /zh/jrsh/tzzgx/gsgg/
+            - listitem [ref=e330]:
+              - heading "公司公告" [level=4] [ref=e332]
+          - link "定期报告" [ref=e333] [cursor=pointer]:
+            - /url: /zh/jrsh/tzzgx/dqbg/
+            - listitem [ref=e334]:
+              - heading "定期报告" [level=4] [ref=e336]
+          - link "新闻快递" [ref=e337] [cursor=pointer]:
+            - /url: /zh/jrsh/shyhgk/xwkds/
+            - listitem [ref=e338]:
+              - heading "新闻快递" [level=4] [ref=e340]
+  - generic [ref=e342]:
+    - list [ref=e344]:
+      - link [ref=e345] [cursor=pointer]:
+        - /url: javascript:;
+        - listitem [ref=e346]
+      - listitem [ref=e347]:
+        - generic:
+          - list:
+            - listitem [ref=e348]:
+              - paragraph [ref=e349]: 手机银行
+            - listitem [ref=e350]:
+              - paragraph [ref=e351]: 企业银行
+      - listitem [ref=e352]:
+        - generic:
+          - list:
+            - listitem [ref=e353]:
+              - paragraph [ref=e354]: 个人微信银行
+            - listitem [ref=e355]:
+              - paragraph [ref=e356]: 企业微信银行
+      - listitem [ref=e357]:
+        - generic:
+          - list:
+            - listitem [ref=e358]:
+              - link "外汇牌价" [ref=e359] [cursor=pointer]:
+                - /url: /zh/dtjr/whpj/
+            - listitem [ref=e360]:
+              - link "贵金属收盘价" [ref=e361] [cursor=pointer]:
+                - /url: /zh/dtjr/gjsspj/
+            - listitem [ref=e362]:
+              - link "存贷款利率" [ref=e363] [cursor=pointer]:
+                - /url: /zh/dtjr/cdkll/
+            - listitem [ref=e364]:
+              - link "代销基金净值" [ref=e365] [cursor=pointer]:
+                - /url: /zh/dtjr/dxjj/
+            - listitem [ref=e366]:
+              - link "公司理财产品" [ref=e367] [cursor=pointer]:
+                - /url: /zh/dtjr/gslc/
+            - listitem [ref=e368]:
+              - link "个人理财产品" [ref=e369] [cursor=pointer]:
+                - /url: /zh/dtjr/grlc/
+            - listitem [ref=e370]:
+              - link "服务价目" [ref=e371] [cursor=pointer]:
+                - /url: /zh/dtjr/fwjmb/
+      - listitem [ref=e372]
+    - generic [ref=e373]:
+      - generic [ref=e374]:
+        - generic [ref=e375]:
+          - heading "村镇银行" [level=2] [ref=e377]:
+            - link "村镇银行" [ref=e378] [cursor=pointer]:
+              - /url: https://www.bosc.cn/zh/inc/czyh/
+          - generic [ref=e379]:
+            - heading "合作伙伴" [level=2] [ref=e380]
+            - list [ref=e381]:
+              - listitem [ref=e382]:
+                - link "人行小面额人民币预约" [ref=e383] [cursor=pointer]:
+                  - /url: https://xmeyy.pbc.gov.cn/misint/
+              - listitem [ref=e384]:
+                - link "中国银联" [ref=e385] [cursor=pointer]:
+                  - /url: https://cn.unionpay.com/upowhtml/cn/templates/index/index.html
+              - listitem [ref=e386]:
+                - link "台湾上海商业储蓄银行" [ref=e387] [cursor=pointer]:
+                  - /url: https://www.scsb.com.tw/
+              - listitem [ref=e388]:
+                - link "香港上海商业银行" [ref=e389] [cursor=pointer]:
+                  - /url: http://www.shacombank.com.hk/
+              - listitem [ref=e390]:
+                - link "中国银行业协会" [ref=e391] [cursor=pointer]:
+                  - /url: https://www.china-cba.net/
+          - generic [ref=e392]:
+            - heading "子公司" [level=2] [ref=e393]
+            - list [ref=e394]:
+              - listitem [ref=e395]:
+                - link "上银基金" [ref=e396] [cursor=pointer]:
+                  - /url: http://www.boscam.com.cn/
+              - listitem [ref=e397]:
+                - link "上银香港" [ref=e398] [cursor=pointer]:
+                  - /url: https://www.bosc-hk.com/
+              - listitem [ref=e399]:
+                - link "上银国际" [ref=e400] [cursor=pointer]:
+                  - /url: https://www.boscinternational.com/
+              - listitem [ref=e401]:
+                - link "上银理财" [ref=e402] [cursor=pointer]:
+                  - /url: https://www.boscwm.cn
+        - generic [ref=e403]:
+          - heading "手机银行" [level=2] [ref=e405]
+          - heading "微信银行" [level=2] [ref=e407]
+      - generic [ref=e409]:
+        - paragraph [ref=e410]:
+          - text: 上海银行版权所有|
+          - link "沪ICP备14020744号-2" [ref=e411] [cursor=pointer]:
+            - /url: http://beian.miit.gov.cn
+          - text: "|"
+          - link "沪公网安备 31011502003675号" [ref=e412] [cursor=pointer]:
+            - /url: http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=31011502003675
+          - text: "|本网站支持IPV6"
+          - link "|联系我们" [ref=e414] [cursor=pointer]:
+            - /url: https://www.bosc.cn/zh/sy/khfw/lxwm/
+          - link "|网站地图" [ref=e416] [cursor=pointer]:
+            - /url: https://www.bosc.cn/zh/inc/map.shtml
+          - text: "|客户服务及投诉热线：95594"
+        - paragraph [ref=e417]: 未经上海银行许可，任何组织或个人不得链接上海银行网站
+        - generic [ref=e418]:
+          - link [ref=e419] [cursor=pointer]:
+            - /url: http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=31011502003675
+            - img [ref=e420]
+          - link [ref=e421] [cursor=pointer]:
+            - /url: http://www.zx110.org/
+            - img [ref=e422]
+          - img [ref=e424]
+          - link [ref=e425] [cursor=pointer]:
+            - /url: https://ss.knet.cn/verifyseal.dll?sn=e17041031010767311luyk000000&ct=df&pa=ebuac3rHAkmXTMuf
+            - img [ref=e426]

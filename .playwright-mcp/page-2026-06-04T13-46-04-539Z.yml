@@ -1,0 +1,103 @@
+- generic [active] [ref=e1]:
+  - 'button "Google Account: Nuvola d''Argento (huolining3@gmail.com)" [ref=e8] [cursor=pointer]':
+    - img [ref=e11]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - button [ref=e16] [cursor=pointer]
+      - generic [ref=e19]:
+        - link "jules" [ref=e21] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e22]:
+            - img [ref=e24]
+            - generic: jules
+        - generic [ref=e26]:
+          - textbox "Search for repo or sessions" [ref=e27]
+          - img:
+            - img
+        - generic [ref=e28]:
+          - button "Recent sessions" [ref=e30] [cursor=pointer]:
+            - generic [ref=e32]: Recent sessions
+            - img [ref=e33]:
+              - img [ref=e34]
+          - button "Codebases" [ref=e50] [cursor=pointer]:
+            - generic [ref=e51]:
+              - generic [ref=e52]: Codebases
+              - img [ref=e53]:
+                - img [ref=e54]
+        - generic [ref=e73]:
+          - generic [ref=e77] [cursor=pointer]: Daily session limit (10/100)
+          - generic [ref=e78]:
+            - link "Docs" [ref=e79] [cursor=pointer]:
+              - /url: https://jules.google/docs
+              - img [ref=e80]:
+                - img [ref=e81]
+              - generic [ref=e84]: Docs
+            - link [ref=e85] [cursor=pointer]:
+              - /url: https://discord.gg/googlelabs
+              - img [ref=e86]:
+                - img [ref=e87]
+            - link [ref=e89] [cursor=pointer]:
+              - /url: https://x.com/julesagent
+              - img [ref=e90]:
+                - img [ref=e91]
+    - generic [ref=e94]:
+      - generic [ref=e96]:
+        - button [ref=e97] [cursor=pointer]:
+          - img [ref=e99]: light_mode
+        - button [ref=e100] [cursor=pointer]:
+          - img [ref=e102]:
+            - img [ref=e103]
+        - button "Feedback" [ref=e108] [cursor=pointer]:
+          - img [ref=e109]:
+            - img [ref=e110]
+          - generic [ref=e113]: Feedback
+        - link [ref=e114] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e115]:
+            - img [ref=e116]
+        - link "PRO" [ref=e120] [cursor=pointer]:
+          - /url: /settings
+      - generic [ref=e123]:
+        - navigation [ref=e125]:
+          - list [ref=e126]:
+            - listitem [ref=e127]:
+              - link "Overview" [ref=e128] [cursor=pointer]:
+                - /url: /repo/github/RebeccaKaku/OptiFolio/overview
+                - img [ref=e129]:
+                  - img [ref=e130]
+                - generic [ref=e132]: Overview
+            - listitem [ref=e133]:
+              - link "Environment" [ref=e134] [cursor=pointer]:
+                - /url: /repo/github/RebeccaKaku/OptiFolio/config
+                - img [ref=e135]:
+                  - img [ref=e136]
+                - generic [ref=e138]: Environment
+            - listitem [ref=e139]:
+              - link "Knowledge" [ref=e140] [cursor=pointer]:
+                - /url: /repo/github/RebeccaKaku/OptiFolio/knowledge
+                - img [ref=e141]:
+                  - img [ref=e142]
+                - generic [ref=e144]: Knowledge
+            - listitem [ref=e145]:
+              - link "Suggestions Beta" [ref=e146] [cursor=pointer]:
+                - /url: /repo/github/RebeccaKaku/OptiFolio/suggestions
+                - img [ref=e147]
+                - generic [ref=e148]: Suggestions
+                - generic [ref=e149]: Beta
+            - listitem [ref=e150]:
+              - link "CI Fixer Beta" [ref=e151] [cursor=pointer]:
+                - /url: /repo/github/RebeccaKaku/OptiFolio/ci-fixer
+                - img [ref=e152]:
+                  - img [ref=e153]
+                - generic [ref=e155]: CI Fixer
+                - generic [ref=e156]: Beta
+        - generic [ref=e162]:
+          - generic [ref=e163]:
+            - button "All" [ref=e164] [cursor=pointer]
+            - button "Scheduled" [ref=e165] [cursor=pointer]
+            - button "Completed" [ref=e166] [cursor=pointer]
+            - button "Archived" [ref=e167] [cursor=pointer]
+          - button "New" [ref=e168] [cursor=pointer]:
+            - img [ref=e169]:
+              - img [ref=e170]
+            - generic [ref=e172]: New

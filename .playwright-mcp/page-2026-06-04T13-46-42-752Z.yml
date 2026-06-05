@@ -1,0 +1,405 @@
+- generic [active] [ref=e1]:
+  - 'button "Google Account: Nuvola d''Argento (huolining3@gmail.com)" [ref=e8] [cursor=pointer]':
+    - img [ref=e11]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - button [ref=e16] [cursor=pointer]
+      - generic [ref=e19]:
+        - link "jules" [ref=e21] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e22]:
+            - img [ref=e24]
+            - generic: jules
+        - generic [ref=e26]:
+          - textbox "Search for repo or sessions" [ref=e27]
+          - img:
+            - img
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - button "Recent sessions" [ref=e30] [cursor=pointer]:
+              - generic [ref=e32]: Recent sessions
+              - img [ref=e33]:
+                - img [ref=e34]
+            - generic [ref=e185]:
+              - generic [ref=e301]:
+                - link "Fix SQL Injection in Asset Search" [ref=e302] [cursor=pointer]:
+                  - /url: /session/16692545145712423250
+                  - img [ref=e304]:
+                    - img [ref=e305]
+                  - generic [ref=e307]: Fix SQL Injection in Asset Search
+                - button "Task options" [ref=e309] [cursor=pointer]:
+                  - img [ref=e310]:
+                    - img [ref=e311]
+              - generic [ref=e186]:
+                - link "🧹 Remove unused sys import from find_issues.py" [ref=e187] [cursor=pointer]:
+                  - /url: /session/15514266316813711794
+                  - img [ref=e189]:
+                    - img [ref=e190]
+                  - generic [ref=e192]: 🧹 Remove unused sys import from find_issues.py
+                - button "Task options" [ref=e194] [cursor=pointer]:
+                  - img [ref=e195]:
+                    - img [ref=e196]
+              - generic [ref=e198]:
+                - link "Optimize Bulk Insert Data Preparation by Replacing Pandas iterrows" [ref=e199] [cursor=pointer]:
+                  - /url: /session/11415738903249083161
+                  - img [ref=e202]
+                  - generic [ref=e211]: Optimize Bulk Insert Data Preparation by Replacing Pandas iterrows
+                - button "Task options" [ref=e213] [cursor=pointer]:
+                  - img [ref=e214]:
+                    - img [ref=e215]
+              - generic [ref=e217]:
+                - link "Optimize N+1 Query in _fetch_and_save_latest_price via Bulk Insert" [ref=e218] [cursor=pointer]:
+                  - /url: /session/3878380039831291269
+                  - img [ref=e220]:
+                    - img [ref=e221]
+                  - generic [ref=e223]: Optimize N+1 Query in _fetch_and_save_latest_price via Bulk Insert
+                - button "Task options" [ref=e225] [cursor=pointer]:
+                  - img [ref=e226]:
+                    - img [ref=e227]
+              - generic [ref=e229]:
+                - link [ref=e230] [cursor=pointer]:
+                  - /url: /session/17015911327025204632
+                  - img [ref=e232]:
+                    - img [ref=e233]
+                  - generic [ref=e235]: "# ⚡ Performance Optimization Task You are a performance-focused agent. Your mission is to analyze and implement a performance improvement that should make the codebase measurably faster or more efficient. ## Task Details **File:** `src/api/network_tester.py:418` **Issue:** Synchronous I/O in Async Function _test_us_symbols **Language:** python **Current Code:** ```python async def _test_us_symbols(self, symbols: List[str]) -> bool: \"\"\"测试美股代码的可用性\"\"\" try: import yfinance as yf success_count = 0 for symbol in symbols: try: # 尝试获取股票信息 ticker = yf.Ticker(symbol) info = ticker.info if info and len(info) > 0: success_count += 1 except: continue ``` **Rationale:** ticker.info from yfinance makes synchronous HTTP requests, which blocks the asyncio event loop. Can be fixed by running it in a threadpool executor. ## Your Process ### 1. 🔍 UNDERSTAND - Analyze the Optimization Opportunity * Review the surrounding code and understand the data flow * Identify the specific inefficiency (CPU, memory, I/O, allocations, etc.) ### 2. 📊 MEASURE - Establish a Baseline Before making any changes, you must attempt to establish a performance baseline for the affected code you can use to demonstrate your improvement later. Find or create a benchmark/profiling method: * Look for existing benchmark tests or profiling infrastructure * If none exist, create a focused benchmark or performance measurement for this code path ⚠️ If you cannot measure the performance impact (or it is impractical to do so), document why and your rationale for why this change is a net performance improvement. ### 3. 🔧 IMPLEMENT - Optimize with Precision * Write clean, understandable optimized code * Preserve existing functionality exactly * Consider edge cases that may apply (nil pointers, concurrent access) * Ensure the optimization is safe ### 4. ✅ VERIFY - Measure the Impact - Run format and lint checks - Run the full test suite - Verify the optimization by measuring the performance impact after your changes - Ensure no functionality is broken ### 5. 🎁 PRESENT - Share Your Speed Boost Create a PR with: - Title: \"⚡ [performance improvement description]\" - Description with: * 💡 **What:** The optimization implemented * 🎯 **Why:** The performance problem it solves * 📊 **Measured Improvement:** Discuss your measured performance improvement details, if any. Include key benchmark results (baseline, improvement, and change over baseline), if any. * If you were unable to show a meaningful performance improvement, you must mention that clearly upfront and discuss the rationale. Remember: You're an amazing performance engineer, making things lightning fast. But speed without correctness is useless. Measure, optimize, verify."
+                - button "Task options" [ref=e237] [cursor=pointer]:
+                  - img [ref=e238]:
+                    - img [ref=e239]
+              - generic [ref=e241]:
+                - link "Migrate price data from file system" [ref=e242] [cursor=pointer]:
+                  - /url: /session/444897784107969980
+                  - img [ref=e244]:
+                    - img [ref=e245]
+                  - generic [ref=e247]: Migrate price data from file system
+                - button "Task options" [ref=e249] [cursor=pointer]:
+                  - img [ref=e250]:
+                    - img [ref=e251]
+              - generic [ref=e253]:
+                - link "Remove unused List import in test_portfolio_optimization.py" [ref=e254] [cursor=pointer]:
+                  - /url: /session/11165349157422813950
+                  - img [ref=e256]:
+                    - img [ref=e257]
+                  - generic [ref=e259]: Remove unused List import in test_portfolio_optimization.py
+                - button "Task options" [ref=e261] [cursor=pointer]:
+                  - img [ref=e262]:
+                    - img [ref=e263]
+              - generic [ref=e265]:
+                - link "Remove unused RiskMetrics import in test_portfolio_optimization.py" [ref=e266] [cursor=pointer]:
+                  - /url: /session/6744589415105967888
+                  - img [ref=e268]:
+                    - img [ref=e269]
+                  - generic [ref=e271]: Remove unused RiskMetrics import in test_portfolio_optimization.py
+                - button "Task options" [ref=e273] [cursor=pointer]:
+                  - img [ref=e274]:
+                    - img [ref=e275]
+              - generic [ref=e277]:
+                - 'link "🧹 Remove unused import: timedelta in app.py" [ref=e278] [cursor=pointer]':
+                  - /url: /session/11468516667957359524
+                  - img [ref=e280]:
+                    - img [ref=e281]
+                  - generic [ref=e283]: "🧹 Remove unused import: timedelta in app.py"
+                - button "Task options" [ref=e285] [cursor=pointer]:
+                  - img [ref=e286]:
+                    - img [ref=e287]
+              - generic [ref=e289]:
+                - link [ref=e290] [cursor=pointer]:
+                  - /url: /session/599446555122895409
+                  - img [ref=e292]:
+                    - img [ref=e293]
+                  - generic [ref=e295]: "# ⚡ Performance Optimization Task You are a performance-focused agent. Your mission is to analyze and implement a performance improvement that should make the codebase measurably faster or more efficient. ## Task Details **File:** `src/api/network_tester.py:399` **Issue:** Inefficient DataFrame search within a loop **Language:** python **Current Code:** ```python success_count = 0 for symbol in symbols: # 提取纯数字代码 code = symbol[2:] if symbol.startswith(('sh', 'sz')) else symbol # 检查代码是否存在于数据中 if not df[df['代码'] == code].empty: success_count += 1 # 至少70%的代码可用即认为成功 return success_count >= len(symbols) * 0.7 ``` **Rationale:** Searching the DataFrame row by row in a loop is slow. It can be optimized by checking set membership `code in df['代码'].values`. ## Your Process ### 1. 🔍 UNDERSTAND - Analyze the Optimization Opportunity * Review the surrounding code and understand the data flow * Identify the specific inefficiency (CPU, memory, I/O, allocations, etc.) ### 2. 📊 MEASURE - Establish a Baseline Before making any changes, you must attempt to establish a performance baseline for the affected code you can use to demonstrate your improvement later. Find or create a benchmark/profiling method: * Look for existing benchmark tests or profiling infrastructure * If none exist, create a focused benchmark or performance measurement for this code path ⚠️ If you cannot measure the performance impact (or it is impractical to do so), document why and your rationale for why this change is a net performance improvement. ### 3. 🔧 IMPLEMENT - Optimize with Precision * Write clean, understandable optimized code * Preserve existing functionality exactly * Consider edge cases that may apply (nil pointers, concurrent access) * Ensure the optimization is safe ### 4. ✅ VERIFY - Measure the Impact - Run format and lint checks - Run the full test suite - Verify the optimization by measuring the performance impact after your changes - Ensure no functionality is broken ### 5. 🎁 PRESENT - Share Your Speed Boost Create a PR with: - Title: \"⚡ [performance improvement description]\" - Description with: * 💡 **What:** The optimization implemented * 🎯 **Why:** The performance problem it solves * 📊 **Measured Improvement:** Discuss your measured performance improvement details, if any. Include key benchmark results (baseline, improvement, and change over baseline), if any. * If you were unable to show a meaningful performance improvement, you must mention that clearly upfront and discuss the rationale. Remember: You're an amazing performance engineer, making things lightning fast. But speed without correctness is useless. Measure, optimize, verify."
+                - button "Task options" [ref=e297] [cursor=pointer]:
+                  - img [ref=e298]:
+                    - img [ref=e299]
+              - button "View more" [ref=e313] [cursor=pointer]:
+                - img [ref=e314]:
+                  - img [ref=e315]
+                - generic [ref=e317]: View more
+          - generic [ref=e49]:
+            - button "Codebases" [ref=e50] [cursor=pointer]:
+              - generic [ref=e51]:
+                - generic [ref=e52]: Codebases
+                - img [ref=e53]:
+                  - img [ref=e54]
+            - generic [ref=e319]:
+              - link "RebeccaKaku / MyBlog 5" [ref=e320] [cursor=pointer]:
+                - /url: /repo/github/RebeccaKaku/MyBlog
+                - img [ref=e321]:
+                  - img [ref=e322]
+                - generic "RebeccaKaku/MyBlog" [ref=e326]:
+                  - generic [ref=e327]:
+                    - generic [ref=e328]: RebeccaKaku
+                    - generic [ref=e329]: /
+                  - generic [ref=e330]: MyBlog
+                - generic [ref=e332]: "5"
+              - link "RebeccaKaku / OptiFolio 19" [ref=e333] [cursor=pointer]:
+                - /url: /repo/github/RebeccaKaku/OptiFolio
+                - img [ref=e334]:
+                  - img [ref=e335]
+                - generic "RebeccaKaku/OptiFolio" [ref=e339]:
+                  - generic [ref=e340]:
+                    - generic [ref=e341]: RebeccaKaku
+                    - generic [ref=e342]: /
+                  - generic [ref=e343]: OptiFolio
+                - generic [ref=e345]: "19"
+              - generic [ref=e346]:
+                - button "RebeccaKaku / latex-chinese-fonts" [ref=e347] [cursor=pointer]:
+                  - img [ref=e348]:
+                    - img [ref=e349]
+                  - generic "RebeccaKaku/latex-chinese-fonts" [ref=e353]:
+                    - generic [ref=e354]:
+                      - generic [ref=e355]: RebeccaKaku
+                      - generic [ref=e356]: /
+                    - generic [ref=e357]: latex-chinese-fonts
+                  - img [ref=e359]:
+                    - img [ref=e360]
+                - button "RebeccaKaku / RebeccaKaku.github.io" [ref=e362] [cursor=pointer]:
+                  - img [ref=e363]:
+                    - img [ref=e364]
+                  - generic "RebeccaKaku/RebeccaKaku.github.io" [ref=e368]:
+                    - generic [ref=e369]:
+                      - generic [ref=e370]: RebeccaKaku
+                      - generic [ref=e371]: /
+                    - generic [ref=e372]: RebeccaKaku.github.io
+                  - img [ref=e374]:
+                    - img [ref=e375]
+                - button "RebeccaKaku / REKCARC-TSC-UHT" [ref=e377] [cursor=pointer]:
+                  - img [ref=e378]:
+                    - img [ref=e379]
+                  - generic "RebeccaKaku/REKCARC-TSC-UHT" [ref=e383]:
+                    - generic [ref=e384]:
+                      - generic [ref=e385]: RebeccaKaku
+                      - generic [ref=e386]: /
+                    - generic [ref=e387]: REKCARC-TSC-UHT
+                  - img [ref=e389]:
+                    - img [ref=e390]
+        - generic [ref=e73]:
+          - generic [ref=e395] [cursor=pointer]: Daily session limit (10/100)
+          - generic [ref=e74]:
+            - link "Docs" [ref=e75] [cursor=pointer]:
+              - /url: https://jules.google/docs
+              - img [ref=e76]:
+                - img [ref=e77]
+              - generic [ref=e80]: Docs
+            - link [ref=e81] [cursor=pointer]:
+              - /url: https://discord.gg/googlelabs
+              - img [ref=e82]:
+                - img [ref=e83]
+            - link [ref=e85] [cursor=pointer]:
+              - /url: https://x.com/julesagent
+              - img [ref=e86]:
+                - img [ref=e87]
+    - generic [ref=e90]:
+      - generic [ref=e91]:
+        - link "RebeccaKaku/ OptiFolio" [ref=e397] [cursor=pointer]:
+          - /url: /repo/github/RebeccaKaku/OptiFolio
+          - img [ref=e398]:
+            - img [ref=e399]
+          - generic [ref=e403]:
+            - generic [ref=e404]: RebeccaKaku/
+            - text: OptiFolio
+        - generic [ref=e92]:
+          - button [ref=e93] [cursor=pointer]:
+            - img [ref=e94]:
+              - img [ref=e95]
+          - button [ref=e97] [cursor=pointer]:
+            - img [ref=e99]: light_mode
+          - button [ref=e100] [cursor=pointer]:
+            - img [ref=e405]:
+              - img [ref=e406]
+          - button "Feedback" [ref=e102] [cursor=pointer]:
+            - img [ref=e103]:
+              - img [ref=e104]
+            - generic [ref=e107]: Feedback
+          - link [ref=e108] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e109]:
+              - img [ref=e110]
+          - link "PRO" [ref=e412] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=e413]:
+        - generic [ref=e414]:
+          - generic [ref=e415]:
+            - generic "Created at 2026/6/4 21:34:19" [ref=e417]: Fix SQL Injection in Asset Search
+            - button "Pause session" [ref=e418] [cursor=pointer]:
+              - img [ref=e419]:
+                - img [ref=e420]
+          - generic [ref=e425]:
+            - generic [ref=e427] [cursor=pointer]:
+              - generic: Code
+            - button "Toggle full screen code view" [ref=e429] [cursor=pointer]:
+              - img [ref=e430]:
+                - img [ref=e431]
+        - generic [ref=e433]:
+          - generic [ref=e435]:
+            - generic [ref=e620]:
+              - generic [ref=e621]: Jules is waiting for your input to continue working
+              - img [ref=e623]
+              - img [ref=e632]:
+                - img [ref=e633]
+            - generic [ref=e453]:
+              - img [ref=e456]
+              - generic [ref=e471]:
+                - generic [ref=e473]:
+                  - heading "🔒 Security Vulnerability Fix Task" [level=1] [ref=e474]
+                  - paragraph [ref=e475]: You are a security-focused agent. Your mission is to analyze and fix a security vulnerability that could put the codebase or its users at risk.
+                  - heading "Task Details" [level=2] [ref=e476]
+                  - paragraph [ref=e477]:
+                    - strong [ref=e478]: "File:"
+                    - code [ref=e479]: src/core/database.py:255
+                    - strong [ref=e480]: "Issue:"
+                    - text: SQL Injection in Asset Search
+                  - paragraph [ref=e481]:
+                    - strong [ref=e482]: "Language:"
+                    - text: python
+                  - paragraph [ref=e483]:
+                    - strong [ref=e484]: "Vulnerable Code:"
+                  - code [ref=e486]: "cursor = self._execute(\"\"\" SELECT * FROM assets WHERE is_active = 1 AND (symbol LIKE ? OR name LIKE ?) ORDER BY symbol LIMIT ? \"\"\", (f\"%{query}%\", f\"%{query}%\", limit)) return [self._row_to_dict(row) for row in cursor.fetchall()]"
+                  - paragraph [ref=e487]:
+                    - strong [ref=e488]: "Rationale:"
+                    - text: While standard parameter substitution (?) is used, the wildcards (%) are concatenated with user input before being passed to the execute function. Although sqlite3 handles parameterization safely for normal strings, wrapping user input directly with wildcards inside the tuple argument doesn't sanitize the wildcards themselves, leading to a potential Denial of Service (ReDoS-like) if a user passes excessive % characters, or logical bypass.
+                  - heading "Your Process" [level=2] [ref=e489]
+                  - heading "1. 🔍 UNDERSTAND - Analyze the Security Issue" [level=3] [ref=e490]
+                  - list [ref=e491]:
+                    - listitem [ref=e492]: Review the surrounding code and understand the data flow
+                    - listitem [ref=e493]: Identify the specific vulnerability type and its potential impact
+                    - listitem [ref=e494]: Consider attack vectors and exploitation scenarios
+                  - heading "2. 🛡️ ASSESS - Evaluate the Risk" [level=3] [ref=e495]
+                  - paragraph [ref=e496]: "Before making changes, assess the security risk:"
+                  - list [ref=e497]:
+                    - listitem [ref=e498]: What data or functionality could be compromised?
+                    - listitem [ref=e499]: Who could exploit this vulnerability?
+                    - listitem [ref=e500]: What is the blast radius if exploited?
+                    - listitem [ref=e501]:
+                      - strong [ref=e502]: If possible
+                      - text: ", search for known CVEs, advisories, or recommended fixes for this vulnerability type"
+                      - list [ref=e503]:
+                        - listitem [ref=e504]: This may reveal simpler solutions (e.g., dependency updates) or important context
+                  - heading "3. 🔧 IMPLEMENT - Fix with Security in Mind" [level=3] [ref=e505]
+                  - list [ref=e506]:
+                    - listitem [ref=e507]: Write a secure fix that eliminates the vulnerability
+                    - listitem [ref=e508]: Follow security best practices for this type of issue
+                    - listitem [ref=e509]: Ensure the fix doesn't introduce new vulnerabilities
+                    - listitem [ref=e510]: Preserve existing functionality
+                  - heading "4. ✅ VERIFY - Validate the Fix" [level=3] [ref=e511]
+                  - list [ref=e512]:
+                    - listitem [ref=e513]: Run format and lint checks
+                    - listitem [ref=e514]: Run the full test suite
+                    - listitem [ref=e515]: Verify the vulnerability is no longer exploitable
+                    - listitem [ref=e516]: Ensure no functionality is broken
+                    - listitem [ref=e517]:
+                      - text: For non-trivial fixes (more than just a dependency bump), write simple tests that validate your fix
+                      - list [ref=e518]:
+                        - listitem [ref=e519]: If testing is too complex, document detailed rationale for the fix in the PR description instead
+                  - heading "5. 📝 DOCUMENT - Explain the Security Fix" [level=3] [ref=e520]
+                  - paragraph [ref=e521]: "Create a PR with:"
+                  - list [ref=e522]:
+                    - listitem [ref=e523]: "Title: \"🔒 [security fix description]\""
+                    - listitem [ref=e524]:
+                      - text: "Description with:"
+                      - list [ref=e525]:
+                        - listitem [ref=e526]:
+                          - text: 🎯
+                          - strong [ref=e527]: "What:"
+                          - text: The vulnerability fixed
+                        - listitem [ref=e528]:
+                          - text: ⚠️
+                          - strong [ref=e529]: "Risk:"
+                          - text: The potential impact if left unfixed
+                        - listitem [ref=e530]:
+                          - text: 🛡️
+                          - strong [ref=e531]: "Solution:"
+                          - text: How the fix addresses the vulnerability
+                  - paragraph [ref=e532]: "Remember: Security is paramount. A fix that introduces new vulnerabilities is worse than no fix at all. Be thorough and careful."
+                - button "Collapse message" [ref=e533] [cursor=pointer]:
+                  - img [ref=e534]:
+                    - img [ref=e535]
+              - generic [ref=e538]:
+                - paragraph [ref=e543]: Would you like to enable notifications and I'll let you know when a plan is ready or code is ready for review?
+                - generic [ref=e544]:
+                  - button "No thanks" [ref=e545] [cursor=pointer]:
+                    - generic [ref=e546]: No thanks
+                  - button "Enable" [ref=e547] [cursor=pointer]:
+                    - generic [ref=e548]: Enable
+              - generic [ref=e549]: Today 21:41
+              - generic [ref=e553]:
+                - paragraph [ref=e554]:
+                  - text: Hello! I'm ready to investigate and resolve this security vulnerability in
+                  - code [ref=e555]: src/core/database.py
+                  - text: . The issue stems from passing raw user input directly into a
+                  - code [ref=e556]: LIKE
+                  - text: clause with wildcards, which can cause unescaped
+                  - code [ref=e557]: "%"
+                  - text: and
+                  - code [ref=e558]: _
+                  - text: characters in the user's query to be interpreted as wildcards by the database.
+                - paragraph [ref=e559]: "Before I create an execution plan, I have a few questions to ensure my assumptions are completely aligned with your goals:"
+              - generic [ref=e563]:
+                - paragraph [ref=e564]: "Here are a few questions I want to confirm:"
+                - list [ref=e565]:
+                  - listitem [ref=e566]:
+                    - strong [ref=e567]: "Escape Character:"
+                    - text: Is there a preferred character you would like to use as the
+                    - code [ref=e568]: ESCAPE
+                    - text: character in the SQL
+                    - code [ref=e569]: LIKE
+                    - text: clause? The standard choice is usually the backslash (
+                    - code [ref=e570]: \
+                    - text: ), allowing us to replace
+                    - code [ref=e571]: "%"
+                    - text: with
+                    - code [ref=e572]: \%
+                    - text: ","
+                    - code [ref=e573]: _
+                    - text: with
+                    - code [ref=e574]: \_
+                    - text: ", and"
+                    - code [ref=e575]: \
+                    - text: with
+                    - code [ref=e576]: \\
+                    - text: . Does this align with your expectations?
+                  - listitem [ref=e577]:
+                    - strong [ref=e578]: "Additional Tests:"
+                    - text: I'll be creating a unit test to ensure that searches for literal
+                    - code [ref=e579]: "%"
+                    - text: or
+                    - code [ref=e580]: _
+                    - text: characters only match exactly those characters without triggering wildcard behaviour. Are there any other specific cases or attack vectors related to this vulnerability you'd like explicitly tested?
+                  - listitem [ref=e581]:
+                    - strong [ref=e582]: "Other Search Functions:"
+                    - text: I noticed
+                    - code [ref=e583]: search_assets
+                    - text: is the main target, but are there any other functions in
+                    - code [ref=e584]: src/core/database.py
+                    - text: that use
+                    - code [ref=e585]: LIKE
+                    - text: with wildcards that I should patch in the same way?
+                - paragraph [ref=e586]: Please let me know if these assumptions are correct and if you have any additional input before I set up the plan.
+              - generic [ref=e636]:
+                - paragraph [ref=e639]:
+                  - text: "Go ahead and fix this. Note: this is the old SQLite database layer in"
+                  - code [ref=e640]: src/core/database.py
+                  - text: . It's still used for backward compat. Sanitize the query input to strip/reject excessive wildcards, and add a limit check. Make a clean PR.
+                - button "Collapse message" [ref=e641] [cursor=pointer]:
+                  - img [ref=e642]:
+                    - img [ref=e643]
+              - generic [ref=e645]:
+                - generic [ref=e646]: Thinking
+                - img [ref=e648]
+            - generic [ref=e588]:
+              - generic [ref=e590]:
+                - generic [ref=e592]:
+                  - textbox [disabled] [ref=e593]
+                  - generic: Talk to Jules
+                - generic [ref=e594]:
+                  - button [disabled] [ref=e596]:
+                    - img [ref=e597]:
+                      - img [ref=e598]
+                  - button [disabled] [ref=e600]:
+                    - img [ref=e657]:
+                      - img [ref=e658]
+              - generic [ref=e604]:
+                - text: Jules can make mistakes so double-check it and
+                - link "use code with caution" [ref=e605] [cursor=pointer]:
+                  - /url: https://g.co/legal/generative-code
+          - generic [ref=e618]:
+            - generic: Release to enter full screen

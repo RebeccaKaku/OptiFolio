@@ -84,6 +84,16 @@ OFFLINE_ASSET_FALLBACKS: Dict[str, Dict[str, Any]] = {
         "currency": "CNY",
         "source": "offline_fallback",
     },
+    "cn_fund:23713A": {
+        "name": "高盛工银理财·盛景",
+        "currency": "CNY",
+        "source": "offline_fallback",
+    },
+    "cn_fund:WH2025109A": {
+        "name": "慧精灵9号",
+        "currency": "CNY",
+        "source": "offline_fallback",
+    },
 }
 
 
@@ -545,7 +555,152 @@ class AssetImporter:
     
     def _fetch_asset_info_with_priority(self, symbol: str, asset_type: str) -> Optional[Dict[str, Any]]:
         """根据接口优先级获取资产信息"""
-        # 处理简化类型
+        # 1. 尝试从本地银行理财快照中查找
+        # A. 工商银行 (ICBC)
+        from pathlib import Path
+        import json
+        icbc_meta_path = Path("FinData/data/icbc/product_metadata.json")
+        icbc_found = False
+        if icbc_meta_path.exists():
+            try:
+                with open(icbc_meta_path, "r", encoding="utf-8") as f:
+                    icbc_meta = json.load(f)
+                if not hasattr(self, "_icbc_meta_index"):
+                    self._icbc_meta_index = {
+                        p["product_code"]: p
+                        for p in icbc_meta.get("products", [])
+                        if p.get("product_code")
+                    }
+                product = self._icbc_meta_index.get(symbol)
+                if product:
+                    print(f"[Offline] 在工行理财元数据中找到资产: {symbol}")
+                    icbc_found = True
+                    return {
+                        "name":                 product.get("product_name"),
+                        "currency":             product.get("currency", "CNY"),
+                        "establishment_date":   product.get("establishment_date"),
+                        "maturity_date":        product.get("maturity_date"),
+                        "subscription_period":  product.get("subscription_period"),
+                        "next_open_date":       product.get("next_open_date"),
+                        "min_purchase_amount":  product.get("min_purchase_amount"),
+                        "term":                 product.get("term"),
+                        "risk_level":           product.get("risk_level"),
+                        "currency_source":      product.get("currency_source"),
+                        "source":               "icbc_product_metadata",
+                    }
+            except Exception as e:
+                print(f"[Warning] 读取工行理财元数据失败: {e}")
+
+        # 工商银行旧版回退 (config/icbc_currencies.json)
+        if not icbc_found:
+            icbc_json_path = Path("config/icbc_currencies.json")
+            if icbc_json_path.exists():
+                try:
+                    with open(icbc_json_path, "r", encoding="utf-8") as f:
+                        icbc_data = json.load(f)
+                        if symbol in icbc_data:
+                            item = icbc_data[symbol]
+                            raw_currency = item.get("currency", "元")
+                            currency_map = {"元": "CNY", "人民币": "CNY", "美元": "USD", "港币": "HKD", "港元": "HKD", "欧元": "EUR"}
+                            print(f"[Offline] 在工行本地映射中找到资产: {symbol}")
+                            return {
+                                "name": item.get("name"),
+                                "currency": currency_map.get(raw_currency, "CNY"),
+                                "source": "icbc_currencies_snapshot"
+                            }
+                except Exception as e:
+                    print(f"[Warning] 读取工行本地映射失败: {e}")
+
+        # B. 上海银行 (BOSC)
+        bosc_meta_path = Path("FinData/data/bosc/product_metadata.json")
+        bosc_found = False
+        if bosc_meta_path.exists():
+            try:
+                with open(bosc_meta_path, "r", encoding="utf-8") as f:
+                    bosc_meta = json.load(f)
+                if not hasattr(self, "_bosc_meta_index"):
+                    self._bosc_meta_index = {
+                        p["product_code"]: p
+                        for p in bosc_meta.get("products", [])
+                        if p.get("product_code")
+                    }
+                product = self._bosc_meta_index.get(symbol)
+                if product:
+                    print(f"[Offline] 在上行理财元数据中找到资产: {symbol}")
+                    bosc_found = True
+                    return {
+                        "name":                 product.get("product_name"),
+                        "currency":             product.get("currency", "CNY"),
+                        "establishment_date":   product.get("establishment_date"),
+                        "maturity_date":        product.get("maturity_date"),
+                        "subscription_period":  product.get("subscription_period"),
+                        "next_open_date":       product.get("next_open_date"),
+                        "min_purchase_amount":  product.get("min_purchase_amount"),
+                        "term":                 product.get("term"),
+                        "risk_level":           product.get("risk_level"),
+                        "currency_source":      product.get("currency_source"),
+                        "source":               "bosc_product_metadata",
+                    }
+            except Exception as e:
+                print(f"[Warning] 读取上行理财元数据失败: {e}")
+
+        # 上海银行旧版回退 (raw snapshot)
+        if not bosc_found:
+            bosc_raw_dir = Path("FinData/data/bosc/raw")
+            if bosc_raw_dir.exists():
+                snapshot_files = sorted(bosc_raw_dir.glob("bosc_all_products_snapshot_*.json"))
+                if snapshot_files:
+                    try:
+                        with open(snapshot_files[-1], "r", encoding="utf-8") as f:
+                            bosc_data = json.load(f)
+                            records = bosc_data.get("data", {}).get("records", [])
+                            for r in records:
+                                if r.get("prdCode") == symbol:
+                                    print(f"[Offline] 在上行本地快照中找到资产: {symbol}")
+                                    return {
+                                        "name": r.get("prdName"),
+                                        "currency": r.get("currType", "CNY"),
+                                        "source": "bosc_products_snapshot"
+                                    }
+                    except Exception as e:
+                        print(f"[Warning] 读取上行本地快照失败: {e}")
+
+        # C. 中银理财（BOCWM）— boc_product_metadata.json
+        boc_meta_path = Path("FinData/data/boc/product_metadata.json")
+        if boc_meta_path.exists():
+            try:
+                with open(boc_meta_path, "r", encoding="utf-8") as f:
+                    boc_meta = json.load(f)
+                # Build a lookup dict on first use (cached via module-level variable)
+                if not hasattr(self, "_boc_meta_index"):
+                    self._boc_meta_index = {
+                        p["product_code"]: p
+                        for p in boc_meta.get("products", [])
+                        if p.get("product_code")
+                    }
+                product = self._boc_meta_index.get(symbol)
+                if product:
+                    print(f"[Offline] 在中银理财元数据中找到资产: {symbol}")
+                    return {
+                        "name":                 product.get("product_name"),
+                        "currency":             product.get("currency", "CNY"),
+                        "establishment_date":   product.get("establishment_date"),
+                        "maturity_date":        product.get("maturity_date"),
+                        "subscription_period":  product.get("subscription_period"),
+                        "next_open_date":       product.get("next_open_date"),
+                        "min_purchase_amount":  product.get("min_purchase_amount"),
+                        "term":                 product.get("term"),
+                        "min_hold_period":      product.get("min_hold_period"),
+                        "risk_level":           product.get("risk_level"),
+                        "detail_url":           product.get("detail_url"),
+                        "prospectus_pdfs":      product.get("prospectus_pdfs", []),
+                        "currency_source":      product.get("currency_source"),
+                        "source":               "boc_product_metadata",
+                    }
+            except Exception as e:
+                print(f"[Warning] 读取中银理财元数据失败: {e}")
+
+        # 2. 处理标准类型
         if asset_type == 'cn_stock':
             return self._fetch_cn_stock_info_with_priority(symbol)
         elif asset_type == 'cn_fund':

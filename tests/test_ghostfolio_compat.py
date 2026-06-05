@@ -6,6 +6,7 @@ from src.api.fastapi_app import app
 
 client = TestClient(app)
 
+
 def test_ghostfolio_details():
     response = client.get("/api/v1/portfolio/details")
     assert response.status_code == 200
@@ -20,6 +21,7 @@ def test_ghostfolio_details():
     assert "currentNetWorth" in summary
     assert "totalInvestment" in summary
 
+
 def test_ghostfolio_performance():
     response = client.get("/api/v1/portfolio/performance")
     assert response.status_code == 200
@@ -30,6 +32,7 @@ def test_ghostfolio_performance():
     performance = data["performance"]
     assert "currentNetWorth" in performance
     assert "totalInvestment" in performance
+
 
 def test_ghostfolio_holdings():
     response = client.get("/api/v1/portfolio/holdings")
@@ -43,11 +46,13 @@ def test_ghostfolio_holdings():
         assert "marketPrice" in holding
         assert "assetClass" in holding
 
+
 def test_ghostfolio_dividends():
     response = client.get("/api/v1/portfolio/dividends")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
+
 
 def test_ghostfolio_investments():
     response = client.get("/api/v1/portfolio/investments")
@@ -56,6 +61,7 @@ def test_ghostfolio_investments():
     assert "investments" in data
     assert "streaks" in data
     assert isinstance(data["investments"], list)
+
 
 def test_ghostfolio_report():
     response = client.get("/api/v1/portfolio/report")

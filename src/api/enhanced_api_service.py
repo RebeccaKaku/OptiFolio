@@ -322,6 +322,38 @@ class EnhancedAPIService:
         """计算再平衡订单"""
         return self.portfolio_api.calculate_rebalance_orders()
     
+    def get_portfolio_ledger(self, start: Optional[str] = None, end: Optional[str] = None) -> Dict[str, Any]:
+        """获取组合账本数据"""
+        try:
+            from FinData.store.portfolio_ledger import PortfolioLedgerStore
+            from datetime import datetime
+
+            store = PortfolioLedgerStore()
+
+            start_dt = datetime.fromisoformat(start) if start else None
+            end_dt = datetime.fromisoformat(end) if end else None
+
+            df = store.load_entries(start_dt, end_dt)
+
+            # Convert to list of dicts for API response
+            ledger_entries = df.to_dict(orient='records')
+
+            # Format datetime objects for JSON serialization if necessary
+            for entry in ledger_entries:
+                if isinstance(entry.get('as_of'), datetime):
+                    entry['as_of'] = entry['as_of'].isoformat()
+
+            return {
+                "success": True,
+                "data": ledger_entries,
+                "message": f"成功获取账本数据: {len(ledger_entries)} 条记录"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"获取账本数据失败: {str(e)}"
+            }
+
     # ==================== 仪表板相关API（保持兼容）====================
     
     def get_asset_overview(self) -> Dict[str, Any]:

@@ -1,3 +1,8 @@
+"""
+Legacy portfolio manager. DEPRECATED — use src/core/valuation.py
+(ValuationEngine) and src/services/portfolio_service_v2.py instead.
+"""
+
 import sys
 import os
 import yaml
@@ -57,7 +62,7 @@ class PortfolioManager:
                         for asset in data['candidates']['assets']:
                             symbol = asset['symbol']
                             # 从 asset_type 推断货币
-                            asset_type = asset.get('type', 'us_equity')
+                            asset_type = asset.get('asset_type', 'us_equity')
                             if asset_type.startswith('cn'):
                                 currency = 'CNY'
                             elif asset_type == 'us_equity':
@@ -96,7 +101,7 @@ class PortfolioManager:
                     if data and 'candidates' in data and 'assets' in data['candidates']:
                         for asset in data['candidates']['assets']:
                             symbol = asset['symbol']
-                            asset_type = asset.get('type', 'us_equity')
+                            asset_type = asset.get('asset_type', 'us_equity')
                             meta[symbol] = asset_type
             except Exception as e:
                 print(f"    [Warning] 加载 candidates.yaml 资产类型失败: {e}")
@@ -109,7 +114,7 @@ class PortfolioManager:
                     if data and 'universe' in data and 'assets' in data['universe']:
                         for asset in data['universe']['assets']:
                             symbol = asset['symbol']
-                            asset_type = asset.get('type', 'us_equity')
+                            asset_type = asset.get('asset_type', 'us_equity')
                             meta[symbol] = asset_type  # 覆盖或新增
             except Exception as e:
                 print(f"    [Warning] 加载 settings.yaml 资产类型失败: {e}")
