@@ -15,7 +15,7 @@ def test_optimize_invalid_method(client, monkeypatch):
         "assets": ["AAPL"],
         "method": "invalid_method"
     })
-    assert response.status_code == 500
+    assert response.status_code == 400
     assert response.json()["success"] is False
     assert response.json()["error_code"] == "INVALID_OPTIMIZATION_METHOD"
     assert "Unknown method" in response.json()["error"]
@@ -25,7 +25,7 @@ def test_optimize_invalid_objective(client, monkeypatch):
         "assets": ["AAPL"],
         "objective": "invalid_objective"
     })
-    assert response.status_code == 500
+    assert response.status_code == 400
     assert response.json()["success"] is False
     assert response.json()["error_code"] == "INVALID_OPTIMIZATION_OBJECTIVE"
     assert "Invalid objective" in response.json()["error"]
@@ -51,7 +51,7 @@ def test_optimize_unknown_assets(client, monkeypatch):
     response = client.post("/api/research/optimize", json={
         "assets": ["UNKNOWN"]
     })
-    assert response.status_code == 500
+    assert response.status_code == 422
     assert response.json()["success"] is False
     assert response.json()["error_code"] == "OPTIMIZATION_NO_DATA"
 
@@ -69,7 +69,7 @@ def test_optimize_insufficient_assets(client, monkeypatch):
     response = client.post("/api/research/optimize", json={
         "assets": ["AAPL", "UNKNOWN"]
     })
-    assert response.status_code == 500
+    assert response.status_code == 422
     assert response.json()["success"] is False
     assert response.json()["error_code"] == "OPTIMIZATION_INSUFFICIENT_ASSETS"
     assert "UNKNOWN" in response.json()["error"]
@@ -88,7 +88,7 @@ def test_optimize_insufficient_history(client, monkeypatch):
     response = client.post("/api/research/optimize", json={
         "assets": ["AAPL"]
     })
-    assert response.status_code == 500
+    assert response.status_code == 400
     assert response.json()["success"] is False
     assert response.json()["error_code"] == "OPTIMIZATION_INSUFFICIENT_HISTORY"
 

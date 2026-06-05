@@ -11,9 +11,9 @@ import subprocess
 def check_python_version():
     """Verify that Python version is between 3.11 and 3.14 (exclusive)."""
     version = sys.version_info
-    if not (version.major == 3 and 11 <= version.minor < 14):
+    if not (version.major == 3 and 10 <= version.minor < 14):
         print(f"Error: Python {version.major}.{version.minor} is not supported.")
-        print("Python >=3.11, <3.14 is required.")
+        print("Python >=3.10, <3.14 is required (quant stack is unstable on 3.14+).")
         sys.exit(1)
     print(f"Python {version.major}.{version.minor} detected.")
 

@@ -20,7 +20,7 @@ class BacktestRequest:
     prices: pd.DataFrame
     target_weights: Dict[str, float]
     initial_cash: float = 1.0
-    rebalance_frequency: str = "M"
+    rebalance_frequency: str = "ME"
     fee_rate: float = 0.0
     risk_free_rate: float = 0.0
 

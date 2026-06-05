@@ -1,17 +1,6 @@
 """
-OptiFolio Dashboard - legacy Streamlit visualization shell
-
-This file is frozen while the project moves toward FastAPI + React. Keep new
-business logic in src/services/ and expose it through src/api/fastapi_app.py.
-
-功能特性：
-1. 资产导入功能（sh000001, AAPL, GBP等）
-2. 资产注册表查看
-3. 候选资产查看
-4. 实际组合查看
-5. 资产价格和基本信息展示
-6. 回撤、收益率、波动率等指标计算
-7. 组合持仓占比可视化
+Legacy Streamlit dashboard. FROZEN — new work goes in src/api/fastapi_app.py
+and frontend/. See docs/CURRENT_STATE_2026-06-03.md.
 """
 
 import streamlit as st
