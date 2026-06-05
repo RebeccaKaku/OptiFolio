@@ -45,7 +45,7 @@ src/
 
 tools/                 # CLI tools
 config/                # YAML configuration (templates only — secrets in local/)
-tests/                 # 581 tests, 30 skipped
+tests/                 # 592 tests, 30 skipped
 ```
 
 ## Key Design Principles
@@ -69,13 +69,18 @@ tests/                 # 581 tests, 30 skipped
 | `POST /api/portfolio/v2/risk/rules` | Rule engine with configurable thresholds |
 | `POST /api/portfolio/v2/corporate-actions/*` | Record dividends, splits, mergers |
 | `GET /api/market/prices?assets=AAPL,QQQ` | Price matrix from canonical store |
+| `GET /api/market/assets` | All asset IDs in canonical storage |
+| `GET /api/data/quality?asset_id=AAPL` | Data quality reports |
 | `GET /api/v1/portfolio/details` | Ghostfolio-compatible adapter |
+| `GET /api/v1/portfolio/holdings` | Ghostfolio holdings |
+| `GET /api/alerts` | Risk alerts (wiring in progress) |
 
 ## Documentation
 
 | Document | Audience |
 |----------|----------|
-| `docs/CURRENT_STATE_2026-06-03.md` | Onboarding — what works, what's broken, what's next |
+| `docs/CURRENT_STATE_2026-06-05.md` | Onboarding — what works, what's broken, what's next |
+| `CLAUDE.md` | AI assistant project instructions |
 | `docs/FINANCIAL_LOGIC_AND_MODULE_DESIGN.md` | Architects — target architecture, naming, migration |
 | `docs/TIME_ALIGNMENT_DESIGN.md` | Cross-market time alignment problem and solution |
 | `FinData/README.md` | FinData internal architecture and conventions |

@@ -1,24 +1,31 @@
 # OptiFolio Runnable Architecture Foundation
 
-This is the first runnable version of the long-term architecture. The goal is to
-keep the asset-allocation core independent from data providers, storage engines,
-and research frameworks.
+This is the runnable architecture. The goal is to keep the asset-allocation core
+independent from data providers, storage engines, and research frameworks.
+
+Last updated: 2026-06-05 (added FinData, reflected current state).
 
 ## Runtime Path
 
-1. Raw provider data is normalized into the canonical market schema.
-2. Canonical market data is stored as Parquet under `data/foundation/`.
-3. `MarketDataRepository` queries Parquet with DuckDB and returns price/return matrices.
-4. `ResearchService` orchestrates optimization and backtesting.
-5. FastAPI exposes the service layer through `/api/market/*` and `/api/research/*`.
+1. Provider data is fetched by `FinData/adapters/` (akshare, yfinance, ccxt, BOC, BOSC, ICBC).
+2. Every adapter returns `FetchResult` — never empty DataFrame without metadata.
+3. `CanonicalStore.accept()` runs QualityGate (8 checks) → normalizes → saves via `MarketDataRepository`.
+4. `FinData/serving/DataProvider` exposes prices, ohlcv, returns, metrics, FX rates.
+5. `FinData` fd singleton is the ONLY public data API (`from FinData import fd`).
+6. `PortfolioServiceV2` consumes fd for date-aware valuation.
+7. FastAPI exposes the service layer on port 8011.
 
 ## Module Boundaries
 
-- `src/data_foundation/`: schema normalization, Pandera validation, Parquet storage, DuckDB queries.
-- `src/domain/`: framework-independent portfolio objects.
+- `FinData/`: **self-contained data department** — adapters, store, orchestration, serving. The fd singleton is the only public API.
+- `src/data_foundation/`: canonical schema, Pandera validation, MarketDataRepository (DuckDB + Parquet). Used BY FinData, not instead of it.
+- `src/domain/`: framework-independent portfolio objects (products, positions, instruments, series).
+- `src/analytics/`: risk analytics — alerts, exposure, concentration, FX, liquidity, returns, rules, screening.
 - `src/research/`: backtesting engine and future research adapters.
 - `src/services/`: application orchestration only; no quant math should live here.
-- `portfolio/`: existing optimization algorithms.
+- `src/api/`: FastAPI routes (port 8011); no business logic here.
+- `portfolio/`: existing optimization algorithms (PyPortfolioOpt, cvxpy).
+- `app.py`: **FROZEN** legacy Streamlit dashboard — do not edit.
 
 ## Dependency Policy
 
