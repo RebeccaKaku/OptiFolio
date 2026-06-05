@@ -33,10 +33,16 @@ class DataProvider:
 
     def ohlcv(self, symbol: str, start: str = None, end: str = None,
               mode: str = "fast") -> pd.DataFrame:
-        """Full OHLCV for one asset."""
+        """Full OHLCV for one asset.
+
+        Returns a DataFrame with columns: open, high, low, close, adj_close, volume.
+        """
         if mode == "live":
             self._trigger_refresh([symbol])
-        return self._store.get_prices([symbol], start=start, end=end)
+        return self._store.get_prices(
+            [symbol], start=start, end=end,
+            fields=("open", "high", "low", "close", "adj_close", "volume"),
+        )
 
     def panel(self, symbols: List[str], start: str = None, end: str = None,
               mode: str = "fast") -> pd.DataFrame:
@@ -203,7 +209,22 @@ class DataProvider:
         return float((r > 0).sum() / len(r)) if len(r) > 0 else 0.0
 
     def _trigger_refresh(self, symbols):
-        """Trigger live refresh via orchestrator. Stub — Phase 3 wires this."""
-        # TODO: wire to FinData.orchestration.Orchestrator when orchestrator is stable
-        import warnings
-        warnings.warn(f"Live refresh not yet wired — using cached data for {symbols}")
+        """Trigger live refresh via orchestrator for the given symbols.
+
+        Schedules and dispatches only the requested symbols (ignoring
+        cadence — the caller explicitly asked for live data).  Falls
+        back silently when the orchestrator or any fetcher fails.
+        """
+        try:
+            from FinData.orchestration.orchestrator import Orchestrator
+
+            orch = Orchestrator(store=self._store)
+            tasks = orch.schedule(asset_ids=list(symbols))
+            if tasks:
+                orch.dispatch(tasks)
+        except Exception:
+            import warnings
+            warnings.warn(
+                f"Live refresh failed for {symbols} — using cached data",
+                stacklevel=2,
+            )

@@ -112,12 +112,10 @@ class MarketDataRepository:
     ) -> pd.DataFrame:
         if not assets or not self.price_path.exists():
             return pd.DataFrame()
-        if len(fields) != 1:
-            raise ValueError("get_prices currently returns one field at a time")
 
-        field = fields[0]
-        if field not in CANONICAL_MARKET_COLUMNS:
-            raise ValueError(f"Unknown market data field: {field}")
+        for f in fields:
+            if f not in CANONICAL_MARKET_COLUMNS:
+                raise ValueError(f"Unknown market data field: {f}")
 
         where_parts = ["asset_id IN $assets"]
         params: dict[str, object] = {"assets": list(assets), "path": str(self.price_path)}
@@ -128,8 +126,9 @@ class MarketDataRepository:
             where_parts.append("date <= $end")
             params["end"] = pd.Timestamp(end).to_pydatetime()
 
+        col_list = ", ".join(fields)
         query = f"""
-            SELECT date, asset_id, {field} AS value
+            SELECT date, asset_id, {col_list}
             FROM read_parquet($path)
             WHERE {" AND ".join(where_parts)}
             ORDER BY date, asset_id
@@ -138,9 +137,15 @@ class MarketDataRepository:
         if rows.empty:
             return pd.DataFrame()
 
-        matrix = rows.pivot(index="date", columns="asset_id", values="value")
-        matrix.index = pd.to_datetime(matrix.index)
-        return matrix.reindex(columns=list(assets)).sort_index()
+        if len(fields) == 1:
+            # Single field: return pivoted date × asset_id matrix (backwards compatible)
+            matrix = rows.pivot(index="date", columns="asset_id", values=fields[0])
+            matrix.index = pd.to_datetime(matrix.index)
+            return matrix.reindex(columns=list(assets)).sort_index()
+        else:
+            # Multiple fields: return flat (date, asset_id, field1, field2, ...) DataFrame
+            rows["date"] = pd.to_datetime(rows["date"])
+            return rows.set_index("date").sort_index()
 
     def get_returns(
         self,

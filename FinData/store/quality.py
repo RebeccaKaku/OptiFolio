@@ -436,10 +436,7 @@ class QualityGate:
         new_mapped = new_df.copy()
         new_mapped.columns = [_canonical_column_name(c) for c in new_df.columns]
         existing_mapped = existing.copy()
-        if existing_mapped.columns.tolist() != existing.columns.tolist() or (
-            set(existing_mapped.columns) != set(existing.columns)
-        ):
-            existing_mapped.columns = [_canonical_column_name(c) for c in existing.columns]
+        existing_mapped.columns = [_canonical_column_name(c) for c in existing.columns]
 
         # Compare on common columns
         common_cols = [c for c in new_mapped.columns if c in existing_mapped.columns]

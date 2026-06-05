@@ -442,13 +442,18 @@ class AlertEngine:
 
         Args:
             quality_summary: Dict from ``ResearchService.run_stale_price_check``
-                with keys ``threshold_pct`` (float) and ``stale_assets`` (list).
+                (which wraps result in ``{"success": True, "data": {...}}``)
+                or the unwrapped data dict directly.
             threshold_pct: Percentage of tracked assets that triggers an alert
                 (default 10.0).
 
         Returns:
             An ``Alert`` if the stale percentage exceeds the threshold, else ``None``.
         """
+        # Unwrap success() envelope if present (from ResearchService.run_stale_price_check)
+        if "success" in quality_summary and "data" in quality_summary:
+            quality_summary = quality_summary["data"]
+
         stale_pct = float(quality_summary.get("threshold_pct", 0.0))
         if stale_pct <= threshold_pct:
             return None

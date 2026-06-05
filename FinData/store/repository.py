@@ -26,7 +26,7 @@ class CanonicalStore:
 
     def __init__(self, root_dir: str | None = None) -> None:
         self.repo = MarketDataRepository(root_dir)
-        self.gate = QualityGate()
+        self.gate = QualityGate(repository=self.repo)
 
     def accept(
         self,
@@ -85,9 +85,14 @@ class CanonicalStore:
         assets: Sequence[str],
         start: str | None = None,
         end: str | None = None,
+        fields: Sequence[str] = ("adj_close",),
     ) -> pd.DataFrame:
-        """Return price matrix (date x asset_id) from canonical storage."""
-        return self.repo.get_prices(assets, start=start, end=end)
+        """Return price matrix from canonical storage.
+
+        Single field (default): pivoted date × asset_id matrix.
+        Multiple fields: flat DataFrame with date index + field columns.
+        """
+        return self.repo.get_prices(assets, start=start, end=end, fields=fields)
 
     def get_returns(
         self,

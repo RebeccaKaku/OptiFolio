@@ -69,7 +69,13 @@ class TestDataProviderOhlcv:
         provider, _ = _populated_provider(tmp_path, "AAPL")
         df = provider.ohlcv("AAPL")
         assert isinstance(df, pd.DataFrame)
-        assert "AAPL" in df.columns
+        # Multi-field returns flat (date, asset_id, o, h, l, c, adj_close, vol)
+        assert "open" in df.columns
+        assert "high" in df.columns
+        assert "close" in df.columns
+        assert "adj_close" in df.columns
+        assert "volume" in df.columns
+        assert df["asset_id"].iloc[0] == "AAPL"
 
 
 class TestDataProviderPanel:
@@ -399,7 +405,10 @@ class TestFdBackCompat:
 
         df = fd_test.ohlcv("AAPL")
         assert isinstance(df, pd.DataFrame)
-        assert "AAPL" in df.columns
+        # Multi-field OHLCV: flat DataFrame with date index + field columns
+        for col in ("open", "high", "low", "close", "adj_close", "volume"):
+            assert col in df.columns, f"Expected OHLCV column {col}"
+        assert df["asset_id"].iloc[0] == "AAPL"
 
     def test_fd_metrics_works(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
