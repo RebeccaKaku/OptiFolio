@@ -45,10 +45,10 @@ def test_ledger_api_endpoint():
     client = TestClient(app)
     # Ensure ledger is recorded first
     from FinData.store.portfolio_ledger import PortfolioLedgerStore, PortfolioLedger
-    from datetime import date
+    from datetime import datetime
     store = PortfolioLedgerStore()
     store.save_entries([PortfolioLedger(account_id="test", asset_id="AAPL", quantity=10,
-                                  cost_basis=1500.0, currency="USD", as_of=date.today())])
+                                  cost_basis=1500.0, currency="USD", as_of=datetime.now())])
 
     response = client.get("/api/portfolio/v2/ledger")
     assert response.status_code == 200

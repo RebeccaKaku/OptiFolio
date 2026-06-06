@@ -17,9 +17,14 @@ from .cache import get_cache, cached
 from .asset_manager import AssetManager
 from .portfolio_core import PortfolioCore
 from .logger import get_logger
-from FinData import fd
 
 logger = get_logger("FM.Dashboard")
+
+
+def _fd():
+    """Lazy import to avoid circular dependency during FinData startup."""
+    from FinData import fd
+    return fd
 
 
 class DashboardEngine(IAnalyticsEngine):
@@ -261,7 +266,7 @@ class DashboardEngine(IAnalyticsEngine):
         
         try:
             # 获取历史价格数据
-            prices_df = fd.panel(symbols, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
+            prices_df = _fd().panel(symbols, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
             if prices_df.empty:
                 logger.warning(f"No price data found for symbols: {symbols}")
                 return self._empty_chart_data(days)
@@ -487,7 +492,7 @@ class DashboardEngine(IAnalyticsEngine):
         # 获取历史价格数据
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365) # 默认获取一年以支持长周期MA
-        prices = fd.prices(symbol, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
+        prices = _fd().prices(symbol, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
 
         if prices is None or prices.empty:
             logger.warning(f"No price data for {symbol}, returning default technical indicators")
@@ -512,13 +517,13 @@ class DashboardEngine(IAnalyticsEngine):
     def _calculate_asset_risk_metrics(self, symbol: str, period: str) -> Dict[str, Any]:
         """计算资产风险指标"""
         # 获取基础风险指标
-        metrics = fd.metrics(symbol, metric=["volatility", "sharpe_ratio", "max_drawdown"])
+        metrics = _fd().metrics(symbol, metric=["volatility", "sharpe_ratio", "max_drawdown"])
 
         # 计算 Beta 和 Alpha
         beta, alpha = self._calculate_beta_alpha(symbol)
 
         # 获取收益率序列计算 VaR
-        prices = fd.prices(symbol)
+        prices = _fd().prices(symbol)
         var_95 = 0.0
         es_95 = 0.0
         if prices is not None and len(prices) > 10:
@@ -543,7 +548,7 @@ class DashboardEngine(IAnalyticsEngine):
             benchmark = "CN_STOCK:000300"
 
         try:
-            panel = fd.panel([symbol, benchmark])
+            panel = _fd().panel([symbol, benchmark])
             if panel.empty or symbol not in panel.columns or benchmark not in panel.columns:
                 return 1.0, 0.0
 
@@ -568,7 +573,7 @@ class DashboardEngine(IAnalyticsEngine):
     
     def _calculate_performance_metrics(self, symbol: str, period: str) -> Dict[str, Any]:
         """计算业绩指标"""
-        metrics = fd.metrics(symbol, metric=[
+        metrics = _fd().metrics(symbol, metric=[
             "total_return", "annualized_return", "max_drawdown",
             "sortino_ratio", "calmar_ratio", "win_rate"
         ])
@@ -635,7 +640,7 @@ class DashboardEngine(IAnalyticsEngine):
             weights_dict = {s: positions[s]["value"] / total_value for s in symbols}
 
             # 获取历史收益率
-            prices_df = fd.panel(symbols)
+            prices_df = _fd().panel(symbols)
             if prices_df.empty:
                 return self._empty_var_breakdown()
 
@@ -717,7 +722,7 @@ class DashboardEngine(IAnalyticsEngine):
         
         try:
             # 获取历史价格数据并计算相关性
-            prices_df = fd.panel(symbols)
+            prices_df = _fd().panel(symbols)
             if prices_df.empty:
                 return {"symbols": [], "matrix": []}
 
