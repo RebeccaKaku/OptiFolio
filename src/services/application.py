@@ -18,7 +18,8 @@ from .system_service import SystemService
 class IngestionService:
     """Stub for ingestion metadata API."""
     def get_runs(self) -> Dict[str, Any]:
-        return {"runs": [], "message": "Ingestion pipeline not yet wired"}
+        from src.services.response import success
+        return success({"records": []}, "Ingestion pipeline not yet wired")
 
 
 @dataclass(frozen=True)

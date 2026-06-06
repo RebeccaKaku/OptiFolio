@@ -101,7 +101,10 @@ class AssetDefinition:
     """资产定义类 - 表示一个具体的资产配置"""
     
     def __init__(self, symbol: str, asset_type: str, name: Optional[str] = None,
-                 currency: Optional[str] = None, **kwargs):
+                 currency: Optional[str] = None,
+                 conflict_id: Optional[str] = None,
+                 is_conflict: bool = False,
+                 **kwargs):
         self.symbol = symbol
         self.asset_type = asset_type
         
@@ -109,12 +112,20 @@ class AssetDefinition:
         self.name = name or symbol
         self.currency = currency if currency else self.infer_default_currency()
         
+        # 冲突管理
+        self.conflict_id = conflict_id
+        self.is_conflict = is_conflict
+
         # 扩展属性
         self.attributes = kwargs
         
         # 元数据
         self.source = None
         self.last_updated = None
+
+    def get_full_id(self) -> str:
+        """返回完整ID（冲突ID或符号）"""
+        return self.conflict_id or self.symbol
     
     def infer_default_currency(self) -> str:
         """根据资产类型推断默认基础币种（不考虑具体名称）"""
@@ -165,6 +176,11 @@ class AssetDefinition:
             'currency': self.currency or self.infer_default_currency(), # 确保不为空
             'attributes': self.attributes.copy(),
         }
+        if self.conflict_id:
+            result['conflict_id'] = self.conflict_id
+        if self.is_conflict:
+            result['is_conflict'] = self.is_conflict
+
         if self.source:
             result['source'] = self.source
         if self.last_updated:
@@ -178,17 +194,22 @@ class AssetDefinition:
         asset_type = data['asset_type']
         name = data.get('name', symbol)
         currency = data.get('currency')
+        conflict_id = data.get('conflict_id')
+        is_conflict = data.get('is_conflict', False)
 
         # If data already has an explicit 'attributes' key (e.g. from to_dict),
         # use it directly to avoid double-nesting.
         if 'attributes' in data and isinstance(data['attributes'], dict):
-            kwargs = data['attributes']
+            kwargs = data['attributes'].copy()
         else:
             kwargs = {k: v for k, v in data.items()
                      if k not in ['symbol', 'asset_type', 'name', 'currency',
+                                  'conflict_id', 'is_conflict',
                                   'source', 'last_updated', 'attributes']}
 
-        instance = cls(symbol, asset_type, name, currency, **kwargs)
+        instance = cls(symbol, asset_type, name, currency,
+                       conflict_id=conflict_id, is_conflict=is_conflict,
+                       **kwargs)
         if 'source' in data:
             instance.source = data['source']
         if 'last_updated' in data:
@@ -202,6 +223,7 @@ class AssetRegistry:
     def __init__(self, config_path: str = "config/asset_registry.yaml"):
         self.config_path = config_path
         self.assets: Dict[str, AssetDefinition] = {}
+        self.conflicts: Dict[str, List[AssetDefinition]] = {}
         self.load_config()
         
         # 初始化币种检测器
@@ -231,10 +253,16 @@ class AssetRegistry:
         if config is None or 'assets' not in config: 
             return
         self.assets.clear()
+        self.conflicts.clear()
         for asset_data in config['assets']:
             try:
                 asset_def = AssetDefinition.from_dict(asset_data)
-                self.assets[asset_def.symbol] = asset_def
+                if asset_def.is_conflict:
+                    if asset_def.symbol not in self.conflicts:
+                        self.conflicts[asset_def.symbol] = []
+                    self.conflicts[asset_def.symbol].append(asset_def)
+                else:
+                    self.assets[asset_def.symbol] = asset_def
             except Exception as e:
                 print(f"[AssetRegistry Warning] 加载资产失败: {asset_data.get('symbol')} - {e}")
     
@@ -249,34 +277,110 @@ class AssetRegistry:
             yaml.dump(default_config, f, allow_unicode=True, default_flow_style=False)
     
     def save_config(self) -> None:
+        all_assets = list(self.assets.values())
+        for conflict_list in self.conflicts.values():
+            all_assets.extend(conflict_list)
+
         config = {
             'version': '2.0',
             'description': '资产注册表 (自动前缀+智能币种)',
             'last_updated': datetime.now().isoformat(),
-            'assets': [asset.to_dict() for asset in sorted(self.assets.values(), key=lambda x: x.symbol)]
+            'assets': [asset.to_dict() for asset in sorted(all_assets, key=lambda x: (x.symbol, x.conflict_id or ""))]
         }
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         with open(self.config_path, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
             
     def register_asset(self, asset_def: AssetDefinition, overwrite: bool = False) -> bool:
+        if not asset_def.symbol or not asset_def.asset_type:
+            return False
+
         if asset_def.symbol in self.assets and not overwrite:
             return False
         self.assets[asset_def.symbol] = asset_def
         return True
     
-    def get_asset(self, symbol: str) -> Optional[AssetDefinition]:
+    def register_conflict_asset(self, asset_def: AssetDefinition) -> bool:
+        """注册冲突资产"""
+        if not asset_def.symbol or not asset_def.asset_type:
+            return False
+
+        symbol = asset_def.symbol
+
+        # 如果当前该符号已有非冲突资产，将其转换为冲突资产
+        if symbol in self.assets:
+            existing = self.assets.pop(symbol)
+            existing.is_conflict = True
+            existing.conflict_id = f"{symbol}_1"
+            self.conflicts[symbol] = [existing]
+
+        if symbol not in self.conflicts:
+            self.conflicts[symbol] = []
+
+        # 设置新资产为冲突资产
+        asset_def.is_conflict = True
+        asset_def.conflict_id = f"{symbol}_{len(self.conflicts[symbol]) + 1}"
+        self.conflicts[symbol].append(asset_def)
+        return True
+
+    def get_asset(self, symbol: str, conflict_id: Optional[str] = None) -> Optional[AssetDefinition]:
+        if conflict_id:
+            if symbol in self.conflicts:
+                for asset in self.conflicts[symbol]:
+                    if asset.conflict_id == conflict_id:
+                        return asset
+            return None
         return self.assets.get(symbol)
 
-    def remove_asset(self, symbol: str) -> bool:
+    def remove_asset(self, symbol: str, conflict_id: Optional[str] = None) -> bool:
         """移除资产。成功返回 True，资产不存在返回 False。"""
+        if conflict_id:
+            if symbol in self.conflicts:
+                original_list = self.conflicts[symbol]
+                new_list = [a for a in original_list if a.conflict_id != conflict_id]
+                if len(new_list) < len(original_list):
+                    if not new_list:
+                        # 移除最后一个冲突资产，该资产转为普通资产并移入 assets
+                        # 注意：这是根据测试用例 test_conflict_to_single_asset_conversion 的期望行为
+                        asset_to_move = [a for a in original_list if a.conflict_id == conflict_id][0]
+                        asset_to_move.is_conflict = False
+                        asset_to_move.conflict_id = None
+                        self.assets[symbol] = asset_to_move
+                        del self.conflicts[symbol]
+                    else:
+                        self.conflicts[symbol] = new_list
+                    return True
+            return False
+
         if symbol in self.assets:
             del self.assets[symbol]
+            return True
+        if symbol in self.conflicts:
+            del self.conflicts[symbol]
             return True
         return False
         
     def list_all_assets(self) -> List[AssetDefinition]:
-        return list(self.assets.values())
+        all_assets = list(self.assets.values())
+        for conflict_list in self.conflicts.values():
+            all_assets.extend(conflict_list)
+        return all_assets
+
+    def find_assets_by_type(self, asset_type: str) -> List[AssetDefinition]:
+        """按资产类型过滤"""
+        return [a for a in self.list_all_assets() if a.asset_type == asset_type]
+
+    def detect_currency_from_name(self, name: str) -> str:
+        """从名称检测币种"""
+        if not name:
+            return 'CNY'
+        if any(k in name.upper() for k in ['美元', 'USD']):
+            return 'USD'
+        if any(k in name.upper() for k in ['港币', 'HKD', '港元']):
+            return 'HKD'
+        if any(k in name.upper() for k in ['欧元', 'EUR']):
+            return 'EUR'
+        return 'CNY'
 
     def detect_currency(self, name: str, default: str = 'CNY') -> str:
         """

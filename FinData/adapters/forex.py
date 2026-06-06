@@ -76,7 +76,7 @@ class CurrencyFetcher:
                 start=start_date, end=end_date,
                 interval=interval, auto_adjust=True,
             )
-            if df.empty:
+            if len(df) == 0:
                 return pd.DataFrame()
             expected = ["Open", "High", "Low", "Close", "Volume"]
             for col in expected:
@@ -92,14 +92,14 @@ class CurrencyFetcher:
         symbol = f"{from_currency}{to_currency}"
         try:
             df = self.fetch(symbol, start_date="2024-01-01", end_date="2024-12-31")
-            if not df.empty:
+            if len(df) > 0:
                 return float(df["Close"].iloc[-1])
         except Exception:
             pass
         inverse = f"{to_currency}{from_currency}"
         try:
             df = self.fetch(inverse, start_date="2024-01-01", end_date="2024-12-31")
-            if not df.empty:
+            if len(df) > 0:
                 return 1.0 / float(df["Close"].iloc[-1])
         except Exception:
             pass
