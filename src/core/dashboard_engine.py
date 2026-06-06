@@ -10,13 +10,16 @@
 
 from typing import Dict, List, Any, Optional, Union, Tuple
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 
 from .interfaces import IAnalyticsEngine
 from .cache import get_cache, cached
 from .asset_manager import AssetManager
 from .portfolio_core import PortfolioCore
+from .logger import get_logger
+from FinData import fd
+
+logger = get_logger("FM.Dashboard")
 
 
 class DashboardEngine(IAnalyticsEngine):
@@ -107,7 +110,7 @@ class DashboardEngine(IAnalyticsEngine):
                 asset_analysis = self.analyze_asset(symbol, "1y")
                 analysis["asset_analyses"][symbol] = asset_analysis
             except Exception as e:
-                print(f"[DashboardEngine] 分析资产 {symbol} 失败: {e}")
+                logger.error(f"分析资产 {symbol} 失败: {e}")
                 analysis["asset_analyses"][symbol] = {
                     "symbol": symbol,
                     "error": str(e),
@@ -154,7 +157,7 @@ class DashboardEngine(IAnalyticsEngine):
                 comparison_data.append(row)
                 
             except Exception as e:
-                print(f"[DashboardEngine] 比较资产 {symbol} 失败: {e}")
+                logger.error(f"比较资产 {symbol} 失败: {e}")
         
         return pd.DataFrame(comparison_data)
     
@@ -241,37 +244,58 @@ class DashboardEngine(IAnalyticsEngine):
             if cached_result is not None:
                 return cached_result
         
-        # 简化实现：生成示例数据
-        # 实际实现需要获取历史价格数据
+        # 获取持仓和权重
+        portfolio_value_data = self.portfolio_core.get_portfolio_value()
+        total_value = portfolio_value_data.get("total_value", 0)
+        positions = portfolio_value_data.get("positions", {})
+
+        if total_value <= 0 or not positions:
+            logger.warning("Portfolio is empty or has no value, returning empty chart data")
+            return self._empty_chart_data(days)
+
+        symbols = list(positions.keys())
+        weights = {s: positions[s]["value"] / total_value for s in symbols}
+
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
         
-        # 生成日期序列
-        dates = pd.date_range(start=start_date, end=end_date, freq='D')
-        
-        # 示例：生成随机收益序列
-        np.random.seed(42)  # 固定随机种子以便重现
-        daily_returns = np.random.normal(0.0005, 0.015, len(dates))
-        
-        # 计算累计收益
-        cumulative_returns = (1 + daily_returns).cumprod() - 1
-        
-        # 将 numpy 数组转换为 pandas Series 以便使用 expanding()
-        cumulative_returns_series = pd.Series(cumulative_returns)
+        try:
+            # 获取历史价格数据
+            prices_df = fd.panel(symbols, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
+            if prices_df.empty:
+                logger.warning(f"No price data found for symbols: {symbols}")
+                return self._empty_chart_data(days)
 
-        # 创建数据系列
-        chart_data = {
-            "dates": [d.strftime("%Y-%m-%d") for d in dates],
-            "daily_returns": daily_returns.tolist(),
-            "cumulative_returns": cumulative_returns.tolist(),
-            "running_max": cumulative_returns_series.expanding().max().tolist(),
-            "drawdown": (cumulative_returns_series - cumulative_returns_series.expanding().max()).tolist(),
-            "period": f"{days}天",
-            "start_date": start_date.strftime("%Y-%m-%d"),
-            "end_date": end_date.strftime("%Y-%m-%d"),
-            "data_points": len(dates)
-        }
-        
+            # 计算每日收益率
+            returns_df = prices_df.pct_change().fillna(0)
+
+            # 计算组合加权每日收益
+            portfolio_daily_returns = pd.Series(0.0, index=returns_df.index)
+            for s, weight in weights.items():
+                if s in returns_df.columns:
+                    portfolio_daily_returns += returns_df[s] * weight
+
+            # 计算累计收益和相关指标
+            cumulative_returns = (1 + portfolio_daily_returns).cumprod() - 1
+            cumulative_returns_plus_one = 1 + cumulative_returns
+            running_max = cumulative_returns_plus_one.expanding().max()
+            drawdown = (cumulative_returns_plus_one / running_max) - 1
+
+            chart_data = {
+                "dates": [d.strftime("%Y-%m-%d") for d in portfolio_daily_returns.index],
+                "daily_returns": portfolio_daily_returns.tolist(),
+                "cumulative_returns": cumulative_returns.tolist(),
+                "running_max": (running_max - 1).tolist(),
+                "drawdown": drawdown.tolist(),
+                "period": f"{days}天",
+                "start_date": portfolio_daily_returns.index[0].strftime("%Y-%m-%d") if not portfolio_daily_returns.empty else "",
+                "end_date": portfolio_daily_returns.index[-1].strftime("%Y-%m-%d") if not portfolio_daily_returns.empty else "",
+                "data_points": len(portfolio_daily_returns)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating performance chart data: {e}")
+            return self._empty_chart_data(days)
+
         if self.enable_cache:
             self.cache.set(cache_key, chart_data, 3600, "charts")  # 1小时缓存
         
@@ -368,9 +392,7 @@ class DashboardEngine(IAnalyticsEngine):
             return distribution
             
         except Exception as e:
-            print(f"[DashboardEngine] ERROR: 获取资产类型分布时发生错误: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"获取资产类型分布时发生错误: {e}", exc_info=True)
             return {
                 "error": f"获取资产类型分布失败: {str(e)}",
                 "by_asset_type": {},
@@ -385,7 +407,72 @@ class DashboardEngine(IAnalyticsEngine):
             }
     
     # ==================== 辅助方法 ====================
-    
+
+    def _calc_rsi(self, prices: pd.Series, periods: int = 14) -> float:
+        """计算 RSI"""
+        if len(prices) < periods + 1:
+            return 50.0
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=periods).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=periods).mean()
+
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        val = rsi.iloc[-1]
+        return float(val) if not pd.isna(val) else 50.0
+
+    def _calc_macd(self, prices: pd.Series) -> float:
+        """计算 MACD 柱状图值"""
+        if len(prices) < 26:
+            return 0.0
+        exp1 = prices.ewm(span=12, adjust=False).mean()
+        exp2 = prices.ewm(span=26, adjust=False).mean()
+        macd = exp1 - exp2
+        signal = macd.ewm(span=9, adjust=False).mean()
+        hist = macd - signal
+        val = hist.iloc[-1]
+        return float(val) if not pd.isna(val) else 0.0
+
+    def _calc_bollinger_bands(self, prices: pd.Series, window: int = 20) -> Dict[str, float]:
+        """计算布林带"""
+        if len(prices) < window:
+            latest = float(prices.iloc[-1]) if not prices.empty else 0.0
+            return {"upper": latest, "middle": latest, "lower": latest}
+        sma = prices.rolling(window=window).mean()
+        std = prices.rolling(window=window).std()
+        upper = sma + (std * 2)
+        lower = sma - (std * 2)
+
+        m, u, l = sma.iloc[-1], upper.iloc[-1], lower.iloc[-1]
+        return {
+            "upper": float(u) if not pd.isna(u) else 0.0,
+            "middle": float(m) if not pd.isna(m) else 0.0,
+            "lower": float(l) if not pd.isna(l) else 0.0
+        }
+
+    def _calc_moving_average(self, prices: pd.Series, window: int) -> float:
+        """计算移动平均线"""
+        if len(prices) < window:
+            val = prices.mean() if not prices.empty else 0.0
+            return float(val) if not pd.isna(val) else 0.0
+        ma = prices.rolling(window=window).mean()
+        val = ma.iloc[-1]
+        return float(val) if not pd.isna(val) else 0.0
+
+    def _empty_chart_data(self, days: int) -> Dict[str, Any]:
+        """返回空图表数据"""
+        return {
+            "dates": [],
+            "daily_returns": [],
+            "cumulative_returns": [],
+            "running_max": [],
+            "drawdown": [],
+            "period": f"{days}天",
+            "start_date": "",
+            "end_date": "",
+            "data_points": 0
+        }
+
     def _calculate_asset_basic_stats(self, symbol: str, period: str) -> Dict[str, Any]:
         """计算资产基础统计"""
         # 简化实现
@@ -397,44 +484,102 @@ class DashboardEngine(IAnalyticsEngine):
     
     def _calculate_technical_indicators(self, symbol: str, period: str) -> Dict[str, Any]:
         """计算技术指标"""
-        # 简化实现
+        # 获取历史价格数据
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365) # 默认获取一年以支持长周期MA
+        prices = fd.prices(symbol, start=start_date.strftime("%Y-%m-%d"), end=end_date.strftime("%Y-%m-%d"))
+
+        if prices is None or prices.empty:
+            logger.warning(f"No price data for {symbol}, returning default technical indicators")
+            return {
+                "rsi": 50.0,
+                "macd": 0.0,
+                "bollinger_bands": {"upper": 0.0, "middle": 0.0, "lower": 0.0},
+                "moving_averages": {"ma20": 0.0, "ma50": 0.0, "ma200": 0.0}
+            }
+
         return {
-            "rsi": 50.0 + np.random.uniform(-10, 10),
-            "macd": np.random.uniform(-1, 1),
-            "bollinger_bands": {
-                "upper": 1.0 + np.random.uniform(0, 0.1),
-                "middle": 1.0,
-                "lower": 1.0 - np.random.uniform(0, 0.1)
-            },
+            "rsi": self._calc_rsi(prices),
+            "macd": self._calc_macd(prices),
+            "bollinger_bands": self._calc_bollinger_bands(prices),
             "moving_averages": {
-                "ma20": 1.0 + np.random.uniform(-0.05, 0.05),
-                "ma50": 1.0 + np.random.uniform(-0.05, 0.05),
-                "ma200": 1.0 + np.random.uniform(-0.05, 0.05)
+                "ma20": self._calc_moving_average(prices, 20),
+                "ma50": self._calc_moving_average(prices, 50),
+                "ma200": self._calc_moving_average(prices, 200)
             }
         }
     
     def _calculate_asset_risk_metrics(self, symbol: str, period: str) -> Dict[str, Any]:
         """计算资产风险指标"""
-        # 简化实现
+        # 获取基础风险指标
+        metrics = fd.metrics(symbol, metric=["volatility", "sharpe_ratio", "max_drawdown"])
+
+        # 计算 Beta 和 Alpha
+        beta, alpha = self._calculate_beta_alpha(symbol)
+
+        # 获取收益率序列计算 VaR
+        prices = fd.prices(symbol)
+        var_95 = 0.0
+        es_95 = 0.0
+        if prices is not None and len(prices) > 10:
+            returns = prices.pct_change().dropna()
+            var_95 = float(returns.quantile(0.05))
+            es_95 = float(returns[returns <= var_95].mean()) if not returns[returns <= var_95].empty else 0.0
+
         return {
-            "volatility": np.random.uniform(0.1, 0.3),
-            "beta": np.random.uniform(0.5, 1.5),
-            "alpha": np.random.uniform(-0.1, 0.1),
-            "sharpe_ratio": np.random.uniform(0.5, 2.0),
-            "var_95": np.random.uniform(-0.05, -0.02),
-            "expected_shortfall_95": np.random.uniform(-0.07, -0.03)
+            "volatility": metrics.get("volatility", 0.0),
+            "beta": beta,
+            "alpha": alpha,
+            "sharpe_ratio": metrics.get("sharpe_ratio", 0.0),
+            "var_95": var_95,
+            "expected_shortfall_95": es_95
         }
+
+    def _calculate_beta_alpha(self, symbol: str) -> Tuple[float, float]:
+        """计算资产的 Beta 和 Alpha"""
+        # 简单逻辑确定基准
+        benchmark = "US_EQ:SPY"
+        if any(prefix in symbol for prefix in ["sh", "sz", "CN_STOCK", "CN_FUND"]):
+            benchmark = "CN_STOCK:000300"
+
+        try:
+            panel = fd.panel([symbol, benchmark])
+            if panel.empty or symbol not in panel.columns or benchmark not in panel.columns:
+                return 1.0, 0.0
+
+            returns = panel.pct_change().dropna()
+            if len(returns) < 20:
+                return 1.0, 0.0
+
+            asset_ret = returns[symbol]
+            mkt_ret = returns[benchmark]
+
+            # 使用协方差计算 beta: Cov(ra, rm) / Var(rm)
+            covariance = asset_ret.cov(mkt_ret)
+            market_variance = mkt_ret.var()
+
+            beta = covariance / market_variance if market_variance > 0 else 1.0
+            alpha = asset_ret.mean() - beta * mkt_ret.mean()
+
+            return float(beta), float(alpha * 252) # 年化 alpha
+        except Exception as e:
+            logger.error(f"Error calculating beta/alpha for {symbol}: {e}")
+            return 1.0, 0.0
     
     def _calculate_performance_metrics(self, symbol: str, period: str) -> Dict[str, Any]:
         """计算业绩指标"""
-        # 简化实现
+        metrics = fd.metrics(symbol, metric=[
+            "total_return", "annualized_return", "max_drawdown",
+            "sortino_ratio", "calmar_ratio", "win_rate"
+        ])
+
         return {
-            "period_return": np.random.uniform(-0.1, 0.3),
-            "annual_return": np.random.uniform(0.05, 0.2),
-            "max_drawdown": np.random.uniform(-0.4, -0.1),
-            "sortino_ratio": np.random.uniform(0.5, 2.5),
-            "calmar_ratio": np.random.uniform(0.1, 1.0),
-            "win_rate": np.random.uniform(0.4, 0.7)
+            "period_return": metrics.get("total_return", 0.0),
+            "annual_return": metrics.get("annualized_return", 0.0),
+            "max_drawdown": metrics.get("max_drawdown", 0.0) if metrics.get("max_drawdown") is not None else 0.0,
+            "sortino_ratio": metrics.get("sortino_ratio", 0.0),
+            "calmar_ratio": metrics.get("calmar_ratio", 0.0),
+            "win_rate": metrics.get("win_rate", 0.0)
         }
     
     def _calculate_portfolio_stats(self, symbols: List[str], weights: Dict[str, float], 
@@ -477,19 +622,69 @@ class DashboardEngine(IAnalyticsEngine):
     
     def _calculate_var_breakdown(self) -> Dict[str, Any]:
         """计算VaR分解"""
+        try:
+            # 获取持仓和权重
+            portfolio_value_data = self.portfolio_core.get_portfolio_value()
+            total_value = portfolio_value_data.get("total_value", 0)
+            positions = portfolio_value_data.get("positions", {})
+
+            if total_value <= 0 or not positions:
+                return self._empty_var_breakdown()
+
+            symbols = list(positions.keys())
+            weights_dict = {s: positions[s]["value"] / total_value for s in symbols}
+
+            # 获取历史收益率
+            prices_df = fd.panel(symbols)
+            if prices_df.empty:
+                return self._empty_var_breakdown()
+
+            returns_df = prices_df.pct_change().dropna()
+            if returns_df.empty:
+                return self._empty_var_breakdown()
+
+            # 对齐权重
+            aligned_symbols = [s for s in symbols if s in returns_df.columns]
+            if not aligned_symbols:
+                return self._empty_var_breakdown()
+
+            weights = pd.Series({s: weights_dict[s] for s in aligned_symbols})
+            weights = weights / weights.sum() # 归一化
+
+            # 计算协方差矩阵
+            cov_matrix = returns_df[aligned_symbols].cov()
+
+            # 计算组合波动率
+            portfolio_vol = (weights.T @ cov_matrix @ weights) ** 0.5
+
+            # 95% 置信度下的 VaR (1.645 * vol)
+            total_var = 1.645 * portfolio_vol
+
+            # 计算边际 VaR 贡献 (Marginal VaR)
+            # MVaR = (Cov * w) / portfolio_vol
+            marginal_contribution = (cov_matrix @ weights) / portfolio_vol
+            component_contribution = weights * marginal_contribution * 1.645
+
+            contributions = {s: float(c) for s, c in component_contribution.items()}
+
+            return {
+                "total_var": float(total_var),
+                "contributions": contributions,
+                "scenarios": [
+                    {"name": "市场大跌", "probability": "5%", "impact": f"{-total_var:.2%}"},
+                    {"name": "极值波动", "probability": "1%", "impact": f"{-2.326 * portfolio_vol:.2%}"}
+                ]
+            }
+        except Exception as e:
+            logger.error(f"Error calculating VaR breakdown: {e}")
+            return self._empty_var_breakdown()
+
+    def _empty_var_breakdown(self) -> Dict[str, Any]:
+        """返回空 VaR 分解数据"""
         return {
-            "total_var": np.random.uniform(0.01, 0.05),
-            "contributions": {
-                "market_risk": np.random.uniform(0.3, 0.7),
-                "credit_risk": np.random.uniform(0.1, 0.3),
-                "liquidity_risk": np.random.uniform(0.05, 0.15),
-                "currency_risk": np.random.uniform(0.05, 0.15)
-            },
-            "scenarios": [
-                {"name": "市场大跌", "probability": "5%", "impact": "-15%"},
-                {"name": "利率上升", "probability": "10%", "impact": "-8%"},
-                {"name": "货币贬值", "probability": "15%", "impact": "-5%"}
-            ]
+            "total_var": 0.0,
+            "contributions": {},
+            "scenarios": []
         }
     
     def _perform_stress_tests(self) -> Dict[str, Any]:
@@ -510,27 +705,40 @@ class DashboardEngine(IAnalyticsEngine):
     
     def _get_correlation_matrix(self) -> Dict[str, Any]:
         """获取相关性矩阵"""
-        # 简化实现：生成随机相关性矩阵
-        symbols = list(self.portfolio_core.get_current_holdings().keys())[:5]
+        # 获取持仓
+        symbols = list(self.portfolio_core.get_current_holdings().keys())
         
         if not symbols:
             return {"symbols": [], "matrix": []}
         
-        # 生成随机相关性矩阵
-        n = len(symbols)
-        matrix = np.random.uniform(-0.5, 0.8, (n, n))
+        # 只取前15个资产，避免矩阵过大
+        if len(symbols) > 15:
+            symbols = symbols[:15]
         
-        # 使矩阵对称且对角线为1
-        matrix = (matrix + matrix.T) / 2
-        np.fill_diagonal(matrix, 1.0)
-        
-        return {
-            "symbols": symbols,
-            "matrix": matrix.tolist(),
-            "heatmap_data": self._prepare_heatmap_data(symbols, matrix)
-        }
+        try:
+            # 获取历史价格数据并计算相关性
+            prices_df = fd.panel(symbols)
+            if prices_df.empty:
+                return {"symbols": [], "matrix": []}
+
+            returns_df = prices_df.pct_change().dropna()
+            if returns_df.empty:
+                return {"symbols": [], "matrix": []}
+
+            corr_matrix = returns_df.corr()
+            active_symbols = corr_matrix.columns.tolist()
+            matrix_values = corr_matrix.values
+
+            return {
+                "symbols": active_symbols,
+                "matrix": matrix_values.tolist(),
+                "heatmap_data": self._prepare_heatmap_data(active_symbols, matrix_values)
+            }
+        except Exception as e:
+            logger.error(f"Error calculating correlation matrix: {e}")
+            return {"symbols": [], "matrix": []}
     
-    def _prepare_heatmap_data(self, symbols: List[str], matrix: np.ndarray) -> List[Dict]:
+    def _prepare_heatmap_data(self, symbols: List[str], matrix: Any) -> List[Dict]:
         """准备热力图数据"""
         heatmap_data = []
         for i, symbol1 in enumerate(symbols):
