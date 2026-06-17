@@ -134,7 +134,7 @@ def sync_pair(
             asset_id=asset_id,
             source="akshare-boc-sina",
             currency="CNY",
-            timezone="Asia/Shanghai",
+            timezone="UTC",
         )
         print(f"  {pair_id} ({asset_id}): saved {len(df)} rows "
               f"[{df['date'].min().date()} .. {df['date'].max().date()}]")
