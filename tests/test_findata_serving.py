@@ -56,12 +56,33 @@ class TestDataProviderPrices:
         assert prices is not None
         assert len(prices) > 0
 
-    def test_prices_live_mode_triggers_refresh(self, tmp_path):
+    def test_prices_live_mode_triggers_refresh(self, tmp_path, monkeypatch):
         provider, _ = _populated_provider(tmp_path, "AAPL")
-        # live mode should call _trigger_refresh (stub) and still return data
+        # live mode should call _trigger_refresh and still return data.
+        # Patch Orchestrator.schedule to avoid real network fetches
+        # from contaminating the tmp_path store.
+        called = {"schedule": False, "dispatch": False}
+
+        def fake_schedule(self, asset_ids=None, asset_types=None):
+            called["schedule"] = True
+            return []
+
+        def fake_dispatch(self, tasks):
+            called["dispatch"] = True
+            return {}
+
+        monkeypatch.setattr(
+            "FinData.orchestration.orchestrator.Orchestrator.schedule",
+            fake_schedule,
+        )
+        monkeypatch.setattr(
+            "FinData.orchestration.orchestrator.Orchestrator.dispatch",
+            fake_dispatch,
+        )
         prices = provider.prices("AAPL", mode="live")
         assert prices is not None
         assert len(prices) == 60
+        assert called["schedule"], "live mode should trigger refresh schedule"
 
 
 class TestDataProviderOhlcv:
