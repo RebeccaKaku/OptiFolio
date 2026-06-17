@@ -23,17 +23,20 @@ class CnStockFetcher(FetcherProtocol):
 
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
         t0 = time.time()
+        # Normalize to canonical bare 6-digit code (strip sh/sz prefix)
+        code, _full = self._parse_symbol(symbol)
+        canonical = code if code.isdigit() and len(code) == 6 else symbol
         try:
             period = kwargs.get("period", "daily")
             adjust = kwargs.get("adjust", "qfq")
             df = self._fetch_raw(symbol, start_date, end_date, period, adjust)
             return FetchResult(
-                symbol=symbol, provider=self.PROVIDER, data=df,
+                symbol=canonical, provider=self.PROVIDER, data=df,
                 success=True, latency_ms=(time.time() - t0) * 1000,
             )
         except Exception as e:
             return FetchResult(
-                symbol=symbol, provider=self.PROVIDER, data=None,
+                symbol=canonical, provider=self.PROVIDER, data=None,
                 success=False, latency_ms=(time.time() - t0) * 1000,
                 errors=[str(e)],
             )

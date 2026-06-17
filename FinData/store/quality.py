@@ -107,7 +107,7 @@ class QualityIssueStore:
 class QualityGate:
     """Multi-check data quality inspector.
 
-    The gate runs eight checks on every incoming DataFrame:
+    The gate runs nine checks on every incoming DataFrame:
     1. Non-empty          → REJECT on empty
     2. Price column       → REJECT if no close/adj_close column
     3. Row count          → FLAG if long date span but very few rows
@@ -115,7 +115,8 @@ class QualityGate:
     5. Positive prices    → REJECT if close <= 0 found
     6. Time reversal      → REJECT if new data is older than existing
     7. Price spikes       → FLAG if any daily change exceeds 50%
-    8. Duplicate data     → REJECT if identical to already-stored data
+    8. Flat trading days  → FLAG if O=H=L=C and volume=0 (suspicious non-trading day)
+    9. Duplicate data     → REJECT if identical to already-stored data
 
     Additionally, ``stale_price_check`` monitors the repository for
     assets whose latest price is older than a given threshold.
@@ -324,7 +325,36 @@ class QualityGate:
                 }
             )
 
-        # ── Check 8: Duplicate data ───────────────────────────────────
+        # ── Check 8: Flat trading days (O=H=L=C and volume=0) ──────
+        if "open" in mapped and "high" in mapped and "low" in mapped and "volume" in mapped:
+            price_for_flat = mapped[price_col]
+            flat_mask = (
+                (mapped["open"] == mapped["high"])
+                & (mapped["high"] == mapped["low"])
+                & (mapped["low"] == price_for_flat)
+                & (mapped.get("volume", pd.Series(1, index=mapped.index)) == 0)
+            )
+            flat_count = flat_mask.sum()
+            if flat_count > 0:
+                flags.append(
+                    f"Suspicious flat trading days: {flat_count} row(s) with "
+                    "O=H=L=C and volume=0 — likely non-trading day stored as trading day"
+                )
+                checks.append(
+                    {
+                        "name": "flat_trading_days",
+                        "passed": True,
+                        "detail": f"FLAG: {flat_count} flat OHLVC rows",
+                    }
+                )
+            else:
+                checks.append({"name": "flat_trading_days", "passed": True, "detail": ""})
+        else:
+            checks.append(
+                {"name": "flat_trading_days", "passed": True, "detail": "insufficient OHLCV columns"}
+            )
+
+        # ── Check 9: Duplicate data ───────────────────────────────────
         if existing_data is not None and not existing_data.empty:
             if self._is_duplicate(mapped, existing_data):
                 reject_reasons.append("Duplicate data — identical to already-stored records")

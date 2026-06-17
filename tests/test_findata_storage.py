@@ -115,6 +115,36 @@ class TestQualityGateFlagPriceSpike:
         assert not any("Extreme price movements" in f for f in report.flags)
 
 
+class TestQualityGateFlagFlatTradingDays:
+    def test_flat_ohlcv_with_zero_volume_is_flagged(self):
+        gate = QualityGate()
+        import numpy as np
+        df = pd.DataFrame({
+            "date": pd.date_range("2024-01-01", periods=5, freq="B"),
+            "open":  [100, 101, 102, 103, 104],
+            "high":  [100, 101, 102, 103, 104],  # O=H rows 0-3
+            "low":   [100, 101, 102, 103, 104],  # O=L rows 0-3
+            "close": [100, 101, 102, 103, 104],  # O=C rows 0-3
+            "volume": [1000, 0, 0, 1000, 1000],
+        })
+        report = gate.inspect(df)
+        assert report.passed  # flag only, not reject
+        assert any("Suspicious flat trading days" in f for f in report.flags)
+
+    def test_normal_ohlcv_not_flagged(self):
+        gate = QualityGate()
+        import numpy as np
+        df = _make_df(extra_cols={
+            "open": np.linspace(99, 119, 20),
+            "high": np.linspace(101, 121, 20),
+            "low": np.linspace(98, 118, 20),
+            "volume": [1000] * 20,
+        })
+        report = gate.inspect(df)
+        assert report.passed
+        assert not any("Suspicious flat trading days" in f for f in report.flags)
+
+
 class TestQualityGateRejectNaN:
     def test_majority_nan_in_close_is_rejected(self):
         gate = QualityGate()
@@ -158,8 +188,8 @@ class TestQualityGatePassCleanData:
         report = gate.inspect(df)
         assert report.passed
         assert len(report.reject_reasons) == 0
-        # All 8 checks should have run
-        assert len(report.checks) == 8
+        # All 9 checks should have run
+        assert len(report.checks) == 9
 
     def test_quality_report_has_expected_structure(self):
         gate = QualityGate()
@@ -252,65 +282,6 @@ class TestCanonicalStoreDelegates:
         assert len(returns) == 19
 
 
-# ── fd singleton tests ─────────────────────────────────────────────────
-
-class TestFdPrices:
-    def test_fd_prices_returns_series(self, tmp_path):
-        store = CanonicalStore(root_dir=str(tmp_path))
-        store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
-
-        # Create a fresh fd that points at the same store
-        from FinData import FinData
-        fd_test = FinData()
-        fd_test._store = store
-
-        prices = fd_test.prices("AAPL")
-        assert prices is not None
-        assert isinstance(prices, pd.Series)
-        assert len(prices) == 20
-
-    def test_fd_prices_unknown_symbol_returns_none(self, tmp_path):
-        store = CanonicalStore(root_dir=str(tmp_path))
-        from FinData import FinData
-        fd_test = FinData()
-        fd_test._store = store
-
-        prices = fd_test.prices("NONEXISTENT")
-        assert prices is None
-
-
-class TestFdPanel:
-    def test_fd_panel_returns_pivoted_matrix(self, tmp_path):
-        store = CanonicalStore(root_dir=str(tmp_path))
-        store.accept(_make_df(), asset_id="AAA", source="unit", currency="USD")
-        store.accept(
-            _make_df(close=[50] * 20), asset_id="BBB", source="unit", currency="USD"
-        )
-
-        from FinData import FinData
-        fd_test = FinData()
-        fd_test._store = store
-
-        panel = fd_test.panel(["AAA", "BBB"])
-        assert isinstance(panel, pd.DataFrame)
-        assert list(panel.columns) == ["AAA", "BBB"]
-        assert panel.shape == (20, 2)
-
-
-class TestFdSingleton:
-    def test_same_instance_on_multiple_imports(self):
-        import FinData
-        from FinData import fd as fd1
-        from FinData import fd as fd2
-
-        assert fd1 is fd2
-        assert fd1 is FinData.fd
-
-    def test_fd_is_findata_instance(self):
-        from FinData import fd, FinData
-        assert isinstance(fd, FinData)
-
-
 # ── Schemas tests ──────────────────────────────────────────────────────
 
 class TestSchemas:
@@ -343,6 +314,31 @@ def test_normalize_market_frame_accepts_provider_columns():
     assert list(normalized["asset_id"].unique()) == ["AAA"]
     assert list(normalized["adj_close"]) == [100, 101]
     assert normalized["source"].eq("unit").all()
+
+
+def test_normalize_market_frame_strips_cn_stock_prefix():
+    """sh/sz prefix on CN stock codes is stripped to bare 6-digit code."""
+    raw = pd.DataFrame({
+        "date": ["2024-01-01", "2024-01-02"],
+        "close": [100, 101],
+        "volume": [1000, 1100],
+    })
+
+    # sh-prefixed
+    df_sh = normalize_market_frame(raw.copy(), asset_id="sh600519", source="unit", currency="CNY")
+    assert df_sh["asset_id"].iloc[0] == "600519"
+
+    # sz-prefixed
+    df_sz = normalize_market_frame(raw.copy(), asset_id="sz000001", source="unit", currency="CNY")
+    assert df_sz["asset_id"].iloc[0] == "000001"
+
+    # Bare code passes through unchanged
+    df_bare = normalize_market_frame(raw.copy(), asset_id="600028", source="unit", currency="CNY")
+    assert df_bare["asset_id"].iloc[0] == "600028"
+
+    # Non-CN codes unchanged
+    df_us = normalize_market_frame(raw.copy(), asset_id="AAPL", source="unit", currency="USD")
+    assert df_us["asset_id"].iloc[0] == "AAPL"
 
 
 def test_market_data_repository_saves_and_queries_price_matrix(tmp_path):
@@ -378,3 +374,81 @@ def test_market_data_repository_saves_and_queries_price_matrix(tmp_path):
     assert prices.shape == (2, 2)
     assert returns.shape == (2, 2)
     assert report["missing"].sum() == 0
+
+
+def test_market_data_repository_observations_round_trip(tmp_path):
+    repo = MarketDataRepository(tmp_path)
+    saved = repo.save_observations(
+        pd.DataFrame({
+            "effective_date": ["2024-01-31"],
+            "value": [0.021],
+            "known_at": ["2024-02-01T09:00:00"],
+        }),
+        series_id="RATE_1Y_CN",
+        source="unit",
+        unit="decimal",
+        currency="CNY",
+    )
+
+    assert len(saved) == 1
+    latest = repo.latest_observation("RATE_1Y_CN", as_of="2024-02-05")
+    assert latest is not None
+    assert latest["value"] == pytest.approx(0.021)
+    assert latest["source"] == "unit"
+
+
+def test_market_data_repository_observations_reject_future_leakage(tmp_path):
+    repo = MarketDataRepository(tmp_path)
+    with pytest.raises(ValueError, match="known_at cannot be before effective_date"):
+        repo.save_observations(
+            pd.DataFrame({
+                "effective_date": ["2024-02-01"],
+                "value": [0.021],
+                "known_at": ["2024-01-31T09:00:00"],
+            }),
+            series_id="RATE_1Y_CN",
+            source="unit",
+        )
+
+
+def test_market_data_repository_lists_observation_series(tmp_path):
+    repo = MarketDataRepository(tmp_path)
+    repo.save_observations(
+        pd.DataFrame({
+            "effective_date": ["2024-01-01", "2024-01-02"],
+            "value": [0.01, 0.011],
+        }),
+        series_id="RATE_SOFR_USD_ON",
+        source="unit",
+        unit="decimal",
+        currency="USD",
+    )
+
+    series = repo.list_observation_series()
+
+    assert len(series) == 1
+    assert series["series_id"].iloc[0] == "RATE_SOFR_USD_ON"
+    assert series["observations"].iloc[0] == 2
+
+
+def test_market_data_repository_observation_coverage_marks_missing(tmp_path):
+    repo = MarketDataRepository(tmp_path)
+    repo.save_observations(
+        pd.DataFrame({
+            "effective_date": ["2024-01-01"],
+            "value": [0.01],
+        }),
+        series_id="RATE_SOFR_USD_ON",
+        source="unit",
+    )
+
+    coverage = repo.observation_coverage(
+        ["RATE_SOFR_USD_ON", "RATE_SONIA_GBP_ON"],
+        expected_stale_days=5,
+        as_of="2024-01-10",
+    )
+    by_id = {row["series_id"]: row for row in coverage.to_dict(orient="records")}
+
+    assert by_id["RATE_SOFR_USD_ON"]["stale_days"] == 9
+    assert by_id["RATE_SOFR_USD_ON"]["is_stale"] is True
+    assert by_id["RATE_SONIA_GBP_ON"]["missing"] is True

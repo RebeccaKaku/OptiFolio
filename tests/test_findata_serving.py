@@ -230,49 +230,151 @@ class TestDataProviderMetrics:
 # ── Rates tests ────────────────────────────────────────────────────────────
 
 class TestDataProviderRates:
-    def test_rate_1y_cn_returns_dict(self, tmp_path):
+    def test_rate_prefers_stored_observation(self, tmp_path):
+        """Stored SHIBOR 1Y observation is authoritative for 1y_cn."""
+        provider, store = _populated_provider(tmp_path)
+        store.repo.save_observations(
+            pd.DataFrame({
+                "effective_date": ["2024-01-31"],
+                "value": [0.0215],
+                "known_at": ["2024-02-01T09:00:00"],
+            }),
+            series_id="RATE_SHIBOR_CNY_1Y",
+            source="unit_rate_feed",
+            unit="decimal",
+            currency="CNY",
+        )
+
+        result = provider.rate("1y_cn", date_str="2024-02-05")
+
+        assert result["value"] == pytest.approx(0.0215)
+        assert result["source"] == "unit_rate_feed"
+        assert result["as_of"] == "2024-01-31"
+        assert result["warning"] is None
+
+    def test_rate_prefers_stored_observation_for_1y_us(self, tmp_path):
+        """Stored SOFR observation is authoritative for 1y_us."""
+        provider, store = _populated_provider(tmp_path)
+        store.repo.save_observations(
+            pd.DataFrame({
+                "effective_date": ["2024-01-31"],
+                "value": [0.0531],
+                "known_at": ["2024-02-01T09:00:00"],
+            }),
+            series_id="RATE_SOFR_USD_ON",
+            source="fred",
+            unit="decimal",
+            currency="USD",
+        )
+
+        result = provider.rate("1y_us", date_str="2024-02-05")
+
+        assert result["value"] == pytest.approx(0.0531)
+        assert result["source"] == "fred"
+        assert result["as_of"] == "2024-01-31"
+        assert result["warning"] is None
+
+    def test_rate_5y_cn_stored_shows_tenor_mismatch_warning(self, tmp_path):
+        """5y_cn uses SHIBOR 1Y as proxy — should warn about tenor mismatch."""
+        provider, store = _populated_provider(tmp_path)
+        store.repo.save_observations(
+            pd.DataFrame({
+                "effective_date": ["2024-01-31"],
+                "value": [0.0215],
+            }),
+            series_id="RATE_SHIBOR_CNY_1Y",
+            source="unit_rate_feed",
+            unit="decimal",
+            currency="CNY",
+        )
+
+        result = provider.rate("5y_cn", date_str="2024-02-05")
+
+        assert result["value"] == pytest.approx(0.0215)
+        assert result["source"] == "unit_rate_feed"
+        assert result["warning"] is not None
+        assert "TENOR MISMATCH" in result["warning"]
+        assert "SHIBOR" in result["warning"]
+
+    def test_rate_1y_cn_no_observation_returns_missing(self, tmp_path):
+        """When repo exists but no observation stored, report as missing."""
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("1y_cn")
         assert isinstance(result, dict)
         assert result["rate_id"] == "1y_cn"
-        assert result["value"] == pytest.approx(0.017)
-        assert result["source"] == "hardcoded_stub"
+        assert result["value"] == 0.0
+        assert result["source"] == "missing_observation"
         assert result["as_of"] is None
-        assert "warning" in result
+        assert result["warning"] is not None
+        assert "No stored observation" in result["warning"]
 
-    def test_rate_5y_cn_returns_dict(self, tmp_path):
+    def test_rate_5y_cn_no_observation_returns_missing(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("5y_cn")
-        assert isinstance(result, dict)
         assert result["rate_id"] == "5y_cn"
-        assert result["value"] == pytest.approx(0.036)
-        assert result["source"] == "hardcoded_stub"
+        assert result["value"] == 0.0
+        assert result["source"] == "missing_observation"
 
-    def test_rate_10y_cn_returns_dict(self, tmp_path):
+    def test_rate_10y_cn_no_observation_returns_missing(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("10y_cn")
-        assert isinstance(result, dict)
         assert result["rate_id"] == "10y_cn"
-        assert result["value"] == pytest.approx(0.028)
-        assert result["source"] == "hardcoded_stub"
+        assert result["value"] == 0.0
+        assert result["source"] == "missing_observation"
 
     def test_rate_default_is_1y_cn(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate()
         assert isinstance(result, dict)
         assert result["rate_id"] == "1y_cn"
-        assert result["value"] == pytest.approx(0.017)
+        # Without stored observation, returns missing
+        assert result["source"] == "missing_observation"
 
-    def test_rate_unknown_returns_zero(self, tmp_path):
+    def test_rate_unknown_returns_missing(self, tmp_path):
+        """Unknown rate_id with repo available returns missing_observation."""
         provider, _ = _populated_provider(tmp_path)
         result = provider.rate("nonexistent")
         assert isinstance(result, dict)
         assert result["rate_id"] == "nonexistent"
         assert result["value"] == 0.0
-        assert result["source"] == "hardcoded_stub"
+        assert result["source"] == "missing_observation"
+        assert result["warning"] is not None
+
+    def test_rate_emergency_fallback_when_no_repo(self):
+        """When store has no repo at all, use emergency fallback."""
+        from FinData.serving.provider import DataProvider
+        # Create a provider with a store that has no 'repo' attribute
+        provider = DataProvider(store=object())  # object() has no .repo
+        result = provider.rate("1y_cn")
+        assert result["source"] == "emergency_fallback"
+        assert result["value"] > 0
+        assert "EMERGENCY FALLBACK" in result["warning"]
+
+    def test_rate_1y_us_no_observation_returns_missing(self, tmp_path):
+        provider, _ = _populated_provider(tmp_path)
+        result = provider.rate("1y_us")
+        assert result["rate_id"] == "1y_us"
+        assert result["source"] == "missing_observation"
+        assert result["value"] == 0.0
 
 
 class TestDataProviderFxRates:
+    def test_fx_rate_prefers_current_store_repository(self, tmp_path):
+        provider, store = _populated_provider(tmp_path)
+        store.accept(
+            pd.DataFrame({
+                "date": ["2025-06-02", "2025-06-03"],
+                "close": [7.11, 7.22],
+            }),
+            asset_id="FX_USDCNY",
+            source="unit_fx",
+            currency="CNY",
+        )
+
+        result = provider.fx_rate("USD", "CNY", date_str="2025-06-03")
+
+        assert result == pytest.approx(7.22)
+
     def test_fx_rate_usd_cny_returns_float(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
         result = provider.fx_rate("USD", "CNY")
@@ -283,6 +385,68 @@ class TestDataProviderFxRates:
         provider, _ = _populated_provider(tmp_path)
         result = provider.fx_rate("USD", "USD")
         assert result == 1.0
+
+
+class TestDataProviderObservations:
+    def test_observations_returns_canonical_rows(self, tmp_path):
+        provider, store = _populated_provider(tmp_path)
+        store.repo.save_observations(
+            pd.DataFrame({
+                "effective_date": ["2024-01-02", "2024-01-03"],
+                "value": [0.031, 0.032],
+            }),
+            series_id="RATE_SOFR_USD_ON",
+            source="unit",
+            unit="decimal",
+            currency="USD",
+        )
+
+        df = provider.observations(["RATE_SOFR_USD_ON"], start="2024-01-03")
+
+        assert len(df) == 1
+        assert df["series_id"].iloc[0] == "RATE_SOFR_USD_ON"
+        assert df["value"].iloc[0] == pytest.approx(0.032)
+
+    def test_latest_observation_serializes_dates(self, tmp_path):
+        provider, store = _populated_provider(tmp_path)
+        store.repo.save_observations(
+            pd.DataFrame({
+                "effective_date": ["2024-01-02"],
+                "value": [0.031],
+                "known_at": ["2024-01-03T09:00:00"],
+            }),
+            series_id="RATE_SOFR_USD_ON",
+            source="unit",
+            unit="decimal",
+            currency="USD",
+        )
+
+        row = provider.latest_observation("RATE_SOFR_USD_ON")
+
+        assert row["series_id"] == "RATE_SOFR_USD_ON"
+        assert row["effective_date"] == "2024-01-02"
+        assert row["known_at"].startswith("2024-01-03T09:00:00")
+
+    def test_observation_coverage_returns_missing_series(self, tmp_path):
+        provider, store = _populated_provider(tmp_path)
+        store.repo.save_observations(
+            pd.DataFrame({
+                "effective_date": ["2024-01-02"],
+                "value": [0.031],
+            }),
+            series_id="RATE_SOFR_USD_ON",
+            source="unit",
+        )
+
+        coverage = provider.observation_coverage(
+            ["RATE_SOFR_USD_ON", "RATE_SONIA_GBP_ON"],
+            expected_stale_days=2,
+            as_of="2024-01-10",
+        )
+
+        assert set(coverage["series_id"]) == {"RATE_SOFR_USD_ON", "RATE_SONIA_GBP_ON"}
+        missing = coverage[coverage["series_id"] == "RATE_SONIA_GBP_ON"].iloc[0]
+        assert bool(missing["missing"]) is True
 
 
 # ── Export tests ───────────────────────────────────────────────────────────
@@ -430,8 +594,8 @@ class TestFdBackCompat:
         result = fd_test.rate("5y_cn")
         assert isinstance(result, dict)
         assert result["rate_id"] == "5y_cn"
-        assert result["value"] == pytest.approx(0.036)
-        assert result["source"] == "hardcoded_stub"
+        assert result["source"] == "missing_observation"
+        assert "warning" in result
 
     def test_fd_export_works(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
@@ -481,7 +645,9 @@ class TestFdSingletonDeferred:
         from FinData import fd
         public_methods = [
             "prices", "ohlcv", "panel", "returns", "metrics",
-            "rate", "fx_rate", "export", "list_assets", "missing_report",
+            "rate", "fx_rate", "observations", "latest_observation",
+            "observation_series", "observation_coverage",
+            "export", "list_assets", "missing_report",
         ]
         for method in public_methods:
             assert hasattr(fd, method), f"fd missing method: {method}"

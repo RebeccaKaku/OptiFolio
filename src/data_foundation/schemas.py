@@ -25,6 +25,21 @@ CANONICAL_MARKET_COLUMNS = [
 ]
 
 
+CANONICAL_OBSERVATION_COLUMNS = [
+    "series_id",
+    "effective_date",
+    "value",
+    "known_at",
+    "released_at",
+    "observed_at",
+    "source",
+    "revision",
+    "quality_flags",
+    "unit",
+    "currency",
+]
+
+
 _COLUMN_ALIASES = {
     "asset": "asset_id",
     "symbol": "asset_id",
@@ -102,6 +117,8 @@ def normalize_market_frame(
 
     df = df[CANONICAL_MARKET_COLUMNS].copy()
     df["asset_id"] = df["asset_id"].astype(str).str.strip()
+    # Normalize CN stock IDs: strip sh/sz prefix → bare 6-digit code (see naming conventions)
+    df["asset_id"] = df["asset_id"].str.replace(r"^(?:sh|sz)(\d{6})$", r"\1", regex=True)
 
     # ── Date normalization: exchange-local calendar date ──────────────
     dates = pd.to_datetime(df["date"], errors="raise")
@@ -183,3 +200,115 @@ def _validate_market_frame_without_pandera(frame: pd.DataFrame) -> pd.DataFrame:
         if (df[column].dropna() < 0).any():
             raise ValueError(f"{column} cannot be negative")
     return df
+
+
+def normalize_observation_frame(
+    frame: pd.DataFrame,
+    series_id: Optional[str] = None,
+    source: str = "manual",
+    unit: Optional[str] = None,
+    currency: Optional[str] = None,
+) -> pd.DataFrame:
+    """Convert generic time-series observations into canonical form.
+
+    Use this for macro indicators, interest rates, yield-curve nodes,
+    index levels, factor signals, and other data that is not a tradable
+    OHLCV/NAV price series.
+    """
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=CANONICAL_OBSERVATION_COLUMNS)
+
+    df = frame.copy()
+    if isinstance(df.index, pd.DatetimeIndex) and "effective_date" not in df.columns:
+        df = df.reset_index(names="effective_date")
+    elif "effective_date" not in df.columns and "date" not in df.columns and df.index.name:
+        df = df.reset_index()
+
+    df.columns = [_canonical_column_name(column) for column in df.columns]
+    if "date" in df.columns and "effective_date" not in df.columns:
+        df = df.rename(columns={"date": "effective_date"})
+
+    if "series_id" not in df.columns:
+        if not series_id:
+            raise ValueError("series_id is required when the frame has no series_id column")
+        df["series_id"] = series_id
+    if "source" not in df.columns:
+        df["source"] = source
+    if "unit" not in df.columns:
+        df["unit"] = unit
+    if "currency" not in df.columns:
+        df["currency"] = currency
+    if "revision" not in df.columns:
+        df["revision"] = 0
+    if "quality_flags" not in df.columns:
+        df["quality_flags"] = ""
+
+    if "effective_date" not in df.columns:
+        raise ValueError("observation data requires effective_date or date")
+    if "value" not in df.columns:
+        raise ValueError("observation data requires a value column")
+
+    effective = pd.to_datetime(df["effective_date"], errors="raise").dt.normalize()
+    df["effective_date"] = effective
+
+    for column in ("known_at", "released_at", "observed_at"):
+        if column not in df.columns:
+            df[column] = pd.NaT
+        df[column] = pd.to_datetime(df[column], errors="coerce")
+
+    missing_known = df["known_at"].isna()
+    if missing_known.any():
+        df.loc[missing_known, "known_at"] = (
+            df.loc[missing_known, "effective_date"] + pd.Timedelta(days=1)
+        )
+
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df["series_id"] = df["series_id"].astype(str).str.strip()
+    df["source"] = df["source"].fillna(source).astype(str)
+    df["revision"] = pd.to_numeric(df["revision"], errors="coerce").fillna(0).astype(int)
+    df["quality_flags"] = df["quality_flags"].apply(_stringify_quality_flags)
+
+    df = df[CANONICAL_OBSERVATION_COLUMNS].copy()
+    return df.sort_values(["series_id", "effective_date", "source", "revision"]).reset_index(drop=True)
+
+
+def validate_observation_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Validate canonical non-price observations."""
+    missing = [column for column in CANONICAL_OBSERVATION_COLUMNS if column not in frame.columns]
+    if missing:
+        raise ValueError(f"Missing canonical observation columns: {missing}")
+
+    df = frame[CANONICAL_OBSERVATION_COLUMNS].copy()
+    df["effective_date"] = pd.to_datetime(df["effective_date"], errors="raise").dt.normalize()
+    for column in ("known_at", "released_at", "observed_at"):
+        df[column] = pd.to_datetime(df[column], errors="coerce")
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df["revision"] = pd.to_numeric(df["revision"], errors="raise").astype(int)
+
+    if df["series_id"].isna().any() or (df["series_id"].astype(str).str.strip() == "").any():
+        raise ValueError("series_id is required")
+    if df["source"].isna().any() or (df["source"].astype(str).str.strip() == "").any():
+        raise ValueError("source is required")
+    if df["value"].isna().any():
+        raise ValueError("observation value cannot be NaN")
+    if (df["revision"] < 0).any():
+        raise ValueError("revision cannot be negative")
+
+    known = df["known_at"].dropna()
+    if not known.empty:
+        comparable = df.loc[known.index, "effective_date"]
+        if (known.dt.normalize() < comparable).any():
+            raise ValueError("known_at cannot be before effective_date")
+
+    if df[["series_id", "effective_date", "source", "revision"]].duplicated().any():
+        raise ValueError("Duplicate series_id/effective_date/source/revision rows are not allowed")
+
+    return df
+
+
+def _stringify_quality_flags(value: object) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        return "|".join(str(v) for v in value)
+    return str(value)
