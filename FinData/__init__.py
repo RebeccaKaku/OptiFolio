@@ -53,8 +53,8 @@ class FinData:
     def rate(self, rate_id="1y_cn"):
         return self._provider.rate(rate_id)
 
-    def fx_rate(self, from_cur, to_cur, date_str=None):
-        return self._provider.fx_rate(from_cur, to_cur, date_str=date_str)
+    def fx_rate(self, from_cur, to_cur, date_str=None, mode="fast"):
+        return self._provider.fx_rate(from_cur, to_cur, date_str=date_str, mode=mode)
 
     def export(self, symbol, start=None, end=None, format="csv"):
         return self._provider.export(symbol, start=start, end=end, format=format)
