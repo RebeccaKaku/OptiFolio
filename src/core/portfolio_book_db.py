@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import sqlite3
 import logging
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Dict, List, Callable
 
 from src.core.paths import PROJECT_ROOT
+from src.domain.products import ProductDefinition
 
 _log = logging.getLogger(__name__)
 
@@ -49,14 +51,13 @@ class PortfolioBookDatabase:
     explicit ``initialize()`` call creates the file and parent directory.
 
     Design principles:
-    - No business tables yet (accounts, products, etc. are added by
-      follow-up tasks).
+    - Business tables (accounts, products, etc.) are added via migrations.
     - Schema version is stored in a ``_schema_meta`` metadata table.
     - Higher versions are rejected (no silent downgrade).
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 1
+    CURRENT_SCHEMA_VERSION: int = 2
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
@@ -98,28 +99,27 @@ class PortfolioBookDatabase:
             row = cursor.fetchone()
 
             if row is None:
-                # First-time init: write current version
-                conn.execute(
-                    "INSERT INTO _schema_meta (key, value) VALUES ('version', ?)",
-                    (str(self.CURRENT_SCHEMA_VERSION),),
-                )
-                conn.commit()
-                _log.info(
-                    "PortfolioBookDatabase initialized at %s (v%d)",
-                    self._path, self.CURRENT_SCHEMA_VERSION,
-                )
+                stored = 0
             else:
                 stored = int(row[0])
-                if stored > self.CURRENT_SCHEMA_VERSION:
-                    raise UnsupportedSchemaVersionError(
-                        f"Database schema version {stored} is higher than "
-                        f"this code supports ({self.CURRENT_SCHEMA_VERSION}). "
-                        f"Upgrade OptiFolio or use a compatible database."
-                    )
-                # stored <= CURRENT — already compatible, nothing to do
+
+            if stored > self.CURRENT_SCHEMA_VERSION:
+                raise UnsupportedSchemaVersionError(
+                    f"Database schema version {stored} is higher than "
+                    f"this code supports ({self.CURRENT_SCHEMA_VERSION}). "
+                    f"Upgrade OptiFolio or use a compatible database."
+                )
+
+            if stored < self.CURRENT_SCHEMA_VERSION:
+                self._run_migrations(conn, stored, self.CURRENT_SCHEMA_VERSION)
+                _log.info(
+                    "PortfolioBookDatabase migrated from v%d to v%d at %s",
+                    stored, self.CURRENT_SCHEMA_VERSION, self._path,
+                )
+            else:
                 _log.debug(
-                    "PortfolioBookDatabase already at v%d (current: v%d)",
-                    stored, self.CURRENT_SCHEMA_VERSION,
+                    "PortfolioBookDatabase already at v%d",
+                    stored,
                 )
         except ValueError as exc:
             raise InvalidSchemaMetadataError(
@@ -178,16 +178,179 @@ class PortfolioBookDatabase:
         finally:
             conn.close()
 
-    # ── Future extension point ──────────────────────────────────────────
+    # ── Migrations ──────────────────────────────────────────────────────
 
-    # Migration dispatch placeholder.  When DS-002 (accounts) needs to
-    # create business tables, add a private _migrate(version: int) method
-    # and call it from initialize() after confirming the version.
-    #
-    # _migrations: dict[int, Callable[[sqlite3.Connection], None]] = {
-    #     # 1: _migrate_v1_create_accounts,
-    #     # 2: _migrate_v2_create_products,
-    # }
+    def _run_migrations(self, conn: sqlite3.Connection, from_v: int, to_v: int) -> None:
+        """Sequential migration runner."""
+        migrations: Dict[int, Callable[[sqlite3.Connection], None]] = {
+            1: self._migrate_v1,
+            2: self._migrate_v2,
+        }
+
+        for v in range(from_v + 1, to_v + 1):
+            if v in migrations:
+                _log.info("Running migration to v%d", v)
+                migrations[v](conn)
+                conn.execute(
+                    "INSERT OR REPLACE INTO _schema_meta (key, value) VALUES ('version', ?)",
+                    (str(v),),
+                )
+                conn.commit()
+
+    def _migrate_v1(self, conn: sqlite3.Connection) -> None:
+        """Initialize schema metadata (handled in initialize, but for completeness)."""
+        pass
+
+    def _migrate_v2(self, conn: sqlite3.Connection) -> None:
+        """Create products table."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS products (
+                product_id   TEXT PRIMARY KEY,
+                name         TEXT NOT NULL,
+                issuer       TEXT NOT NULL DEFAULT "",
+                product_type TEXT NOT NULL DEFAULT "bank_wmp",
+                currency     TEXT NOT NULL DEFAULT "CNY",
+                liquidity    TEXT NOT NULL DEFAULT "t_plus_1",
+                data_source  TEXT NOT NULL DEFAULT "manual",
+                isin         TEXT NOT NULL DEFAULT "",
+                notes        TEXT NOT NULL DEFAULT "",
+                extra_json   TEXT NOT NULL DEFAULT "{}",
+                created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    # ── Products CRUD ───────────────────────────────────────────────────
+
+    def create_product(self, product: ProductDefinition) -> None:
+        """Persist a new product definition."""
+        sql = """
+            INSERT INTO products (
+                product_id, name, issuer, product_type, currency,
+                liquidity, data_source, isin, notes, extra_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        data = self._to_row(product)
+        conn = self.connect()
+        try:
+            conn.execute(sql, data)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_product(self, product_id: str) -> Optional[ProductDefinition]:
+        """Fetch a product by its canonical ID."""
+        conn = self.connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM products WHERE product_id = ?", (product_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return self._from_row(row)
+        finally:
+            conn.close()
+
+    def update_product(self, product: ProductDefinition) -> None:
+        """Update an existing product definition."""
+        sql = """
+            UPDATE products SET
+                name = ?, issuer = ?, product_type = ?, currency = ?,
+                liquidity = ?, data_source = ?, isin = ?, notes = ?,
+                extra_json = ?, updated_at = datetime("now")
+            WHERE product_id = ?
+        """
+        # _to_row returns (product_id, name, issuer, type, cur, liq, src, isin, notes, extra)
+        # We need name, issuer, type, cur, liq, src, isin, notes, extra, product_id
+        row_data = self._to_row(product)
+        update_data = list(row_data[1:]) + [row_data[0]]
+        conn = self.connect()
+        try:
+            conn.execute(sql, update_data)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _to_row(self, p: ProductDefinition) -> tuple:
+        """Convert ProductDefinition to database row tuple."""
+        # Map fields
+        liquidity = p.liquidity_type or "unknown"
+        # Extract metadata and any other fields not in the table
+        known_cols = {
+            "product_id", "name", "issuer", "product_type", "currency",
+            "liquidity_type", "data_source", "isin", "notes"
+        }
+        # In SQL it's 'liquidity', in ProductDefinition it's 'liquidity_type'
+
+        extra = dict(p.metadata)
+        # Capture fields from ProductDefinition that are NOT in the table
+        # ProductDefinition: product_id, name, product_type, issuer, manager, currency,
+        # risk_level, liquidity_type, fee_policy_id, benchmark_id, primary_instrument_id,
+        # data_source, metadata
+
+        if p.manager: extra["manager"] = p.manager
+        if p.risk_level: extra["risk_level"] = p.risk_level
+        if p.fee_policy_id: extra["fee_policy_id"] = p.fee_policy_id
+        if p.benchmark_id: extra["benchmark_id"] = p.benchmark_id
+        if p.primary_instrument_id: extra["primary_instrument_id"] = p.primary_instrument_id
+
+        # We also need to handle isin and notes which might be in metadata or added to ProductDefinition?
+        # Let's check ProductDefinition again.
+        # It DOES NOT have isin or notes.
+        # But the SQL table wants them.
+        # So I should probably check metadata for them or they are just empty.
+        isin = extra.pop("isin", "")
+        notes = extra.pop("notes", "")
+
+        return (
+            p.product_id,
+            p.name,
+            p.issuer or "",
+            p.product_type,
+            p.currency,
+            liquidity,
+            p.data_source,
+            isin,
+            notes,
+            json.dumps(extra)
+        )
+
+    def _from_row(self, row: sqlite3.Row) -> ProductDefinition:
+        """Convert database row to ProductDefinition."""
+        extra = json.loads(row["extra_json"])
+
+        # Restore fields from extra if they exist
+        manager = extra.pop("manager", None)
+        risk_level = extra.pop("risk_level", None)
+        fee_policy_id = extra.pop("fee_policy_id", None)
+        benchmark_id = extra.pop("benchmark_id", None)
+        primary_instrument_id = extra.pop("primary_instrument_id", None)
+
+        # isin and notes were in the table, put them back into metadata if they were there?
+        # Or should they just stay in the table?
+        # Requirement: "Unknown fields preserved on round-trip"
+        # Since isin and notes are in the table but NOT in ProductDefinition dataclass,
+        # we should probably put them in metadata so they are not lost.
+        if row["isin"]: extra["isin"] = row["isin"]
+        if row["notes"]: extra["notes"] = row["notes"]
+
+        return ProductDefinition(
+            product_id=row["product_id"],
+            name=row["name"],
+            product_type=row["product_type"],
+            issuer=row["issuer"],
+            manager=manager,
+            currency=row["currency"],
+            risk_level=risk_level,
+            liquidity_type=row["liquidity"],
+            fee_policy_id=fee_policy_id,
+            benchmark_id=benchmark_id,
+            primary_instrument_id=primary_instrument_id,
+            data_source=row["data_source"],
+            metadata=extra
+        )
 
     @property
     def path(self) -> Path:

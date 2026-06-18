@@ -11,6 +11,7 @@ from src.core.portfolio_book_db import (
     UnsupportedSchemaVersionError,
     InvalidSchemaMetadataError,
 )
+from src.domain.products import ProductDefinition
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -70,15 +71,16 @@ class TestInitialize:
         assert db_tmp.path.exists()
         assert db_tmp.path.stat().st_size > 0
 
-    def test_schema_version_is_one_after_init(self, initialized):
-        """A freshly initialized database has schema version 1."""
-        assert initialized.schema_version() == 1
+    def test_schema_version_is_current_after_init(self, initialized):
+        """A freshly initialized database has current schema version."""
+        assert initialized.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
     def test_double_initialize_is_idempotent(self, initialized):
         """Calling initialize() twice does not corrupt the database."""
-        assert initialized.schema_version() == 1
+        current = PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
+        assert initialized.schema_version() == current
         initialized.initialize()  # second call
-        assert initialized.schema_version() == 1
+        assert initialized.schema_version() == current
 
 
 # ── Connection ─────────────────────────────────────────────────────────────
@@ -101,12 +103,37 @@ class TestConnect:
                 "SELECT key, value FROM _schema_meta WHERE key = 'version'"
             ).fetchone()
             assert row["key"] == "version"
-            assert row["value"] == "1"
+            assert row["value"] == str(PortfolioBookDatabase.CURRENT_SCHEMA_VERSION)
         finally:
             conn.close()
 
 
 # ── Schema version guards ──────────────────────────────────────────────────
+
+class TestSchemaMigrations:
+    def test_migrate_v1_to_v2(self, db_tmp):
+        """A v1 database is migrated to v2 on initialize()."""
+        # Create a v1 database manually
+        db_tmp.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_tmp.path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta (key, value) VALUES ('version', '1')")
+        conn.commit()
+        conn.close()
+
+        assert db_tmp.schema_version() == 1
+
+        # This should trigger migration to v2
+        db_tmp.initialize()
+        assert db_tmp.schema_version() == 2
+
+        # Verify products table exists
+        conn = db_tmp.connect()
+        try:
+            conn.execute("SELECT * FROM products")
+        finally:
+            conn.close()
+
 
 class TestSchemaVersionGuards:
     def test_higher_version_rejected(self, db_tmp):
@@ -188,6 +215,92 @@ class TestLocalUntouched:
             # It might exist from a previous run, but we didn't create it
             # in this test. Just verify our tmp path is what we used.
             pass  # OK — pre-existing, not created by this test
+
+
+# ── Products CRUD ───────────────────────────────────────────────────
+
+class TestProductsCRUD:
+    def test_create_and_get_product(self, initialized):
+        p = ProductDefinition(
+            product_id="PROD001",
+            name="Alpha Bank WMP",
+            product_type="bank_wmp",
+            issuer="Alpha Bank",
+            currency="CNY",
+            liquidity_type="t_plus_1",
+            data_source="manual"
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product("PROD001")
+        assert retrieved == p
+
+    def test_get_non_existent_product(self, initialized):
+        assert initialized.get_product("NO_SUCH_PROD") is None
+
+    def test_update_product(self, initialized):
+        p = ProductDefinition(
+            product_id="PROD001",
+            name="Initial Name",
+            product_type="bank_wmp",
+            issuer="Alpha Bank"
+        )
+        initialized.create_product(p)
+
+        p_updated = ProductDefinition(
+            product_id="PROD001",
+            name="Updated Name",
+            product_type="bank_wmp",
+            issuer="Beta Bank",
+            manager="Manager X"
+        )
+        initialized.update_product(p_updated)
+        retrieved = initialized.get_product("PROD001")
+        assert retrieved.name == "Updated Name"
+        assert retrieved.issuer == "Beta Bank"
+        assert retrieved.manager == "Manager X"
+
+    def test_unknown_fields_preserved(self, initialized):
+        """Fields in metadata and non-column fields are preserved."""
+        p = ProductDefinition(
+            product_id="PROD_EXTRA",
+            name="Extra Fields Product",
+            product_type="mixed_fund",
+            risk_level="R3",
+            manager="Expert Manager",
+            metadata={"secret_code": 12345, "tags": ["low-vol", "blue-chip"]}
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product("PROD_EXTRA")
+
+        assert retrieved.risk_level == "R3"
+        assert retrieved.manager == "Expert Manager"
+        assert retrieved.metadata["secret_code"] == 12345
+        assert retrieved.metadata["tags"] == ["low-vol", "blue-chip"]
+
+    def test_missing_liquidity_defaults_to_unknown(self, initialized):
+        p = ProductDefinition(
+            product_id="PROD_NO_LIQ",
+            name="No Liquidity Product",
+            product_type="other",
+            liquidity_type=None
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product("PROD_NO_LIQ")
+        assert retrieved.liquidity_type == "unknown"
+
+    @pytest.mark.parametrize("ptype", [
+        "bank_deposit", "bank_wmp", "money_market_fund", "bond_fund",
+        "equity_fund", "mixed_fund", "qdii_fund", "other"
+    ])
+    def test_product_types_round_trip(self, initialized, ptype):
+        p = ProductDefinition(
+            product_id=f"PROD_{ptype}",
+            name=f"Product {ptype}",
+            product_type=ptype
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product(f"PROD_{ptype}")
+        assert retrieved.product_type == ptype
 
 
 # ── Exception hierarchy ────────────────────────────────────────────────────
