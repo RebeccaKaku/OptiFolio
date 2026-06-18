@@ -285,8 +285,6 @@ class TestAccountCRUD:
         row_before = initialized.get_account("acc_upd")
         ts_before = row_before["updated_at"]
 
-        # Small sleep or manual wait isn't needed with sqlite datetime('now')
-        # but let's just check it changed if we can, or just that the field updated.
         initialized.update_account(
             "acc_upd", name="After", notes="Updated notes"
         )
@@ -294,7 +292,6 @@ class TestAccountCRUD:
         row_after = initialized.get_account("acc_upd")
         assert row_after["name"] == "After"
         assert row_after["notes"] == "Updated notes"
-        # updated_at should be >= ts_before (sqlite precision might be same)
         assert row_after["updated_at"] >= ts_before
 
     def test_update_account_validation(self, initialized):
@@ -314,3 +311,76 @@ class TestAccountCRUD:
 
         initialized.deactivate_account("acc_dea")
         assert initialized.get_account("acc_dea")["status"] == "inactive"
+
+
+# ── Backup & Restore ───────────────────────────────────────────────────────
+
+class TestBackupRestore:
+    def test_backup_creates_valid_sqlite_copy(self, initialized, tmp_path):
+        """backup() creates a file that verify_backup() accepts."""
+        backup_path = tmp_path / "backup.sqlite"
+        returned_path = initialized.backup(backup_path)
+
+        assert returned_path == backup_path
+        assert backup_path.exists()
+        assert initialized.verify_backup(backup_path) is True
+
+    def test_verify_returns_false_for_garbage(self, tmp_path):
+        """verify_backup() returns False for non-DB or corrupt files."""
+        db = PortfolioBookDatabase(path=tmp_path / "never_init.sqlite")
+
+        # 1. Non-existent file
+        assert db.verify_backup(tmp_path / "missing.sqlite") is False
+
+        # 2. Garbage file
+        garbage = tmp_path / "garbage.txt"
+        garbage.write_text("not a database")
+        assert db.verify_backup(garbage) is False
+
+        # 3. Valid SQLite but missing metadata table
+        empty_db = tmp_path / "empty.sqlite"
+        conn = sqlite3.connect(str(empty_db))
+        conn.execute("CREATE TABLE some_table (id INTEGER)")
+        conn.close()
+        assert db.verify_backup(empty_db) is False
+
+    def test_restore_refuses_overwrite_without_flag(self, initialized, tmp_path):
+        """restore_from() raises FileExistsError if target exists and overwrite=False."""
+        backup_path = initialized.backup(tmp_path / "backup.sqlite")
+
+        with pytest.raises(FileExistsError, match="overwrite=True"):
+            initialized.restore_from(backup_path, overwrite=False)
+
+    def test_restore_successful_with_overwrite(self, initialized, tmp_path):
+        """restore_from() replaces current DB content when overwrite=True."""
+        conn = initialized.connect()
+        conn.execute("CREATE TABLE test_data (val TEXT)")
+        conn.execute("INSERT INTO test_data VALUES ('hello')")
+        conn.commit()
+        conn.close()
+
+        backup_path = initialized.backup(tmp_path / "backup.sqlite")
+
+        conn = initialized.connect()
+        conn.execute("UPDATE test_data SET val = 'world'")
+        conn.commit()
+        conn.close()
+
+        initialized.restore_from(backup_path, overwrite=True)
+
+        conn = initialized.connect()
+        row = conn.execute("SELECT val FROM test_data").fetchone()
+        assert row["val"] == "hello"
+        conn.close()
+
+    def test_restore_fails_for_incompatible_version(self, initialized, tmp_path):
+        """restore_from() raises UnsupportedSchemaVersionError for newer backups."""
+        newer_path = tmp_path / "newer.sqlite"
+        conn = sqlite3.connect(str(newer_path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '99')")
+        conn.commit()
+        conn.close()
+
+        with pytest.raises(UnsupportedSchemaVersionError, match="99"):
+            initialized.restore_from(newer_path, overwrite=True)

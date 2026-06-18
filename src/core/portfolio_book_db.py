@@ -315,6 +315,89 @@ class PortfolioBookDatabase:
         """Set account status to 'inactive'."""
         self.update_account(account_id, status="inactive")
 
+    def backup(self, target_path: str | Path) -> Path:
+        """Create a consistent backup of the current database.
+
+        Args:
+            target_path: Destination for the backup file.
+
+        Returns:
+            The resolved backup Path.
+        """
+        target = Path(target_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        source_conn = self.connect()
+        dest_conn = sqlite3.connect(str(target))
+        try:
+            source_conn.backup(dest_conn)
+            _log.info("Backup created at %s", target)
+        finally:
+            dest_conn.close()
+            source_conn.close()
+
+        return target
+
+    def verify_backup(self, backup_path: str | Path) -> bool:
+        """Check if a file is a valid portfolio book backup.
+
+        Returns True if the file is a SQLite database with a valid
+        _schema_meta version, False otherwise.
+        """
+        path = Path(backup_path)
+        if not path.exists():
+            return False
+
+        try:
+            # We use a temporary DB instance to check the version
+            tmp_db = PortfolioBookDatabase(path=path)
+            # schema_version() raises if _schema_meta is missing or corrupt
+            tmp_db.schema_version()
+            return True
+        except (PortfolioBookError, sqlite3.Error, FileNotFoundError):
+            return False
+
+    def restore_from(self, backup_path: str | Path, overwrite: bool = False) -> None:
+        """Restore the database from a backup file.
+
+        Args:
+            backup_path: Path to the backup file.
+            overwrite: If True, replace an existing database file.
+
+        Raises:
+            FileExistsError: if the target database exists and overwrite=False.
+            PortfolioBookError: if the backup is invalid or incompatible.
+        """
+        backup_path = Path(backup_path)
+        if not self.verify_backup(backup_path):
+            raise PortfolioBookError(f"Invalid backup file: {backup_path}")
+
+        if self._path.exists() and not overwrite:
+            raise FileExistsError(
+                f"Database already exists at {self._path}. "
+                f"Use overwrite=True to restore anyway."
+            )
+
+        # Check version compatibility before restoring
+        backup_db = PortfolioBookDatabase(path=backup_path)
+        backup_version = backup_db.schema_version()
+        if backup_version > self.CURRENT_SCHEMA_VERSION:
+            raise UnsupportedSchemaVersionError(
+                f"Backup version {backup_version} is higher than "
+                f"this code supports ({self.CURRENT_SCHEMA_VERSION})."
+            )
+
+        # Use sqlite3 backup for consistent restore
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        dest_conn = sqlite3.connect(str(self._path))
+        source_conn = sqlite3.connect(str(backup_path))
+        try:
+            source_conn.backup(dest_conn)
+            _log.info("Database restored from %s", backup_path)
+        finally:
+            source_conn.close()
+            dest_conn.close()
+
     @property
     def path(self) -> Path:
         """The resolved database file path (read-only)."""

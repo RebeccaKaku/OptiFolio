@@ -1,0 +1,59 @@
+- generic [active] [ref=e1]:
+  - 'button "Google Account: Nuvola d''Argento (huolining3@gmail.com)" [ref=e8] [cursor=pointer]':
+    - img [ref=e11]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - button [ref=e16] [cursor=pointer]
+      - generic [ref=e21]:
+        - button "RebeccaKaku / latex-chinese-fonts" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]
+          - generic "RebeccaKaku/latex-chinese-fonts":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e24]: /
+            - generic: latex-chinese-fonts
+          - img [ref=e26]
+        - button "RebeccaKaku / MyBlog" [ref=e27] [cursor=pointer]:
+          - img [ref=e28]
+          - generic "RebeccaKaku/MyBlog":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e29]: /
+            - generic: MyBlog
+          - img [ref=e31]
+        - button "RebeccaKaku / OptiFolio" [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+          - generic "RebeccaKaku/OptiFolio":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e34]: /
+            - generic: OptiFolio
+          - img [ref=e36]
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - link "jules" [ref=e40] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e41]:
+            - img [ref=e43]
+            - generic: jules
+        - generic [ref=e45]:
+          - button "Gemini 3.1 Pro" [ref=e47] [cursor=pointer]:
+            - generic [ref=e48]: Gemini 3.1 Pro
+            - img [ref=e49]:
+              - img [ref=e50]
+          - button [ref=e52] [cursor=pointer]:
+            - img [ref=e54]: light_mode
+          - button [ref=e55] [cursor=pointer]:
+            - img [ref=e57]:
+              - img [ref=e58]
+          - button "Feedback" [ref=e63] [cursor=pointer]:
+            - img [ref=e64]:
+              - img [ref=e65]
+            - generic [ref=e68]: Feedback
+          - link [ref=e69] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e70]:
+              - img [ref=e71]
+          - link "PRO" [ref=e75] [cursor=pointer]:
+            - /url: /settings
+      - img [ref=e80]

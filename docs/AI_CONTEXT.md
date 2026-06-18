@@ -1,5 +1,7 @@
 # OptiFolio AI Context Document
 
+> **Product priority:** Read `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` before proposing or implementing new work. It is the current product north star and overrides older feature queues when priorities conflict.
+
 > This document is the source of truth for AI assistants working on this codebase.
 > Last updated: 2026-06-05. Always cross-check with `docs/CURRENT_STATE_2026-06-05.md`.
 

@@ -1,0 +1,65 @@
+- generic [active] [ref=e1]:
+  - 'button "Google Account: Nuvola d''Argento (huolining3@gmail.com)" [ref=e8] [cursor=pointer]':
+    - img [ref=e11]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - button [ref=e16] [cursor=pointer]
+      - generic [ref=e21]:
+        - button "RebeccaKaku / latex-chinese-fonts" [ref=e22] [cursor=pointer]:
+          - img [ref=e23]:
+            - img [ref=e24]
+          - generic "RebeccaKaku/latex-chinese-fonts":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e28]: /
+            - generic: latex-chinese-fonts
+          - img [ref=e30]:
+            - img [ref=e31]
+        - button "RebeccaKaku / MyBlog" [ref=e33] [cursor=pointer]:
+          - img [ref=e34]:
+            - img [ref=e35]
+          - generic "RebeccaKaku/MyBlog":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e39]: /
+            - generic: MyBlog
+          - img [ref=e41]:
+            - img [ref=e42]
+        - button "RebeccaKaku / OptiFolio" [ref=e44] [cursor=pointer]:
+          - img [ref=e45]:
+            - img [ref=e46]
+          - generic "RebeccaKaku/OptiFolio":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e50]: /
+            - generic: OptiFolio
+          - img [ref=e52]:
+            - img [ref=e53]
+    - generic [ref=e55]:
+      - generic [ref=e56]:
+        - link "jules" [ref=e58] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e59]:
+            - img [ref=e61]
+            - generic: jules
+        - generic [ref=e63]:
+          - button "Gemini 3.1 Pro" [ref=e65] [cursor=pointer]:
+            - generic [ref=e66]: Gemini 3.1 Pro
+            - img [ref=e67]:
+              - img [ref=e68]
+          - button [ref=e70] [cursor=pointer]:
+            - img [ref=e72]: light_mode
+          - button [ref=e73] [cursor=pointer]:
+            - img [ref=e75]:
+              - img [ref=e76]
+          - button "Feedback" [ref=e81] [cursor=pointer]:
+            - img [ref=e82]:
+              - img [ref=e83]
+            - generic [ref=e86]: Feedback
+          - link [ref=e87] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e88]:
+              - img [ref=e89]
+          - link "PRO" [ref=e93] [cursor=pointer]:
+            - /url: /settings
+      - img [ref=e98]
