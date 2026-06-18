@@ -18,6 +18,7 @@ from __future__ import annotations
 import sqlite3
 import logging
 import json
+from contextlib import closing
 from pathlib import Path
 from typing import Optional, Any, Dict, List, Callable
 
@@ -57,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 2
+    CURRENT_SCHEMA_VERSION: int = 3
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
@@ -191,15 +192,28 @@ class PortfolioBookDatabase:
             if v in migrations:
                 _log.info("Running migration to v%d", v)
                 migrations[v](conn)
-                conn.execute(
-                    "INSERT OR REPLACE INTO _schema_meta (key, value) VALUES ('version', ?)",
-                    (str(v),),
-                )
-                conn.commit()
+            conn.execute(
+                "INSERT OR REPLACE INTO _schema_meta (key, value) VALUES ('version', ?)",
+                (str(v),),
+            )
+            conn.commit()
 
     def _migrate_v1(self, conn: sqlite3.Connection) -> None:
-        """Initialize schema metadata (handled in initialize, but for completeness)."""
-        pass
+        """Create accounts table."""
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS accounts ("
+            "    account_id   TEXT PRIMARY KEY,"
+            "    name         TEXT NOT NULL,"
+            "    institution  TEXT NOT NULL DEFAULT '',"
+            "    account_type TEXT NOT NULL DEFAULT 'brokerage',"
+            "    base_currency TEXT NOT NULL DEFAULT 'CNY',"
+            "    ownership_scope TEXT NOT NULL DEFAULT 'personal',"
+            "    status       TEXT NOT NULL DEFAULT 'active',"
+            "    notes        TEXT NOT NULL DEFAULT '',"
+            "    created_at   TEXT NOT NULL DEFAULT (datetime('now')),"
+            "    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
 
     def _migrate_v2(self, conn: sqlite3.Connection) -> None:
         """Create products table."""
@@ -351,6 +365,106 @@ class PortfolioBookDatabase:
             data_source=row["data_source"],
             metadata=extra
         )
+
+    # ── Accounts CRUD ───────────────────────────────────────────────────
+
+    def create_account(
+        self, account_id: str, name: str, institution: str = "",
+        account_type: str = "brokerage", base_currency: str = "CNY",
+        ownership_scope: str = "personal", notes: str = "",
+    ) -> None:
+        if ownership_scope not in ("personal", "joint"):
+            raise ValueError(
+                f"Invalid ownership_scope: {ownership_scope}. Must be 'personal' or 'joint'."
+            )
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(
+                    "INSERT INTO accounts (account_id, name, institution, "
+                    "  account_type, base_currency, ownership_scope, notes) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (account_id, name, institution, account_type,
+                     base_currency, ownership_scope, notes),
+                )
+
+    def get_account(self, account_id: str) -> Optional[sqlite3.Row]:
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                "SELECT * FROM accounts WHERE account_id = ?", (account_id,)
+            ).fetchone()
+
+    def update_account(self, account_id: str, **kwargs: Any) -> None:
+        if "ownership_scope" in kwargs:
+            if kwargs["ownership_scope"] not in ("personal", "joint"):
+                raise ValueError("Invalid ownership_scope")
+        if "status" in kwargs:
+            if kwargs["status"] not in ("active", "inactive"):
+                raise ValueError("Invalid status")
+        if not kwargs:
+            return
+        fields = [f"{k} = ?" for k in kwargs]
+        values = list(kwargs.values())
+        fields.append("updated_at = (datetime('now'))")
+        values.append(account_id)
+        sql = f"UPDATE accounts SET {', '.join(fields)} WHERE account_id = ?"
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(sql, tuple(values))
+
+    def deactivate_account(self, account_id: str) -> None:
+        self.update_account(account_id, status="inactive")
+
+    # ── Backup & Restore ────────────────────────────────────────────────
+
+    def backup(self, target_path: str | Path) -> Path:
+        target = Path(target_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source_conn = self.connect()
+        dest_conn = sqlite3.connect(str(target))
+        try:
+            source_conn.backup(dest_conn)
+            _log.info("Backup created at %s", target)
+        finally:
+            dest_conn.close()
+            source_conn.close()
+        return target
+
+    def verify_backup(self, backup_path: str | Path) -> bool:
+        path = Path(backup_path)
+        if not path.exists():
+            return False
+        try:
+            tmp_db = PortfolioBookDatabase(path=path)
+            tmp_db.schema_version()
+            return True
+        except (PortfolioBookError, sqlite3.Error, FileNotFoundError):
+            return False
+
+    def restore_from(self, backup_path: str | Path, overwrite: bool = False) -> None:
+        backup_path = Path(backup_path)
+        if not self.verify_backup(backup_path):
+            raise PortfolioBookError(f"Invalid backup file: {backup_path}")
+        if self._path.exists() and not overwrite:
+            raise FileExistsError(
+                f"Database already exists at {self._path}. "
+                f"Use overwrite=True to restore anyway."
+            )
+        backup_db = PortfolioBookDatabase(path=backup_path)
+        backup_version = backup_db.schema_version()
+        if backup_version > self.CURRENT_SCHEMA_VERSION:
+            raise UnsupportedSchemaVersionError(
+                f"Backup version {backup_version} is higher than "
+                f"this code supports ({self.CURRENT_SCHEMA_VERSION})."
+            )
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        dest_conn = sqlite3.connect(str(self._path))
+        source_conn = sqlite3.connect(str(backup_path))
+        try:
+            source_conn.backup(dest_conn)
+            _log.info("Database restored from %s", backup_path)
+        finally:
+            source_conn.close()
+            dest_conn.close()
 
     @property
     def path(self) -> Path:

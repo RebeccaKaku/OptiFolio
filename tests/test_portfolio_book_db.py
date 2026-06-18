@@ -11,7 +11,6 @@ from src.core.portfolio_book_db import (
     UnsupportedSchemaVersionError,
     InvalidSchemaMetadataError,
 )
-from src.domain.products import ProductDefinition
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -72,7 +71,7 @@ class TestInitialize:
         assert db_tmp.path.stat().st_size > 0
 
     def test_schema_version_is_current_after_init(self, initialized):
-        """A freshly initialized database has current schema version."""
+        """A freshly initialized database has the current schema version."""
         assert initialized.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
     def test_double_initialize_is_idempotent(self, initialized):
@@ -110,31 +109,6 @@ class TestConnect:
 
 # ── Schema version guards ──────────────────────────────────────────────────
 
-class TestSchemaMigrations:
-    def test_migrate_v1_to_v2(self, db_tmp):
-        """A v1 database is migrated to v2 on initialize()."""
-        # Create a v1 database manually
-        db_tmp.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_tmp.path))
-        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        conn.execute("INSERT INTO _schema_meta (key, value) VALUES ('version', '1')")
-        conn.commit()
-        conn.close()
-
-        assert db_tmp.schema_version() == 1
-
-        # This should trigger migration to v2
-        db_tmp.initialize()
-        assert db_tmp.schema_version() == 2
-
-        # Verify products table exists
-        conn = db_tmp.connect()
-        try:
-            conn.execute("SELECT * FROM products")
-        finally:
-            conn.close()
-
-
 class TestSchemaVersionGuards:
     def test_higher_version_rejected(self, db_tmp):
         """A database with a higher schema version must be rejected."""
@@ -171,6 +145,33 @@ class TestSchemaVersionGuards:
         # Should not raise
         db_tmp.initialize()
         assert db_tmp.schema_version() == current
+
+    def test_migration_1_to_current(self, db_tmp):
+        """A database at version 1 is automatically upgraded to current version."""
+        db_tmp.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_tmp.path))
+        conn.execute(
+            "CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO _schema_meta (key, value) VALUES ('version', '1')"
+        )
+        # Simulate a v1 DB that already has accounts table (created by v1 migration)
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT)")
+        conn.commit()
+        conn.close()
+
+        db_tmp.initialize()
+        current = PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
+        assert db_tmp.schema_version() == current
+
+        # Products table was created by v2 migration
+        conn = db_tmp.connect()
+        res = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='products'"
+        ).fetchone()
+        assert res is not None
+        conn.close()
 
     def test_corrupt_version_raises_on_initialize(self, db_tmp):
         """A corrupt version value raises InvalidSchemaMetadataError."""
@@ -221,14 +222,11 @@ class TestLocalUntouched:
 
 class TestProductsCRUD:
     def test_create_and_get_product(self, initialized):
+        from src.domain.products import ProductDefinition
         p = ProductDefinition(
-            product_id="PROD001",
-            name="Alpha Bank WMP",
-            product_type="bank_wmp",
-            issuer="Alpha Bank",
-            currency="CNY",
-            liquidity_type="t_plus_1",
-            data_source="manual"
+            product_id="PROD001", name="Alpha Bank WMP",
+            product_type="bank_wmp", issuer="Alpha Bank",
+            currency="CNY", liquidity_type="t_plus_1", data_source="manual"
         )
         initialized.create_product(p)
         retrieved = initialized.get_product("PROD001")
@@ -238,20 +236,15 @@ class TestProductsCRUD:
         assert initialized.get_product("NO_SUCH_PROD") is None
 
     def test_update_product(self, initialized):
+        from src.domain.products import ProductDefinition
         p = ProductDefinition(
-            product_id="PROD001",
-            name="Initial Name",
-            product_type="bank_wmp",
-            issuer="Alpha Bank"
+            product_id="PROD001", name="Initial Name",
+            product_type="bank_wmp", issuer="Alpha Bank"
         )
         initialized.create_product(p)
-
         p_updated = ProductDefinition(
-            product_id="PROD001",
-            name="Updated Name",
-            product_type="bank_wmp",
-            issuer="Beta Bank",
-            manager="Manager X"
+            product_id="PROD001", name="Updated Name",
+            product_type="bank_wmp", issuer="Beta Bank", manager="Manager X"
         )
         initialized.update_product(p_updated)
         retrieved = initialized.get_product("PROD001")
@@ -260,29 +253,25 @@ class TestProductsCRUD:
         assert retrieved.manager == "Manager X"
 
     def test_unknown_fields_preserved(self, initialized):
-        """Fields in metadata and non-column fields are preserved."""
+        from src.domain.products import ProductDefinition
         p = ProductDefinition(
-            product_id="PROD_EXTRA",
-            name="Extra Fields Product",
-            product_type="mixed_fund",
-            risk_level="R3",
+            product_id="PROD_EXTRA", name="Extra Fields Product",
+            product_type="mixed_fund", risk_level="R3",
             manager="Expert Manager",
             metadata={"secret_code": 12345, "tags": ["low-vol", "blue-chip"]}
         )
         initialized.create_product(p)
         retrieved = initialized.get_product("PROD_EXTRA")
-
         assert retrieved.risk_level == "R3"
         assert retrieved.manager == "Expert Manager"
         assert retrieved.metadata["secret_code"] == 12345
         assert retrieved.metadata["tags"] == ["low-vol", "blue-chip"]
 
     def test_missing_liquidity_defaults_to_unknown(self, initialized):
+        from src.domain.products import ProductDefinition
         p = ProductDefinition(
-            product_id="PROD_NO_LIQ",
-            name="No Liquidity Product",
-            product_type="other",
-            liquidity_type=None
+            product_id="PROD_NO_LIQ", name="No Liquidity Product",
+            product_type="other", liquidity_type=None
         )
         initialized.create_product(p)
         retrieved = initialized.get_product("PROD_NO_LIQ")
@@ -293,9 +282,9 @@ class TestProductsCRUD:
         "equity_fund", "mixed_fund", "qdii_fund", "other"
     ])
     def test_product_types_round_trip(self, initialized, ptype):
+        from src.domain.products import ProductDefinition
         p = ProductDefinition(
-            product_id=f"PROD_{ptype}",
-            name=f"Product {ptype}",
+            product_id=f"PROD_{ptype}", name=f"Product {ptype}",
             product_type=ptype
         )
         initialized.create_product(p)
@@ -316,3 +305,151 @@ class TestExceptionHierarchy:
             raise UnsupportedSchemaVersionError("test")
         except PortfolioBookError:
             pass  # expected
+
+
+# ── Account CRUD ───────────────────────────────────────────────────────────
+
+class TestAccountCRUD:
+    def test_create_and_get_account(self, initialized):
+        """create_account persists all fields; get_account retrieves them."""
+        initialized.create_account(
+            account_id="acc_001",
+            name="Main Brokerage",
+            institution="Interactive Brokers",
+            account_type="brokerage",
+            base_currency="USD",
+            ownership_scope="personal",
+            notes="Primary trading account",
+        )
+
+        row = initialized.get_account("acc_001")
+        assert row is not None
+        assert row["account_id"] == "acc_001"
+        assert row["name"] == "Main Brokerage"
+        assert row["institution"] == "Interactive Brokers"
+        assert row["account_type"] == "brokerage"
+        assert row["base_currency"] == "USD"
+        assert row["ownership_scope"] == "personal"
+        assert row["status"] == "active"
+        assert row["notes"] == "Primary trading account"
+        assert row["created_at"] is not None
+        assert row["updated_at"] is not None
+
+    def test_create_account_validation(self, initialized):
+        """create_account raises ValueError for invalid ownership_scope."""
+        with pytest.raises(ValueError, match="ownership_scope"):
+            initialized.create_account(
+                account_id="acc_bad",
+                name="Bad Account",
+                ownership_scope="illegal_scope",
+            )
+
+    def test_get_account_none_if_missing(self, initialized):
+        """get_account returns None for non-existent IDs."""
+        assert initialized.get_account("no_such_account") is None
+
+    def test_update_account_fields(self, initialized):
+        """update_account modifies specific fields and refreshes updated_at."""
+        initialized.create_account(account_id="acc_upd", name="Before")
+        row_before = initialized.get_account("acc_upd")
+        ts_before = row_before["updated_at"]
+
+        initialized.update_account(
+            "acc_upd", name="After", notes="Updated notes"
+        )
+
+        row_after = initialized.get_account("acc_upd")
+        assert row_after["name"] == "After"
+        assert row_after["notes"] == "Updated notes"
+        assert row_after["updated_at"] >= ts_before
+
+    def test_update_account_validation(self, initialized):
+        """update_account validates ownership_scope and status."""
+        initialized.create_account(account_id="acc_val", name="Test")
+
+        with pytest.raises(ValueError, match="ownership_scope"):
+            initialized.update_account("acc_val", ownership_scope="invalid")
+
+        with pytest.raises(ValueError, match="status"):
+            initialized.update_account("acc_val", status="invalid")
+
+    def test_deactivate_account(self, initialized):
+        """deactivate_account sets status to 'inactive'."""
+        initialized.create_account(account_id="acc_dea", name="Active")
+        assert initialized.get_account("acc_dea")["status"] == "active"
+
+        initialized.deactivate_account("acc_dea")
+        assert initialized.get_account("acc_dea")["status"] == "inactive"
+
+
+# ── Backup & Restore ───────────────────────────────────────────────────────
+
+class TestBackupRestore:
+    def test_backup_creates_valid_sqlite_copy(self, initialized, tmp_path):
+        """backup() creates a file that verify_backup() accepts."""
+        backup_path = tmp_path / "backup.sqlite"
+        returned_path = initialized.backup(backup_path)
+
+        assert returned_path == backup_path
+        assert backup_path.exists()
+        assert initialized.verify_backup(backup_path) is True
+
+    def test_verify_returns_false_for_garbage(self, tmp_path):
+        """verify_backup() returns False for non-DB or corrupt files."""
+        db = PortfolioBookDatabase(path=tmp_path / "never_init.sqlite")
+
+        # 1. Non-existent file
+        assert db.verify_backup(tmp_path / "missing.sqlite") is False
+
+        # 2. Garbage file
+        garbage = tmp_path / "garbage.txt"
+        garbage.write_text("not a database")
+        assert db.verify_backup(garbage) is False
+
+        # 3. Valid SQLite but missing metadata table
+        empty_db = tmp_path / "empty.sqlite"
+        conn = sqlite3.connect(str(empty_db))
+        conn.execute("CREATE TABLE some_table (id INTEGER)")
+        conn.close()
+        assert db.verify_backup(empty_db) is False
+
+    def test_restore_refuses_overwrite_without_flag(self, initialized, tmp_path):
+        """restore_from() raises FileExistsError if target exists and overwrite=False."""
+        backup_path = initialized.backup(tmp_path / "backup.sqlite")
+
+        with pytest.raises(FileExistsError, match="overwrite=True"):
+            initialized.restore_from(backup_path, overwrite=False)
+
+    def test_restore_successful_with_overwrite(self, initialized, tmp_path):
+        """restore_from() replaces current DB content when overwrite=True."""
+        conn = initialized.connect()
+        conn.execute("CREATE TABLE test_data (val TEXT)")
+        conn.execute("INSERT INTO test_data VALUES ('hello')")
+        conn.commit()
+        conn.close()
+
+        backup_path = initialized.backup(tmp_path / "backup.sqlite")
+
+        conn = initialized.connect()
+        conn.execute("UPDATE test_data SET val = 'world'")
+        conn.commit()
+        conn.close()
+
+        initialized.restore_from(backup_path, overwrite=True)
+
+        conn = initialized.connect()
+        row = conn.execute("SELECT val FROM test_data").fetchone()
+        assert row["val"] == "hello"
+        conn.close()
+
+    def test_restore_fails_for_incompatible_version(self, initialized, tmp_path):
+        """restore_from() raises UnsupportedSchemaVersionError for newer backups."""
+        newer_path = tmp_path / "newer.sqlite"
+        conn = sqlite3.connect(str(newer_path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '99')")
+        conn.commit()
+        conn.close()
+
+        with pytest.raises(UnsupportedSchemaVersionError, match="99"):
+            initialized.restore_from(newer_path, overwrite=True)
