@@ -655,12 +655,12 @@ class EnhancedAssetManager(IAssetManager):
             
             # 只保存最新的几条记录
             recent_df = price_df.tail(5)
-            added_count = 0
             
+            price_data_list = []
             for idx, row in recent_df.iterrows():
                 date_str = idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)
                 
-                price_data = {
+                price_data_list.append({
                     'date': date_str,
                     'open': float(row.get('open', row.get('Close', 0))),
                     'high': float(row.get('high', row.get('Close', 0))),
@@ -668,13 +668,14 @@ class EnhancedAssetManager(IAssetManager):
                     'close': float(row.get('close', row.get('Close', 0))),
                     'volume': float(row.get('volume', 0)),
                     'source': 'fetcher'
-                }
+                })
                 
-                try:
-                    self.db.add_price_data(symbol, price_data)
-                    added_count += 1
-                except:
-                    pass
+            try:
+                # 使用批量添加方法提升性能
+                added_count = self.db.add_price_data_batch(symbol, price_data_list)
+            except Exception as e:
+                print(f"[最新价格保存失败] {symbol}: {e}")
+                added_count = 0
             
             return added_count
             
