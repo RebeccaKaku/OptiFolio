@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 3
+    CURRENT_SCHEMA_VERSION: int = 4
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
@@ -186,12 +186,15 @@ class PortfolioBookDatabase:
         migrations: Dict[int, Callable[[sqlite3.Connection], None]] = {
             1: self._migrate_v1,
             2: self._migrate_v2,
+            3: self._migrate_v3,
         }
 
         for v in range(from_v + 1, to_v + 1):
             if v in migrations:
                 _log.info("Running migration to v%d", v)
                 migrations[v](conn)
+            elif v == 4:
+                _log.debug("No changes for v4")
             conn.execute(
                 "INSERT OR REPLACE INTO _schema_meta (key, value) VALUES ('version', ?)",
                 (str(v),),
@@ -232,6 +235,44 @@ class PortfolioBookDatabase:
                 extra_json   TEXT NOT NULL DEFAULT "{}",
                 created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    def _migrate_v3(self, conn: sqlite3.Connection) -> None:
+        """Create snapshot_batches and position_snapshots tables."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snapshot_batches (
+                batch_id   TEXT PRIMARY KEY,
+                status     TEXT NOT NULL DEFAULT 'draft',
+                as_of      TEXT NOT NULL,
+                source     TEXT DEFAULT 'manual',
+                quality    TEXT DEFAULT 'reported',
+                notes      TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS position_snapshots (
+                snapshot_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id      TEXT NOT NULL,
+                account_id    TEXT NOT NULL,
+                product_id    TEXT NOT NULL,
+                quantity      REAL NOT NULL,
+                market_value  REAL,
+                cost_basis    REAL,
+                currency      TEXT DEFAULT 'CNY',
+                source        TEXT,
+                quality       TEXT,
+                notes         TEXT,
+                UNIQUE(batch_id, account_id, product_id),
+                FOREIGN KEY (batch_id) REFERENCES snapshot_batches(batch_id),
+                FOREIGN KEY (account_id) REFERENCES accounts(account_id),
+                FOREIGN KEY (product_id) REFERENCES products(product_id)
             )
             """
         )
@@ -413,6 +454,91 @@ class PortfolioBookDatabase:
 
     def deactivate_account(self, account_id: str) -> None:
         self.update_account(account_id, status="inactive")
+
+    # ── Snapshots CRUD ──────────────────────────────────────────────────
+
+    def create_snapshot_batch(
+        self, batch_id: str, as_of: str, source: str = 'manual',
+        quality: str = 'reported', notes: Optional[str] = None
+    ) -> None:
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(
+                    "INSERT INTO snapshot_batches (batch_id, as_of, source, quality, notes) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (batch_id, as_of, source, quality, notes)
+                )
+
+    def add_snapshot(
+        self, batch_id: str, account_id: str, product_id: str,
+        quantity: float, market_value: Optional[float] = None,
+        cost_basis: Optional[float] = None, currency: str = 'CNY',
+        source: Optional[str] = None, quality: Optional[str] = None,
+        notes: Optional[str] = None
+    ) -> None:
+        with closing(self.connect()) as conn:
+            with conn:
+                batch = conn.execute(
+                    "SELECT status FROM snapshot_batches WHERE batch_id = ?",
+                    (batch_id,)
+                ).fetchone()
+                if not batch:
+                    raise PortfolioBookError(f"Batch {batch_id} not found")
+                if batch["status"] != "draft":
+                    raise PortfolioBookError(f"Cannot add to {batch['status']} batch {batch_id}")
+
+                conn.execute(
+                    "INSERT INTO position_snapshots (batch_id, account_id, product_id, quantity, "
+                    "market_value, cost_basis, currency, source, quality, notes) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (batch_id, account_id, product_id, quantity, market_value,
+                     cost_basis, currency, source, quality, notes)
+                )
+
+    def confirm_batch(self, batch_id: str) -> None:
+        with closing(self.connect()) as conn:
+            with conn:
+                cursor = conn.execute(
+                    "UPDATE snapshot_batches SET status = 'confirmed', "
+                    "updated_at = CURRENT_TIMESTAMP WHERE batch_id = ? AND status = 'draft'",
+                    (batch_id,)
+                )
+                if cursor.rowcount == 0:
+                    # Check if it exists at all
+                    batch = conn.execute(
+                        "SELECT status FROM snapshot_batches WHERE batch_id = ?",
+                        (batch_id,)
+                    ).fetchone()
+                    if not batch:
+                        raise PortfolioBookError(f"Batch {batch_id} not found")
+                    else:
+                        raise PortfolioBookError(f"Batch {batch_id} is already {batch['status']}")
+
+    def supersede_batch(self, batch_id: str) -> None:
+        with closing(self.connect()) as conn:
+            with conn:
+                cursor = conn.execute(
+                    "UPDATE snapshot_batches SET status = 'superseded', "
+                    "updated_at = CURRENT_TIMESTAMP WHERE batch_id = ?",
+                    (batch_id,)
+                )
+                if cursor.rowcount == 0:
+                    raise PortfolioBookError(f"Batch {batch_id} not found")
+
+    def get_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        with closing(self.connect()) as conn:
+            batch_row = conn.execute(
+                "SELECT * FROM snapshot_batches WHERE batch_id = ?", (batch_id,)
+            ).fetchone()
+            if not batch_row:
+                return None
+
+            batch = dict(batch_row)
+            snapshot_rows = conn.execute(
+                "SELECT * FROM position_snapshots WHERE batch_id = ?", (batch_id,)
+            ).fetchall()
+            batch["snapshots"] = [dict(row) for row in snapshot_rows]
+            return batch
 
     # ── Backup & Restore ────────────────────────────────────────────────
 

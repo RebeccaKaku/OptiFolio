@@ -453,3 +453,88 @@ class TestBackupRestore:
 
         with pytest.raises(UnsupportedSchemaVersionError, match="99"):
             initialized.restore_from(newer_path, overwrite=True)
+
+# ── Snapshots ──────────────────────────────────────────────────────────────
+
+class TestSnapshots:
+    @pytest.fixture
+    def setup_data(self, initialized):
+        from src.domain.products import ProductDefinition
+        initialized.create_account(account_id="acc_1", name="Test Account")
+        p = ProductDefinition(
+            product_id="prod_1", name="Test Product",
+            product_type="equity_fund", currency="CNY"
+        )
+        initialized.create_product(p)
+        return "acc_1", "prod_1"
+
+    def test_full_batch_workflow(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        batch_id = "batch_20231027"
+
+        # 1. Create draft
+        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27", notes="Initial sync")
+        batch = initialized.get_batch(batch_id)
+        assert batch["status"] == "draft"
+        assert len(batch["snapshots"]) == 0
+
+        # 2. Add snapshot
+        initialized.add_snapshot(
+            batch_id, acc_id, prod_id, quantity=100.0, market_value=1234.56, cost_basis=1000.0
+        )
+        batch = initialized.get_batch(batch_id)
+        assert len(batch["snapshots"]) == 1
+        snap = batch["snapshots"][0]
+        assert snap["account_id"] == acc_id
+        assert snap["product_id"] == prod_id
+        assert snap["quantity"] == 100.0
+
+        # 3. Confirm
+        initialized.confirm_batch(batch_id)
+        batch = initialized.get_batch(batch_id)
+        assert batch["status"] == "confirmed"
+
+    def test_add_to_confirmed_batch_raises(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        batch_id = "batch_fixed"
+        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
+        initialized.confirm_batch(batch_id)
+
+        with pytest.raises(PortfolioBookError, match="Cannot add to confirmed batch"):
+            initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=50.0)
+
+    def test_confirm_non_existent_batch_raises(self, initialized):
+        with pytest.raises(PortfolioBookError, match="not found"):
+            initialized.confirm_batch("no_such_batch")
+
+    def test_supersede_batch(self, initialized):
+        batch_id = "batch_old"
+        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
+        initialized.confirm_batch(batch_id)
+
+        initialized.supersede_batch(batch_id)
+        batch = initialized.get_batch(batch_id)
+        assert batch["status"] == "superseded"
+
+    def test_fk_constraints(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        batch_id = "batch_fk"
+        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
+
+        # Invalid account
+        with pytest.raises(sqlite3.IntegrityError):
+            initialized.add_snapshot(batch_id, "invalid_acc", prod_id, quantity=10)
+
+        # Invalid product
+        with pytest.raises(sqlite3.IntegrityError):
+            initialized.add_snapshot(batch_id, acc_id, "invalid_prod", quantity=10)
+
+    def test_unique_constraint(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        batch_id = "batch_uniq"
+        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
+
+        initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=10)
+
+        with pytest.raises(sqlite3.IntegrityError):
+            initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=20)
