@@ -3,7 +3,7 @@
 import re
 import time
 import asyncio
-from . import FetcherProtocol, FetchResult
+from . import FetcherProtocol, FetchResult, _run_async
 
 
 class BankWmpFetcher(FetcherProtocol):
@@ -63,11 +63,11 @@ class BankWmpFetcher(FetcherProtocol):
 
         try:
             if kind == "boc":
-                df = asyncio.run(self._get_boc().fetch(symbol, start_date, end_date, **kwargs))
+                df = _run_async(self._get_boc().fetch(symbol, start_date, end_date, **kwargs))
             elif kind == "icbc":
-                df = asyncio.run(self._get_icbc().fetch(symbol, start_date, end_date, **kwargs))
+                df = _run_async(self._get_icbc().fetch(symbol, start_date, end_date, **kwargs))
             elif kind == "bosc":
-                df = asyncio.run(self._get_bosc().fetch(symbol, start_date, end_date, **kwargs))
+                df = _run_async(self._get_bosc().fetch(symbol, start_date, end_date, **kwargs))
             else:
                 return FetchResult(
                     symbol=symbol, provider=self.PROVIDER, data=None,
