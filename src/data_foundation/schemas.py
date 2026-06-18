@@ -58,6 +58,43 @@ def _canonical_column_name(name: object) -> str:
     return _COLUMN_ALIASES.get(normalized, normalized.replace(" ", "_"))
 
 
+def infer_market_timezone(asset_id: str) -> str:
+    """Infer exchange timezone from asset_id patterns.
+
+    - Namespaced IDs: US_EQ:AAPL -> America/New_York, CN_STOCK:600519 -> Asia/Shanghai
+    - CN 6-digit or CN_ prefix -> Asia/Shanghai
+    - US_ prefix or alphabetic (e.g. AAPL) -> America/New_York
+    - HK_ prefix -> Asia/Hong_Kong
+    - FX_, CRYPTO_ or 6-letter currency pairs -> UTC
+    """
+    import re
+
+    aid = str(asset_id).upper().strip()
+
+    if ":" in aid:
+        namespace = aid.split(":")[0]
+        if namespace in ("US_EQ", "US_ETF"):
+            return "America/New_York"
+        if namespace in ("CN_STOCK", "CN_FUND", "ICBC_WM", "BOC_WM", "BOSC_WM"):
+            return "Asia/Shanghai"
+        if namespace == "HK_EQ":
+            return "Asia/Hong_Kong"
+        if namespace in ("CRYPTO", "FOREX", "FX"):
+            return "UTC"
+
+    # Fallback to pattern matching
+    if aid.startswith("FX_") or aid.startswith("CRYPTO_") or re.match(r"^[A-Z]{6}$", aid):
+        return "UTC"
+    if aid.startswith("CN_") or re.match(r"^\d{6}$", aid):
+        return "Asia/Shanghai"
+    if aid.startswith("HK_"):
+        return "Asia/Hong_Kong"
+    if aid.startswith("US_") or re.match(r"^[A-Z.]+$", aid):
+        return "America/New_York"
+
+    return "UTC"
+
+
 def normalize_market_frame(
     frame: pd.DataFrame,
     asset_id: Optional[str] = None,
@@ -122,7 +159,19 @@ def normalize_market_frame(
 
     # ── Date normalization: exchange-local calendar date ──────────────
     dates = pd.to_datetime(df["date"], errors="raise")
-    if timezone is not None:
+
+    # If timezone is not provided, try to infer it from asset_id
+    effective_timezone = timezone
+    if effective_timezone is None:
+        # Try to find an asset_id in the frame or use the passed one
+        sample_asset_id = asset_id
+        if sample_asset_id is None and "asset_id" in df.columns:
+            sample_asset_id = df["asset_id"].iloc[0]
+
+        if sample_asset_id:
+            effective_timezone = infer_market_timezone(sample_asset_id)
+
+    if effective_timezone is not None:
         # Convert to exchange-local calendar date
         if dates.dt.tz is None:
             # Naive → assume the data is already in exchange-local time
@@ -130,7 +179,7 @@ def normalize_market_frame(
             pass
         else:
             # Tz-aware → convert to exchange timezone
-            dates = dates.dt.tz_convert(timezone)
+            dates = dates.dt.tz_convert(effective_timezone)
         # Store as date-only (no time component)
         df["date"] = dates.dt.normalize()
     else:
@@ -138,7 +187,7 @@ def normalize_market_frame(
         df["date"] = dates.dt.tz_localize(None)
 
     df["source"] = df["source"].fillna(source).astype(str)
-    df["timezone"] = df["timezone"].fillna(timezone or "UTC")
+    df["timezone"] = df["timezone"].fillna(effective_timezone or "UTC")
     if currency is not None:
         df["currency"] = df["currency"].fillna(currency)
 

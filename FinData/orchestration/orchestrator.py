@@ -129,6 +129,7 @@ class Orchestrator:
             successfully fetched and stored.
         """
         from FinData.adapters import get_fetcher
+        from src.core.calendars import get_calendar
 
         results: dict[str, object] = {}
 
@@ -161,10 +162,12 @@ class Orchestrator:
                     continue
 
                 # Submit to storage department through quality gate
+                cal = get_calendar(task.asset_type)
                 report = self._store.accept(
                     result.data,
                     asset_id=task.asset_id,
                     source=result.provider,
+                    timezone=cal.timezone,
                 )
                 if report.passed:
                     results[task.asset_id] = result

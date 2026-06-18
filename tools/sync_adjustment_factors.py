@@ -129,6 +129,7 @@ def main():
                 asset_id=f"{symbol}_factor_{factor_type}",
                 source=f"akshare-{factor_type}-factor",
                 currency="CNY",
+                timezone="Asia/Shanghai",
             )
             print(f"OK ({len(df)} rows)")
         except Exception as exc:
