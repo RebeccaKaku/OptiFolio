@@ -64,3 +64,6 @@ build-backend = "hatchling.build"
 testpaths = ["tests"]
 norecursedirs = ["scratch", ".pytest_cache", ".pytest_tmp"]
 asyncio_mode = "auto"
+markers = [
+    "live: test requires live network access to external data APIs",
+]

@@ -6,13 +6,17 @@ department and submits results to the storage department.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from .cadence import get_cadence, is_update_due
 from .fallback import get_fallback_chain
 from .rate_limiter import PROVIDER_LIMITS
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(order=True)
@@ -80,7 +84,7 @@ class Orchestrator:
             asset_ids = self._store.list_assets()
 
         if asset_types is None:
-            asset_types = {}
+            asset_types = self._load_asset_types()
 
         for aid in asset_ids:
             atype = asset_types.get(aid, "unknown")
@@ -189,6 +193,26 @@ class Orchestrator:
         return list(self._task_log)
 
     # ── Helpers ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _load_asset_types() -> Dict[str, str]:
+        """Load ``symbol → asset_type`` mapping from the asset registry."""
+        import yaml
+        registry_path = Path("config/asset_registry.yaml")
+        asset_types: dict[str, str] = {}
+        try:
+            if registry_path.exists():
+                with open(registry_path, "r", encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+                if config and "assets" in config:
+                    for entry in config["assets"]:
+                        symbol = entry.get("symbol")
+                        atype = entry.get("asset_type")
+                        if symbol and atype:
+                            asset_types[str(symbol)] = str(atype)
+        except Exception:
+            _log.warning("Failed to load asset registry for type mapping", exc_info=True)
+        return asset_types
 
     def _last_update(self, asset_id: str) -> Optional[datetime]:
         """Return the timestamp of the most recent stored observation for

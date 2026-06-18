@@ -209,17 +209,21 @@ class DataProvider:
         }
 
     def fx_rate(self, from_currency: str, to_currency: str,
-                date_str: str = None) -> float:
+                date_str: str = None, mode: str = "fast") -> float:
         """Get FX rate. Uses stored FX data if available, else fallback."""
         from src.core.valuation import FxRateProvider
         repo = getattr(self._store, "repo", None)
         fx = FxRateProvider(market_data=repo)
         as_of = pd.Timestamp(date_str).date() if date_str else date.today()
         try:
+            # Repository always takes precedence when available
             return fx.get_rate_from_repository(from_currency, to_currency, as_of)
         except Exception:
             pass
-        return fx.get_rate(from_currency, to_currency)
+
+        # If repo lookup fails, use live mode if requested
+        try_live = mode in ("live", "tolerant")
+        return fx.get_rate(from_currency, to_currency, try_live=try_live)
 
     def observations(self, series_ids: List[str], start: str = None, end: str = None,
                      known_at: str = None) -> pd.DataFrame:
@@ -309,6 +313,8 @@ class DataProvider:
         return float(prices.iloc[-1] / prices.iloc[0] - 1)
 
     def _calc_annualized_return(self, prices, _):
+        if len(prices) < 10:
+            return 0.0
         total = prices.iloc[-1] / prices.iloc[0] - 1
         days = (prices.index[-1] - prices.index[0]).days
         days = max(days, 1)
