@@ -725,9 +725,6 @@ class DatabaseManager:
                         self.add_or_update_asset(asset_data)
                         migrated_count += 1
             
-            # TODO: 迁移价格数据（从data/raw目录）
-            # 这需要更复杂的逻辑，因为需要解析CSV/Parquet文件
-            
             print(f"[Database] 从文件系统迁移了 {migrated_count} 个资产")
             
         except Exception as e:
