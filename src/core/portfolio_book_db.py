@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 3
+    CURRENT_SCHEMA_VERSION: int = 5
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
@@ -186,6 +186,7 @@ class PortfolioBookDatabase:
         migrations: Dict[int, Callable[[sqlite3.Connection], None]] = {
             1: self._migrate_v1,
             2: self._migrate_v2,
+            4: self._migrate_v4,
         }
 
         for v in range(from_v + 1, to_v + 1):
@@ -232,6 +233,30 @@ class PortfolioBookDatabase:
                 extra_json   TEXT NOT NULL DEFAULT "{}",
                 created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    def _migrate_v4(self, conn: sqlite3.Connection) -> None:
+        """Create cashflow_events table."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cashflow_events (
+                event_id        TEXT PRIMARY KEY,
+                event_type      TEXT NOT NULL,
+                account_id      TEXT NOT NULL,
+                product_id      TEXT,
+                amount          REAL NOT NULL,
+                currency        TEXT NOT NULL,
+                counter_amount  REAL,
+                counter_currency TEXT,
+                pair_event_id   TEXT,
+                effective_date  TEXT NOT NULL,
+                source          TEXT DEFAULT 'manual',
+                notes           TEXT,
+                created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts (account_id)
             )
             """
         )
@@ -413,6 +438,94 @@ class PortfolioBookDatabase:
 
     def deactivate_account(self, account_id: str) -> None:
         self.update_account(account_id, status="inactive")
+
+    # ── Cashflow CRUD ───────────────────────────────────────────────────
+
+    def create_cashflow(
+        self,
+        event_id: str,
+        event_type: str,
+        account_id: str,
+        amount: float,
+        currency: str,
+        effective_date: str,
+        product_id: Optional[str] = None,
+        counter_amount: Optional[float] = None,
+        counter_currency: Optional[str] = None,
+        pair_event_id: Optional[str] = None,
+        source: str = "manual",
+        notes: Optional[str] = None,
+    ) -> None:
+        """Record a new cashflow event."""
+        valid_types = {
+            "subscription", "redemption", "interest", "fee",
+            "transfer_in", "transfer_out", "fx_conversion", "dividend", "other"
+        }
+        if event_type not in valid_types:
+            raise ValueError(f"Invalid event_type: {event_type}")
+
+        # Validation: Negative amounts allowed only for certain types
+        if amount < 0 and event_type not in ("redemption", "fee", "transfer_out", "fx_conversion"):
+            raise ValueError(f"Negative amount not allowed for {event_type}")
+
+        # Validation: FX conversions must have both currencies
+        if event_type == "fx_conversion":
+            if not currency or not counter_currency:
+                raise ValueError("FX conversion must have both currency and counter_currency")
+            if counter_amount is None:
+                raise ValueError("FX conversion must have counter_amount")
+
+        sql = """
+            INSERT INTO cashflow_events (
+                event_id, event_type, account_id, product_id, amount, currency,
+                counter_amount, counter_currency, pair_event_id, effective_date,
+                source, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            event_id, event_type, account_id, product_id, amount, currency,
+            counter_amount, counter_currency, pair_event_id, effective_date,
+            source, notes
+        )
+        with closing(self.connect()) as conn:
+            try:
+                with conn:
+                    conn.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                if "UNIQUE constraint failed: cashflow_events.event_id" in str(exc):
+                    raise PortfolioBookError(f"Duplicate event_id: {event_id}") from exc
+                raise
+
+    def get_cashflows_for_account(self, account_id: str) -> List[sqlite3.Row]:
+        """Retrieve all cashflow events for a specific account."""
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                "SELECT * FROM cashflow_events WHERE account_id = ? ORDER BY effective_date DESC",
+                (account_id,)
+            ).fetchall()
+
+    def get_cashflows_for_product(self, product_id: str) -> List[sqlite3.Row]:
+        """Retrieve all cashflow events for a specific product."""
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                "SELECT * FROM cashflow_events WHERE product_id = ? ORDER BY effective_date DESC",
+                (product_id,)
+            ).fetchall()
+
+    def link_transfer(self, event_a_id: str, event_b_id: str) -> None:
+        """Link two transfer events (e.g., transfer_in and transfer_out)."""
+        with closing(self.connect()) as conn:
+            with conn:
+                # Update event A
+                conn.execute(
+                    "UPDATE cashflow_events SET pair_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
+                    (event_b_id, event_a_id)
+                )
+                # Update event B
+                conn.execute(
+                    "UPDATE cashflow_events SET pair_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
+                    (event_a_id, event_b_id)
+                )
 
     # ── Backup & Restore ────────────────────────────────────────────────
 

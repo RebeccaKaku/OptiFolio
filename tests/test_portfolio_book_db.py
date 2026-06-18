@@ -453,3 +453,113 @@ class TestBackupRestore:
 
         with pytest.raises(UnsupportedSchemaVersionError, match="99"):
             initialized.restore_from(newer_path, overwrite=True)
+
+
+# ── Cashflow CRUD ───────────────────────────────────────────────────────────
+
+class TestCashflowCRUD:
+    @pytest.fixture
+    def account(self, initialized):
+        initialized.create_account("acc_cash", "Cash Account")
+        return "acc_cash"
+
+    @pytest.fixture
+    def product(self, initialized):
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(product_id="prod_cash", name="Product", product_type="other")
+        initialized.create_product(p)
+        return "prod_cash"
+
+    def test_create_basic_cashflows(self, initialized, account, product):
+        """Test creation of subscription, redemption, interest, fee, and dividend."""
+        # Subscription
+        initialized.create_cashflow(
+            "ev_001", "subscription", account, 1000.0, "CNY", "2023-01-01", product_id=product
+        )
+        # Redemption (negative)
+        initialized.create_cashflow(
+            "ev_002", "redemption", account, -500.0, "CNY", "2023-01-02", product_id=product
+        )
+        # Interest
+        initialized.create_cashflow(
+            "ev_003", "interest", account, 10.0, "CNY", "2023-01-03"
+        )
+        # Fee (negative)
+        initialized.create_cashflow(
+            "ev_004", "fee", account, -5.0, "CNY", "2023-01-04"
+        )
+        # Dividend
+        initialized.create_cashflow(
+            "ev_005", "dividend", account, 20.0, "CNY", "2023-01-05", product_id=product
+        )
+
+        flows = initialized.get_cashflows_for_account(account)
+        assert len(flows) == 5
+        # Ordered by date DESC
+        assert flows[0]["event_id"] == "ev_005"
+        assert flows[4]["event_id"] == "ev_001"
+
+    def test_transfer_pair_and_linking(self, initialized, account):
+        """Test transfer_in/out creation and linking."""
+        initialized.create_account("acc_target", "Target Account")
+
+        initialized.create_cashflow(
+            "tx_out", "transfer_out", account, -100.0, "USD", "2023-02-01"
+        )
+        initialized.create_cashflow(
+            "tx_in", "transfer_in", "acc_target", 100.0, "USD", "2023-02-01"
+        )
+
+        initialized.link_transfer("tx_out", "tx_in")
+
+        out_flow = [f for f in initialized.get_cashflows_for_account(account) if f["event_id"] == "tx_out"][0]
+        in_flow = [f for f in initialized.get_cashflows_for_account("acc_target") if f["event_id"] == "tx_in"][0]
+
+        assert out_flow["pair_event_id"] == "tx_in"
+        assert in_flow["pair_event_id"] == "tx_out"
+
+    def test_fx_conversion(self, initialized, account):
+        """Test FX conversion requires both currencies and counter_amount."""
+        initialized.create_cashflow(
+            "fx_001", "fx_conversion", account, -100.0, "USD", "2023-03-01",
+            counter_amount=700.0, counter_currency="CNY"
+        )
+
+        flow = initialized.get_cashflows_for_account(account)[0]
+        assert flow["event_type"] == "fx_conversion"
+        assert flow["counter_amount"] == 700.0
+        assert flow["counter_currency"] == "CNY"
+
+    def test_validation_negative_amounts(self, initialized, account):
+        """Negative amounts only allowed for redemption, fee, transfer_out."""
+        # Disallowed
+        for etype in ("subscription", "interest", "dividend", "transfer_in", "other"):
+            with pytest.raises(ValueError, match="Negative amount not allowed"):
+                initialized.create_cashflow(f"err_{etype}", etype, account, -1.0, "CNY", "2023-01-01")
+
+        # Allowed
+        for etype in ("redemption", "fee", "transfer_out"):
+            initialized.create_cashflow(f"ok_{etype}", etype, account, -1.0, "CNY", "2023-01-01")
+
+    def test_validation_fx_currencies(self, initialized, account):
+        """FX conversion must have both currencies and counter_amount."""
+        with pytest.raises(ValueError, match="must have both currency and counter_currency"):
+            initialized.create_cashflow("fx_err1", "fx_conversion", account, 100.0, "USD", "2023-01-01")
+
+        with pytest.raises(ValueError, match="must have counter_amount"):
+            initialized.create_cashflow("fx_err2", "fx_conversion", account, 100.0, "USD", "2023-01-01", counter_currency="CNY")
+
+    def test_duplicate_event_id_rejected(self, initialized, account):
+        """Reject duplicate event_ids with PortfolioBookError."""
+        initialized.create_cashflow("dup", "interest", account, 10.0, "CNY", "2023-01-01")
+        with pytest.raises(PortfolioBookError, match="Duplicate event_id"):
+            initialized.create_cashflow("dup", "interest", account, 20.0, "CNY", "2023-01-02")
+
+    def test_get_cashflows_for_product(self, initialized, account, product):
+        """Test retrieval filter by product_id."""
+        initialized.create_cashflow("p1", "subscription", account, 100.0, "CNY", "2023-01-01", product_id=product)
+        initialized.create_cashflow("p2", "interest", account, 10.0, "CNY", "2023-01-02") # no product_id
+
+        flows = initialized.get_cashflows_for_product(product)
+        assert len(flows) == 1
+        assert flows[0]["event_id"] == "p1"
