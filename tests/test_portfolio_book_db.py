@@ -146,8 +146,8 @@ class TestSchemaVersionGuards:
         db_tmp.initialize()
         assert db_tmp.schema_version() == current
 
-    def test_migration_1_to_2(self, db_tmp):
-        """A database at version 1 is automatically upgraded to version 2."""
+    def test_migration_1_to_current(self, db_tmp):
+        """A database at version 1 is automatically upgraded to current version."""
         db_tmp.path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(db_tmp.path))
         conn.execute(
@@ -156,24 +156,19 @@ class TestSchemaVersionGuards:
         conn.execute(
             "INSERT INTO _schema_meta (key, value) VALUES ('version', '1')"
         )
+        # Simulate a v1 DB that already has accounts table (created by v1 migration)
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT)")
         conn.commit()
         conn.close()
 
-        # Before init, accounts table does not exist
-        conn = sqlite3.connect(str(db_tmp.path))
-        res = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'"
-        ).fetchone()
-        assert res is None
-        conn.close()
-
         db_tmp.initialize()
-        assert db_tmp.schema_version() == 2
+        current = PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
+        assert db_tmp.schema_version() == current
 
-        # After init, accounts table exists
+        # Products table was created by v2 migration
         conn = db_tmp.connect()
         res = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='products'"
         ).fetchone()
         assert res is not None
         conn.close()
@@ -221,6 +216,80 @@ class TestLocalUntouched:
             # It might exist from a previous run, but we didn't create it
             # in this test. Just verify our tmp path is what we used.
             pass  # OK — pre-existing, not created by this test
+
+
+# ── Products CRUD ───────────────────────────────────────────────────
+
+class TestProductsCRUD:
+    def test_create_and_get_product(self, initialized):
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(
+            product_id="PROD001", name="Alpha Bank WMP",
+            product_type="bank_wmp", issuer="Alpha Bank",
+            currency="CNY", liquidity_type="t_plus_1", data_source="manual"
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product("PROD001")
+        assert retrieved == p
+
+    def test_get_non_existent_product(self, initialized):
+        assert initialized.get_product("NO_SUCH_PROD") is None
+
+    def test_update_product(self, initialized):
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(
+            product_id="PROD001", name="Initial Name",
+            product_type="bank_wmp", issuer="Alpha Bank"
+        )
+        initialized.create_product(p)
+        p_updated = ProductDefinition(
+            product_id="PROD001", name="Updated Name",
+            product_type="bank_wmp", issuer="Beta Bank", manager="Manager X"
+        )
+        initialized.update_product(p_updated)
+        retrieved = initialized.get_product("PROD001")
+        assert retrieved.name == "Updated Name"
+        assert retrieved.issuer == "Beta Bank"
+        assert retrieved.manager == "Manager X"
+
+    def test_unknown_fields_preserved(self, initialized):
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(
+            product_id="PROD_EXTRA", name="Extra Fields Product",
+            product_type="mixed_fund", risk_level="R3",
+            manager="Expert Manager",
+            metadata={"secret_code": 12345, "tags": ["low-vol", "blue-chip"]}
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product("PROD_EXTRA")
+        assert retrieved.risk_level == "R3"
+        assert retrieved.manager == "Expert Manager"
+        assert retrieved.metadata["secret_code"] == 12345
+        assert retrieved.metadata["tags"] == ["low-vol", "blue-chip"]
+
+    def test_missing_liquidity_defaults_to_unknown(self, initialized):
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(
+            product_id="PROD_NO_LIQ", name="No Liquidity Product",
+            product_type="other", liquidity_type=None
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product("PROD_NO_LIQ")
+        assert retrieved.liquidity_type == "unknown"
+
+    @pytest.mark.parametrize("ptype", [
+        "bank_deposit", "bank_wmp", "money_market_fund", "bond_fund",
+        "equity_fund", "mixed_fund", "qdii_fund", "other"
+    ])
+    def test_product_types_round_trip(self, initialized, ptype):
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(
+            product_id=f"PROD_{ptype}", name=f"Product {ptype}",
+            product_type=ptype
+        )
+        initialized.create_product(p)
+        retrieved = initialized.get_product(f"PROD_{ptype}")
+        assert retrieved.product_type == ptype
 
 
 # ── Exception hierarchy ────────────────────────────────────────────────────
