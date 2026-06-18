@@ -3,6 +3,27 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 import time
+import asyncio
+import threading
+
+_local = threading.local()
+
+def _run_async(coro):
+    """Minimal bridge to run an async coroutine synchronously.
+    Reuses a thread-local event loop to avoid asyncio.run() overhead
+    and concurrency issues."""
+    try:
+        loop = _local.loop
+    except AttributeError:
+        loop = asyncio.new_event_loop()
+        _local.loop = loop
+
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+        _local.loop = loop
+
+    return loop.run_until_complete(coro)
+
 
 @dataclass
 class FetchResult:

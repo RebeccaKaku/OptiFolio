@@ -249,6 +249,8 @@ class CnFundFetcher:
 
 # ── FinData adapter wrapper ───────────────────────────────────────────
 
+from . import _run_async
+
 class CnFundFetcherAdapter(FetcherProtocol):
     PROVIDER = "akshare-cn-fund"
 
@@ -258,7 +260,7 @@ class CnFundFetcherAdapter(FetcherProtocol):
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
         t0 = time.time()
         try:
-            df = asyncio.run(self._fetcher.fetch(symbol, start_date, end_date, **kwargs))
+            df = _run_async(self._fetcher.fetch(symbol, start_date, end_date, **kwargs))
             return FetchResult(symbol=symbol, provider=self.PROVIDER, data=df,
                                success=True, latency_ms=(time.time() - t0) * 1000)
         except Exception as e:
