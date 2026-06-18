@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 from typing import Sequence
 
@@ -9,7 +10,15 @@ import pandas as pd
 
 from src.core.paths import PROJECT_ROOT
 
-from .schemas import CANONICAL_MARKET_COLUMNS, STORE_VERSION, normalize_market_frame, validate_market_frame
+from .schemas import (
+    CANONICAL_MARKET_COLUMNS,
+    CANONICAL_OBSERVATION_COLUMNS,
+    STORE_VERSION,
+    normalize_market_frame,
+    normalize_observation_frame,
+    validate_market_frame,
+    validate_observation_frame,
+)
 
 
 class MarketDataRepository:
@@ -19,6 +28,7 @@ class MarketDataRepository:
         self.root_dir = Path(root_dir) if root_dir else PROJECT_ROOT / "data" / "foundation"
         self.root_dir.mkdir(parents=True, exist_ok=True)
         self.price_path = self.root_dir / "market_prices.parquet"
+        self.observation_path = self.root_dir / "observations.parquet"
         self.check_version()
 
     def check_version(self) -> None:
@@ -144,6 +154,206 @@ class MarketDataRepository:
         if not self.price_path.exists():
             return pd.DataFrame(columns=CANONICAL_MARKET_COLUMNS)
         return pd.read_parquet(self.price_path)
+
+    def save_observations(
+        self,
+        frame: pd.DataFrame,
+        series_id: str | None = None,
+        source: str = "manual",
+        unit: str | None = None,
+        currency: str | None = None,
+    ) -> pd.DataFrame:
+        """Normalize, validate, and persist non-price observations.
+
+        This is the canonical path for macro data, interest rates,
+        index levels that are used as reference series, yield-curve nodes,
+        and model signals. It deliberately lives outside the OHLCV price
+        table so downstream algorithms can distinguish tradable prices
+        from informational series.
+        """
+        observations = normalize_observation_frame(
+            frame,
+            series_id=series_id,
+            source=source,
+            unit=unit,
+            currency=currency,
+        )
+        observations = validate_observation_frame(observations)
+
+        self.observation_path.parent.mkdir(parents=True, exist_ok=True)
+        existing = self.load_observations()
+        combined = observations if existing.empty else pd.concat([existing, observations], ignore_index=True)
+        combined = combined.drop_duplicates(
+            ["series_id", "effective_date", "source", "revision"],
+            keep="last",
+        )
+        combined = combined.sort_values(
+            ["series_id", "effective_date", "source", "revision"]
+        ).reset_index(drop=True)
+        validate_observation_frame(combined).to_parquet(
+            self.observation_path,
+            compression="snappy",
+            index=False,
+        )
+        return observations
+
+    def load_observations(self) -> pd.DataFrame:
+        if not self.observation_path.exists():
+            return pd.DataFrame(columns=CANONICAL_OBSERVATION_COLUMNS)
+        return pd.read_parquet(self.observation_path)
+
+    def get_observations(
+        self,
+        series_ids: Sequence[str],
+        start: str | None = None,
+        end: str | None = None,
+        known_at: str | pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
+        """Return canonical observations filtered by date and availability."""
+        if not series_ids or not self.observation_path.exists():
+            return pd.DataFrame(columns=CANONICAL_OBSERVATION_COLUMNS)
+
+        df = self.load_observations()
+        if df.empty:
+            return df
+
+        df["effective_date"] = pd.to_datetime(df["effective_date"])
+        df["known_at"] = pd.to_datetime(df["known_at"], errors="coerce")
+        mask = df["series_id"].isin(list(series_ids))
+        if start:
+            mask &= df["effective_date"] >= pd.Timestamp(start)
+        if end:
+            mask &= df["effective_date"] <= pd.Timestamp(end)
+        if known_at is not None:
+            known_ts = pd.Timestamp(known_at)
+            mask &= df["known_at"].notna() & (df["known_at"] <= known_ts)
+        return df.loc[mask].sort_values(
+            ["series_id", "effective_date", "source", "revision"]
+        ).reset_index(drop=True)
+
+    def latest_observation(
+        self,
+        series_id: str,
+        as_of: str | date | pd.Timestamp | None = None,
+        known_at: str | pd.Timestamp | None = None,
+    ) -> dict[str, object] | None:
+        """Return the latest usable observation for one series."""
+        end = pd.Timestamp(as_of).date().isoformat() if as_of is not None else None
+        df = self.get_observations([series_id], end=end, known_at=known_at)
+        if df.empty:
+            return None
+
+        df = df.sort_values(["effective_date", "revision"])
+        row = df.iloc[-1].to_dict()
+        return row
+
+    def list_observation_series(self) -> pd.DataFrame:
+        """Return one row per stored non-price series."""
+        if not self.observation_path.exists():
+            return pd.DataFrame(
+                columns=[
+                    "series_id",
+                    "observations",
+                    "first_date",
+                    "last_date",
+                    "last_known_at",
+                    "source",
+                    "unit",
+                    "currency",
+                ]
+            )
+
+        df = self.load_observations()
+        if df.empty:
+            return pd.DataFrame(
+                columns=[
+                    "series_id",
+                    "observations",
+                    "first_date",
+                    "last_date",
+                    "last_known_at",
+                    "source",
+                    "unit",
+                    "currency",
+                ]
+            )
+
+        df["effective_date"] = pd.to_datetime(df["effective_date"])
+        df["known_at"] = pd.to_datetime(df["known_at"], errors="coerce")
+        grouped = df.sort_values(["series_id", "effective_date", "revision"]).groupby("series_id")
+        records = []
+        for series_id, group in grouped:
+            latest = group.iloc[-1]
+            records.append(
+                {
+                    "series_id": series_id,
+                    "observations": int(len(group)),
+                    "first_date": group["effective_date"].min(),
+                    "last_date": group["effective_date"].max(),
+                    "last_known_at": group["known_at"].max(),
+                    "source": latest.get("source"),
+                    "unit": latest.get("unit"),
+                    "currency": latest.get("currency"),
+                }
+            )
+        return pd.DataFrame(records).sort_values("series_id").reset_index(drop=True)
+
+    def observation_coverage(
+        self,
+        series_ids: Sequence[str] | None = None,
+        expected_stale_days: int | None = None,
+        as_of: str | date | pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
+        """Return coverage/staleness summary for non-price series."""
+        summary = self.list_observation_series()
+        columns = [
+            "series_id",
+            "observations",
+            "first_date",
+            "last_date",
+            "last_known_at",
+            "source",
+            "unit",
+            "currency",
+            "stale_days",
+            "is_stale",
+            "missing",
+        ]
+        if series_ids is not None:
+            requested = list(series_ids)
+            if summary.empty:
+                summary = pd.DataFrame({"series_id": requested})
+            else:
+                summary = summary[summary["series_id"].isin(requested)]
+                missing = [sid for sid in requested if sid not in set(summary["series_id"])]
+                if missing:
+                    summary = pd.concat(
+                        [summary, pd.DataFrame({"series_id": missing})],
+                        ignore_index=True,
+                    )
+
+        if summary.empty:
+            return pd.DataFrame(columns=columns)
+
+        as_of_ts = pd.Timestamp(as_of or date.today()).normalize()
+        summary["last_date"] = pd.to_datetime(summary.get("last_date"), errors="coerce")
+        summary["first_date"] = pd.to_datetime(summary.get("first_date"), errors="coerce")
+        summary["last_known_at"] = pd.to_datetime(summary.get("last_known_at"), errors="coerce")
+        summary["observations"] = pd.to_numeric(
+            summary.get("observations"),
+            errors="coerce",
+        ).fillna(0).astype(int)
+        summary["missing"] = summary["last_date"].isna()
+        summary["stale_days"] = (as_of_ts - summary["last_date"]).dt.days
+        summary.loc[summary["missing"], "stale_days"] = pd.NA
+        if expected_stale_days is None:
+            summary["is_stale"] = False
+        else:
+            summary["is_stale"] = summary["missing"] | (summary["stale_days"] > expected_stale_days)
+        for column in columns:
+            if column not in summary.columns:
+                summary[column] = pd.NA
+        return summary[columns].sort_values("series_id").reset_index(drop=True)
 
     def get_prices(
         self,

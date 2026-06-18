@@ -48,7 +48,7 @@ class MockUSDailyDF:
     """Simulate what akshare.stock_us_daily returns."""
     def __init__(self):
         self._df = pd.DataFrame({
-            "date": ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"],
+            "date": ["2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"],
             "open": [185, 186, 187, 188],
             "high": [190, 191, 192, 193],
             "low": [183, 184, 185, 186],
@@ -72,7 +72,7 @@ class TestUsEquityFetcher:
         from FinData.adapters import FetchResult
 
         mock_df = pd.DataFrame({
-            "date": ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"],
+            "date": ["2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"],
             "open": [185, 186, 187, 188],
             "high": [190, 191, 192, 193],
             "low": [183, 184, 185, 186],
@@ -95,7 +95,7 @@ class TestUsEquityFetcher:
 
         fetcher = UsEquityFetcher()
         with patch("builtins.__import__", side_effect=_mock_import):
-            result = fetcher.fetch("AAPL", "2024-01-01", "2024-01-05")
+            result = fetcher.fetch("AAPL", "2026-01-01", "2026-01-05")
 
         assert isinstance(result, FetchResult)
         assert result.symbol == "AAPL"
@@ -109,7 +109,7 @@ class TestUsEquityFetcher:
         from FinData.adapters.us_equity import UsEquityFetcher
 
         fetcher = UsEquityFetcher()
-        result = fetcher.fetch("INVALID_SYMBOL_XYZ", "2024-01-01", "2024-01-05")
+        result = fetcher.fetch("INVALID_SYMBOL_XYZ", "2026-01-01", "2026-01-05")
 
         from FinData.adapters import FetchResult
         assert isinstance(result, FetchResult)
@@ -208,8 +208,12 @@ class TestProtocolConformance:
             assert issubclass(cls, FetcherProtocol), f"{cls.__name__} must subclass FetcherProtocol"
 
     def test_all_registry_instances_match_protocol(self):
-        from FinData.adapters import FetcherProtocol
-        from FinData.adapters import FETCHER_REGISTRY
+        from FinData.adapters import FetcherProtocol, FETCHER_REGISTRY
+        from FinData.adapters.us_equity import UsEquityFetcher
+        from FinData.adapters.cn_stock import CnStockFetcher
+        from FinData.adapters.cn_fund import CnFundFetcherAdapter
+        from FinData.adapters.forex import ForexFetcher
+        from FinData.adapters.bank_wmp import BankWmpFetcher
 
         for key, inst in FETCHER_REGISTRY.items():
             if inst is None:
@@ -217,6 +221,13 @@ class TestProtocolConformance:
             assert isinstance(inst, FetcherProtocol), (
                 f"registry[{key!r}] is not a FetcherProtocol"
             )
+
+        # Concrete class checks
+        assert isinstance(FETCHER_REGISTRY["us_equity"], UsEquityFetcher)
+        assert isinstance(FETCHER_REGISTRY["cn_stock"], CnStockFetcher)
+        assert isinstance(FETCHER_REGISTRY["forex"], ForexFetcher)
+        assert isinstance(FETCHER_REGISTRY["cn_fund"], CnFundFetcherAdapter)
+        assert isinstance(FETCHER_REGISTRY["bank_wmp"], BankWmpFetcher)
 
 
 # ── Bank WMP classification ───────────────────────────────────────────
@@ -244,7 +255,7 @@ class TestBankWmpClassification:
     def test_fetch_unknown_pattern_returns_error(self):
         from FinData.adapters.bank_wmp import BankWmpFetcher
         fetcher = BankWmpFetcher()
-        result = fetcher.fetch("???", "2024-01-01", "2024-01-05")
+        result = fetcher.fetch("???", "2026-01-01", "2026-01-05")
         assert result.success is False
         assert "Unknown bank WMP" in result.errors[0]
 
