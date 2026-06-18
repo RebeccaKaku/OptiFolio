@@ -63,3 +63,55 @@ def test_research_backtest_route_uses_service_layer(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["data"]["assets"] == ["AAA", "BBB"]
+
+
+def test_market_prices_route_uses_service_layer(monkeypatch):
+    class FakeResearchService:
+        def get_prices(self, assets, start, end, field):
+            return {
+                "success": True,
+                "data": {"assets": assets, "start": start, "end": end, "field": field, "prices": {assets[0]: {}}},
+                "message": "fake prices",
+            }
+
+    fake_services = SimpleNamespace(research=FakeResearchService())
+    monkeypatch.setattr(fastapi_app, "get_application_services", lambda: fake_services)
+    client = TestClient(fastapi_app.create_app())
+
+    response = client.get("/api/market/prices?assets=AAPL&start=2024-01-01&end=2024-01-10")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["assets"] == ["AAPL"]
+    assert payload["data"]["start"] == "2024-01-01"
+    assert payload["data"]["end"] == "2024-01-10"
+
+
+def test_market_prices_empty_assets_fails(monkeypatch):
+    client = TestClient(fastapi_app.create_app())
+    response = client.get("/api/market/prices")
+    # It should fail validation because min_length=1 (default is None/missing which fails)
+    assert response.status_code == 422
+
+
+def test_market_prices_invalid_date_range_is_passed_to_service(monkeypatch):
+    class FakeResearchService:
+        def get_prices(self, assets, start, end, field):
+            return {
+                "success": True,
+                "data": {"start": start, "end": end},
+                "message": "fake prices",
+            }
+
+    fake_services = SimpleNamespace(research=FakeResearchService())
+    monkeypatch.setattr(fastapi_app, "get_application_services", lambda: fake_services)
+    client = TestClient(fastapi_app.create_app())
+
+    # Send reversed dates
+    response = client.get("/api/market/prices?assets=AAPL&start=2024-02-01&end=2024-01-01")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["start"] == "2024-02-01"
+    assert payload["data"]["end"] == "2024-01-01"
