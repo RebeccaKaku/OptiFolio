@@ -194,16 +194,23 @@ def parse_detail_html(html: str) -> dict:
 # ──────────────────────────────────────────────
 # Step 2b：调 getOpenDate API
 # ──────────────────────────────────────────────
+_open_date_cache: dict[str, Optional[str]] = {}
+
 async def fetch_open_date(client: httpx.AsyncClient, code: str) -> Optional[str]:
+    if code in _open_date_cache:
+        return _open_date_cache[code]
     try:
         resp = await client.get(OPEN_DATE_URL, params={"productCode": code}, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         if data.get("result"):
             val = data.get("data")
-            return val if val and val != "-" else None
+            result = val if val and val != "-" else None
+            _open_date_cache[code] = result
+            return result
     except Exception:
         pass
+    _open_date_cache[code] = None
     return None
 
 
