@@ -1,0 +1,493 @@
+- generic [ref=e1]:
+  - 'button "Google Account: Nuvola d''Argento (huolining3@gmail.com)" [ref=e8] [cursor=pointer]':
+    - img [ref=e11]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - button [ref=e16] [cursor=pointer]
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - link "Optimize N+1 Price Data Fetching in Portfolio Core" [ref=e110] [cursor=pointer]:
+            - /url: /session/18149068881117256829
+            - img [ref=e112]:
+              - img [ref=e113]
+            - generic: Optimize N+1 Price Data Fetching in Portfolio Core
+          - button "Task options" [ref=e116] [cursor=pointer]:
+            - img [ref=e117]:
+              - img [ref=e118]
+        - generic [ref=e120]:
+          - link "⚡ Replace asyncio.run with await in bank_wmp.py" [ref=e121] [cursor=pointer]:
+            - /url: /session/14468000587046209543
+            - img [ref=e123]:
+              - img [ref=e124]
+            - generic: ⚡ Replace asyncio.run with await in bank_wmp.py
+          - button "Task options" [ref=e127] [cursor=pointer]:
+            - img [ref=e128]:
+              - img [ref=e129]
+        - generic [ref=e131]:
+          - link "⚡ Implement Caching for fetch_open_date API Calls" [ref=e132] [cursor=pointer]:
+            - /url: /session/9865231190503520848
+            - img [ref=e134]:
+              - img [ref=e135]
+            - generic: ⚡ Implement Caching for fetch_open_date API Calls
+          - button "Task options" [ref=e138] [cursor=pointer]:
+            - img [ref=e139]:
+              - img [ref=e140]
+        - generic [ref=e142]:
+          - link "Optimize Fallback Price Insertion with Batch Processing" [ref=e143] [cursor=pointer]:
+            - /url: /session/4677620152009877098
+            - img [ref=e145]:
+              - img [ref=e146]
+            - generic: Optimize Fallback Price Insertion with Batch Processing
+          - button "Task options" [ref=e149] [cursor=pointer]:
+            - img [ref=e150]:
+              - img [ref=e151]
+        - generic [ref=e153]:
+          - link "🧹 Remove unused import PROJECT_ROOT in fund_friction_service.py" [ref=e154] [cursor=pointer]:
+            - /url: /session/2035836018278677106
+            - img [ref=e156]:
+              - img [ref=e157]
+            - generic: 🧹 Remove unused import PROJECT_ROOT in fund_friction_service.py
+          - button "Task options" [ref=e160] [cursor=pointer]:
+            - img [ref=e161]:
+              - img [ref=e162]
+        - generic [ref=e164]:
+          - link "Optimize Pandas DataFrame iteration in database.py" [ref=e165] [cursor=pointer]:
+            - /url: /session/13894134890628095438
+            - img [ref=e167]:
+              - img [ref=e168]
+            - generic: Optimize Pandas DataFrame iteration in database.py
+          - button "Task options" [ref=e171] [cursor=pointer]:
+            - img [ref=e172]:
+              - img [ref=e173]
+        - generic [ref=e175]:
+          - link "Migrate Price Data Logic" [ref=e176] [cursor=pointer]:
+            - /url: /session/15562369078406125366
+            - img [ref=e178]:
+              - img [ref=e179]
+            - generic: Migrate Price Data Logic
+          - button "Task options" [ref=e182] [cursor=pointer]:
+            - img [ref=e183]:
+              - img [ref=e184]
+        - generic [ref=e186]:
+          - link "Implement Unit Tests for FeeProcessor" [ref=e187] [cursor=pointer]:
+            - /url: /session/2566128857572455715
+            - img [ref=e189]:
+              - img [ref=e190]
+            - generic: Implement Unit Tests for FeeProcessor
+          - button "Task options" [ref=e193] [cursor=pointer]:
+            - img [ref=e194]:
+              - img [ref=e195]
+        - generic [ref=e197]:
+          - link "Test Implementation for Data Provider Prices Endpoint" [ref=e198] [cursor=pointer]:
+            - /url: /session/10622252411298624612
+            - img [ref=e200]:
+              - img [ref=e201]
+            - generic: Test Implementation for Data Provider Prices Endpoint
+          - button "Task options" [ref=e204] [cursor=pointer]:
+            - img [ref=e205]:
+              - img [ref=e206]
+        - generic [ref=e208]:
+          - link "Add Unit Tests for MemoryCache" [ref=e209] [cursor=pointer]:
+            - /url: /session/14267107063420331079
+            - img [ref=e211]:
+              - img [ref=e212]
+            - generic: Add Unit Tests for MemoryCache
+          - button "Task options" [ref=e215] [cursor=pointer]:
+            - img [ref=e216]:
+              - img [ref=e217]
+        - button "View more" [ref=e219] [cursor=pointer]:
+          - img [ref=e220]:
+            - img [ref=e221]
+          - generic [ref=e223]: View more
+      - generic [ref=e20]:
+        - link "RebeccaKaku / MyBlog 5" [ref=e224] [cursor=pointer]:
+          - /url: /repo/github/RebeccaKaku/MyBlog
+          - img [ref=e225]:
+            - img [ref=e226]
+          - generic "RebeccaKaku/MyBlog":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e230]: /
+            - generic: MyBlog
+          - generic [ref=e232]: "5"
+        - link "RebeccaKaku / OptiFolio 39" [ref=e233] [cursor=pointer]:
+          - /url: /repo/github/RebeccaKaku/OptiFolio
+          - img [ref=e234]:
+            - img [ref=e235]
+          - generic "RebeccaKaku/OptiFolio":
+            - generic:
+              - generic: RebeccaKaku
+              - generic [ref=e239]: /
+            - generic: OptiFolio
+          - generic [ref=e241]: "39"
+        - generic [ref=e21]:
+          - button "RebeccaKaku / latex-chinese-fonts" [ref=e22] [cursor=pointer]:
+            - img [ref=e23]:
+              - img [ref=e24]
+            - generic "RebeccaKaku/latex-chinese-fonts":
+              - generic:
+                - generic: RebeccaKaku
+                - generic [ref=e28]: /
+              - generic: latex-chinese-fonts
+            - img [ref=e30]:
+              - img [ref=e31]
+          - button "RebeccaKaku / RebeccaKaku.github.io" [ref=e242] [cursor=pointer]:
+            - img [ref=e243]:
+              - img [ref=e244]
+            - generic "RebeccaKaku/RebeccaKaku.github.io":
+              - generic:
+                - generic: RebeccaKaku
+                - generic [ref=e248]: /
+              - generic: RebeccaKaku.github.io
+            - img [ref=e250]:
+              - img [ref=e251]
+          - button "RebeccaKaku / REKCARC-TSC-UHT" [ref=e253] [cursor=pointer]:
+            - img [ref=e254]:
+              - img [ref=e255]
+            - generic "RebeccaKaku/REKCARC-TSC-UHT":
+              - generic:
+                - generic: RebeccaKaku
+                - generic [ref=e259]: /
+              - generic: REKCARC-TSC-UHT
+            - img [ref=e261]:
+              - img [ref=e262]
+    - generic [ref=e55]:
+      - generic [ref=e56]:
+        - link "jules" [ref=e58] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e59]:
+            - img [ref=e61]
+            - generic: jules
+        - generic [ref=e63]:
+          - button "Gemini 3.1 Pro" [ref=e65] [cursor=pointer]:
+            - generic [ref=e66]: Gemini 3.1 Pro
+            - img [ref=e67]:
+              - img [ref=e68]
+          - button [ref=e70] [cursor=pointer]:
+            - img [ref=e72]: light_mode
+          - button [ref=e73] [cursor=pointer]:
+            - img [ref=e75]:
+              - img [ref=e76]
+          - button "Feedback" [ref=e81] [cursor=pointer]:
+            - img [ref=e82]:
+              - img [ref=e83]
+            - generic [ref=e86]: Feedback
+          - link [ref=e87] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e88]:
+              - img [ref=e89]
+          - link "PRO" [ref=e93] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=e95]:
+        - generic [ref=e265]:
+          - generic [ref=e266]:
+            - combobox [ref=e271] [cursor=pointer]:
+              - generic [ref=e272]: RebeccaKaku/OptiFolio
+              - img [ref=e273]: expand_more
+            - button "Configure repo" [ref=e274] [cursor=pointer]:
+              - generic [ref=e277]: Configure repo
+              - img [ref=e278]:
+                - img [ref=e279]
+          - generic [ref=e282]:
+            - generic [ref=e285]:
+              - generic [active] [ref=e290]:
+                - paragraph: Ask Jules to work on a session
+                - paragraph [ref=e291]
+              - generic [ref=e292]:
+                - button "Add context" [ref=e604] [cursor=pointer]:
+                  - img [ref=e605]:
+                    - img [ref=e606]
+                - combobox [ref=e609] [cursor=pointer]:
+                  - generic [ref=e610]: main
+                - generic [ref=e293]:
+                  - button "Interactive plan" [ref=e612] [cursor=pointer]:
+                    - img [ref=e613]:
+                      - img [ref=e614]
+                    - generic [ref=e617]: Interactive plan
+                    - img [ref=e618]:
+                      - img [ref=e619]
+                  - button [disabled] [ref=e294]:
+                    - img [ref=e295]:
+                      - img [ref=e296]
+            - generic [ref=e299]:
+              - generic [ref=e300]:
+                - button "Codebase overview" [ref=e301] [cursor=pointer]:
+                  - generic [ref=e303]: Codebase overview
+                - button "Suggested" [ref=e304] [cursor=pointer]:
+                  - generic [ref=e305]: Suggested
+                - button "Scheduled" [ref=e306] [cursor=pointer]:
+                  - generic [ref=e307]: Scheduled
+              - generic [ref=e309]:
+                - generic [ref=e310]:
+                  - generic [ref=e311]:
+                    - generic [ref=e312]:
+                      - button [ref=e313] [cursor=pointer]:
+                        - img [ref=e315]: lightbulb
+                      - generic [ref=e316]: Top suggestions to continuously improve your codebase
+                    - button "Configure suggestions" [ref=e317] [cursor=pointer]:
+                      - generic [ref=e318]: Configure suggestions
+                      - img [ref=e319]: settings
+                  - generic [ref=e322]:
+                    - button "All" [pressed] [ref=e323] [cursor=pointer]:
+                      - text: All
+                      - img [ref=e324]: close
+                    - button "Cleanup" [ref=e325] [cursor=pointer]
+                    - button "Performance" [ref=e326] [cursor=pointer]
+                    - button "Security" [ref=e327] [cursor=pointer]
+                    - button "Code Health" [ref=e328] [cursor=pointer]
+                    - button "Testing" [ref=e329] [cursor=pointer]
+                  - button "View more" [ref=e330] [cursor=pointer]
+                - generic [ref=e331]:
+                  - generic [ref=e333]:
+                    - button [ref=e334] [cursor=pointer]:
+                      - img [ref=e336]: checklist
+                    - generic [ref=e337]: Sessions
+                  - generic [ref=e338]:
+                    - link [ref=e340] [cursor=pointer]:
+                      - /url: /task/18149068881117256829
+                      - generic [ref=e341]:
+                        - generic [ref=e343]:
+                          - heading "⚡ Performance Optimization Task" [level=1] [ref=e344]
+                          - paragraph [ref=e345]: You are a performance-focused agent. Your mission is to analyze and implement a performance improvement that should make the codebase measurably faster or more efficient.
+                          - heading "Task Details" [level=2] [ref=e346]
+                          - paragraph [ref=e347]:
+                            - strong [ref=e348]: "File:"
+                            - code [ref=e349]: src/core/portfolio_core.py:288
+                            - strong [ref=e350]: "Issue:"
+                            - text: N+1 Data Fetching in Loop
+                          - paragraph [ref=e351]:
+                            - strong [ref=e352]: "Language:"
+                            - text: python
+                          - paragraph [ref=e353]:
+                            - strong [ref=e354]: "Current Code:"
+                          - code [ref=e356]: "try: # 设置日期范围（最近30天） end_date = datetime.now().strftime(\"%Y-%m-%d\") start_date = (datetime.now() - timedelta(days=30)).strftime(\"%Y-%m-%d\") # 获取价格数据 df = fetcher.fetch(symbol, start_date=start_date, end_date=end_date)"
+                          - paragraph [ref=e357]:
+                            - strong [ref=e358]: "Rationale:"
+                            - text: Fetching price data iteratively using
+                            - code [ref=e359]: fetcher.fetch(symbol)
+                            - text: can be highly inefficient. It can be optimized by batching multiple symbols in one call if the fetcher supports it.
+                          - heading "Your Process" [level=2] [ref=e360]
+                          - heading "1. 🔍 UNDERSTAND - Analyze the Optimization Opportunity" [level=3] [ref=e361]
+                          - list [ref=e362]:
+                            - listitem [ref=e363]: Review the surrounding code and understand the data flow
+                            - listitem [ref=e364]: Identify the specific inefficiency (CPU, memory, I/O, allocations, etc.)
+                          - heading "2. 📊 MEASURE - Establish a Baseline" [level=3] [ref=e365]
+                          - paragraph [ref=e366]: Before making any changes, you must attempt to establish a performance baseline for the affected code you can use to demonstrate your improvement later.
+                          - paragraph [ref=e367]: "Find or create a benchmark/profiling method:"
+                          - list [ref=e368]:
+                            - listitem [ref=e369]: Look for existing benchmark tests or profiling infrastructure
+                            - listitem [ref=e370]: If none exist, create a focused benchmark or performance measurement for this code path
+                          - paragraph [ref=e371]: ⚠️ If you cannot measure the performance impact (or it is impractical to do so), document why and your rationale for why this change is a net performance improvement.
+                          - heading "3. 🔧 IMPLEMENT - Optimize with Precision" [level=3] [ref=e372]
+                          - list [ref=e373]:
+                            - listitem [ref=e374]: Write clean, understandable optimized code
+                            - listitem [ref=e375]: Preserve existing functionality exactly
+                            - listitem [ref=e376]: Consider edge cases that may apply (nil pointers, concurrent access)
+                            - listitem [ref=e377]: Ensure the optimization is safe
+                          - heading "4. ✅ VERIFY - Measure the Impact" [level=3] [ref=e378]
+                          - list [ref=e379]:
+                            - listitem [ref=e380]: Run format and lint checks
+                            - listitem [ref=e381]: Run the full test suite
+                            - listitem [ref=e382]: Verify the optimization by measuring the performance impact after your changes
+                            - listitem [ref=e383]: Ensure no functionality is broken
+                          - heading "5. 🎁 PRESENT - Share Your Speed Boost" [level=3] [ref=e384]
+                          - paragraph [ref=e385]: "Create a PR with:"
+                          - list [ref=e386]:
+                            - listitem [ref=e387]: "Title: \"⚡ [performance improvement description]\""
+                            - listitem [ref=e388]:
+                              - text: "Description with:"
+                              - list [ref=e389]:
+                                - listitem [ref=e390]:
+                                  - text: 💡
+                                  - strong [ref=e391]: "What:"
+                                  - text: The optimization implemented
+                                - listitem [ref=e392]:
+                                  - text: 🎯
+                                  - strong [ref=e393]: "Why:"
+                                  - text: The performance problem it solves
+                                - listitem [ref=e394]:
+                                  - text: 📊
+                                  - strong [ref=e395]: "Measured Improvement:"
+                                  - text: Discuss your measured performance improvement details, if any. Include key benchmark results (baseline, improvement, and change over baseline), if any.
+                                  - list [ref=e396]:
+                                    - listitem [ref=e397]: If you were unable to show a meaningful performance improvement, you must mention that clearly upfront and discuss the rationale.
+                          - paragraph [ref=e398]: "Remember: You're an amazing performance engineer, making things lightning fast. But speed without correctness is useless. Measure, optimize, verify."
+                        - generic [ref=e399]:
+                          - img [ref=e402]:
+                            - img [ref=e403]
+                          - generic [ref=e405]: Needs clarification
+                      - button "Task options" [ref=e407]:
+                        - img [ref=e408]:
+                          - img [ref=e409]
+                    - link [ref=e412] [cursor=pointer]:
+                      - /url: /task/7345915718539418009
+                      - generic [ref=e413]:
+                        - generic [ref=e415]:
+                          - paragraph [ref=e416]: "Task 16 (Agent E): Harden Test Assertions — Warning Content, Class Checks, USD Rate"
+                          - paragraph [ref=e417]: "Zone: Tests Files: tests/test_findata_serving.py, tests/test_findata_fetcher.py, tests/test_sync_macro_rates.py Depends on: nothing (fully independent) Goal Strengthen weak test assertions found in the 2026-06-18 audit. Scope"
+                          - paragraph [ref=e418]: "Strengthen rate warning assertion: test_rate_emergency_fallback_when_no_repo checks \"warning\" in result but not that warning is non-None. Verify the actual warning string content."
+                          - paragraph [ref=e419]: "Add concrete class checks: TestProtocolConformance only checks isinstance(x, FetcherProtocol). Add assertions that FETCHER_REGISTRY[\"cn_stock\"] is specifically a CnStockFetcher, etc."
+                          - paragraph [ref=e420]: "Add 1y_us rate test: Verify fd.rate(\"1y_us\") maps to RATE_SOFR_USD_ON and returns reasonable values."
+                          - paragraph [ref=e421]: "Update sync_macro_rates test dates: Tests in test_sync_macro_rates.py use 2024 dates. Update to 2026 dates while keeping the normalization logic tests unchanged."
+                          - paragraph [ref=e422]: Acceptance
+                          - paragraph [ref=e423]: python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider passes. Warning assertion checks for non-None and contains expected text. FETCHER_REGISTRY tests verify concrete class types. 1y_us test passes with stored SOFR data or missing_observation source.
+                        - generic [ref=e424]:
+                          - img [ref=e427]:
+                            - img [ref=e428]
+                          - generic [ref=e430]: Failed
+                      - button "Task options" [ref=e432]:
+                        - img [ref=e433]:
+                          - img [ref=e434]
+                    - link [ref=e437] [cursor=pointer]:
+                      - /url: /task/15098326451861820953
+                      - generic [ref=e438]:
+                        - generic [ref=e440]:
+                          - paragraph [ref=e441]: "Task 12 (Agent A): Refresh All Stale Data — sync_macro_rates + full_scan"
+                          - paragraph [ref=e442]: "Zone: Data Refresh Files: tools/sync_macro_rates.py (run, not edit), FinData/orchestration/orchestrator.py (run), data/ (output) Depends on: Phase 1 crossroads fixes (already merged to main) Goal Refresh ALL stale data in the OptiFolio project. Audit found 322/322 assets stale (14+ days), policy rates 300+ days stale, US equities ending at 2024-02-06. Scope"
+                          - paragraph [ref=e443]: "Run python tools/sync_macro_rates.py to refresh all policy rates, interbank rates, and FRED replacement rates. Run Orchestrator.full_scan() to refresh all 322 assets through live fetchers. Verify data freshness: check that market_prices.parquet and observations.parquet now have recent data."
+                          - paragraph [ref=e444]: Acceptance
+                          - paragraph [ref=e445]: Policy rates (RATE_POLICY_US, RATE_POLICY_EU, RATE_POLICY_JP, RATE_POLICY_UK) have data from 2026 US equities (AAPL, GOOGL, QQQ) have data from June 2026 python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider passes Python snippet verifying freshness shows ≤20% assets stale
+                        - generic [ref=e446]:
+                          - img [ref=e449]:
+                            - img [ref=e450]
+                          - generic [ref=e452]: Failed
+                      - button "Task options" [ref=e454]:
+                        - img [ref=e455]:
+                          - img [ref=e456]
+                    - link [ref=e459] [cursor=pointer]:
+                      - /url: /task/4955515103462331499
+                      - generic [ref=e460]:
+                        - generic [ref=e462]:
+                          - paragraph [ref=e463]: "Task 6: Wire AlertEngine Into Application Services"
+                          - paragraph [ref=e464]: "@ Goal: make AlertEngine reachable from the API and daily scheduler. Scope:"
+                          - paragraph [ref=e465]: "In src/services/application.py, import AlertEngine from src.analytics.alerts and add an alerts field to the ApplicationServices dataclass. Instantiate it in get_application_services(). In src/api/fastapi_app.py, add two endpoints:"
+                          - paragraph [ref=e466]: GET /api/alerts — returns recent alerts by calling get_application_services().alerts.run_all(). POST /api/alerts/run — accepts optional JSON body with context keys (quality_summary, concentration_report, fx_exposure_report, liquidity_report, returns_summary, fund_statuses, maturity_dates, threshold_overrides). Passes context to AlertEngine.run_all(**ctx).
+                          - paragraph [ref=e467]: "Alert dataclass fields: alert_id, title, reason, evidence, severity, suggested_action, created_at. Serialize to JSON list. Add tests for both endpoints in tests/test_fastapi_app.py."
+                          - paragraph [ref=e468]: "Acceptance:"
+                          - paragraph [ref=e469]: "GET /api/alerts returns 200 with a JSON list. POST /api/alerts/run with {\"quality_summary\": {\"threshold_pct\": 50.0, \"stale_assets\": [\"AAPL\"], \"n_days\": 5}} returns a stale_price_threshold alert. tests/test_fastapi_app.py still passes."
+                          - paragraph [ref=e470]: "Rules:"
+                          - paragraph [ref=e471]: "Do NOT edit app.py Do NOT commit .playwright-mcp/, .pytest_tmp/, .local/, data/ files Use logging (not print) Use success()/failure() from src/services/response.py Run: python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider See docs/JULES_CLOUD_TASKS.md #Task 6 for full details. @"
+                        - generic [ref=e472]:
+                          - img [ref=e475]:
+                            - img [ref=e476]
+                          - generic [ref=e478]: Failed
+                      - button "Task options" [ref=e480]:
+                        - img [ref=e481]:
+                          - img [ref=e482]
+                    - link [ref=e485] [cursor=pointer]:
+                      - /url: /task/10622252411298624612
+                      - generic [ref=e486]:
+                        - generic [ref=e488]:
+                          - heading "🧪 Testing Improvement Task" [level=1] [ref=e489]
+                          - paragraph [ref=e490]: You are a testing-focused agent. Your mission is to analyze and implement a testing improvement that will increase the reliability and coverage of the codebase.
+                          - heading "Task Details" [level=2] [ref=e491]
+                          - paragraph [ref=e492]:
+                            - strong [ref=e493]: "File:"
+                            - code [ref=e494]: FinData/serving/provider.py:24
+                            - strong [ref=e495]: "Issue:"
+                            - text: Untested prices endpoint in Data Provider
+                          - paragraph [ref=e496]:
+                            - strong [ref=e497]: "Language:"
+                            - text: python
+                          - paragraph [ref=e498]:
+                            - strong [ref=e499]: "Current Code:"
+                          - code [ref=e501]: "self._store = store or CanonicalStore() # ── raw data ── def prices(self, symbol: str, start: str = None, end: str = None, mode: str = \"fast\") -> Optional[pd.Series]: \"\"\"Close price series for one asset.\"\"\" if mode == \"live\": self._trigger_refresh([symbol]) panel = self._store.get_prices([symbol], start=start, end=end)"
+                          - paragraph [ref=e502]:
+                            - strong [ref=e503]: "Rationale:"
+                            - text: Testing this requires mocking the underlying data store, but the logic to handle start/end dates and missing data is important to verify.
+                          - heading "Your Process" [level=2] [ref=e504]
+                          - heading "1. 🔍 UNDERSTAND - Analyze the Testing Gap" [level=3] [ref=e505]
+                          - list [ref=e506]:
+                            - listitem [ref=e507]: Review the code that needs testing
+                            - listitem [ref=e508]: Understand what functionality should be tested
+                            - listitem [ref=e509]: Identify edge cases and error conditions
+                          - heading "2. 📋 PLAN - Design the Test Strategy" [level=3] [ref=e510]
+                          - paragraph [ref=e511]: "Before writing tests, plan your approach:"
+                          - list [ref=e512]:
+                            - listitem [ref=e513]: What test framework is used in this project?
+                            - listitem [ref=e514]: What existing test patterns should you follow?
+                            - listitem [ref=e515]: What scenarios need to be covered?
+                          - heading "3. 🔧 IMPLEMENT - Write Effective Tests" [level=3] [ref=e516]
+                          - list [ref=e517]:
+                            - listitem [ref=e518]: Write clear, focused test cases
+                            - listitem [ref=e519]: Follow existing testing patterns and conventions
+                            - listitem [ref=e520]: Cover happy paths, edge cases, and error conditions
+                            - listitem [ref=e521]: Use appropriate mocks and test doubles
+                            - listitem [ref=e522]: Ensure tests are deterministic and not flaky
+                          - heading "4. ✅ VERIFY - Validate the Tests" [level=3] [ref=e523]
+                          - list [ref=e524]:
+                            - listitem [ref=e525]: Run the new tests to ensure they pass
+                            - listitem [ref=e526]: Run the full test suite to ensure no regressions
+                            - listitem [ref=e527]: Verify the tests actually catch bugs (try breaking the code to confirm the test fails)
+                          - heading "5. 📝 DOCUMENT - Explain the Testing Improvement" [level=3] [ref=e528]
+                          - paragraph [ref=e529]: "Create a PR with:"
+                          - list [ref=e530]:
+                            - listitem [ref=e531]: "Title: \"🧪 [testing improvement description]\""
+                            - listitem [ref=e532]:
+                              - text: "Description with:"
+                              - list [ref=e533]:
+                                - listitem [ref=e534]:
+                                  - text: 🎯
+                                  - strong [ref=e535]: "What:"
+                                  - text: The testing gap addressed
+                                - listitem [ref=e536]:
+                                  - text: 📊
+                                  - strong [ref=e537]: "Coverage:"
+                                  - text: What scenarios are now tested
+                                - listitem [ref=e538]:
+                                  - text: ✨
+                                  - strong [ref=e539]: "Result:"
+                                  - text: The improvement in test coverage
+                          - paragraph [ref=e540]: "Remember: Good tests are the safety net that allows confident refactoring. Write tests that catch real bugs."
+                        - generic [ref=e541]:
+                          - img [ref=e544]:
+                            - img [ref=e545]
+                          - generic [ref=e547]: Completed 2 hours ago
+                      - button "Task options" [ref=e549]:
+                        - img [ref=e550]:
+                          - img [ref=e551]
+                    - button "View more" [ref=e553] [cursor=pointer]
+                - generic [ref=e555]:
+                  - generic [ref=e556]:
+                    - img [ref=e557]: schedule
+                    - generic [ref=e558]: Schedule skill-based agents
+                  - generic [ref=e559]:
+                    - button "Performance" [ref=e560] [cursor=pointer]:
+                      - img [ref=e561]: bolt
+                      - generic [ref=e562]: Performance
+                    - button "Design" [ref=e563] [cursor=pointer]:
+                      - img [ref=e564]: palette
+                      - generic [ref=e565]: Design
+                    - button "Security" [ref=e566] [cursor=pointer]:
+                      - img [ref=e567]: shield
+                      - generic [ref=e568]: Security
+          - generic [ref=e569]:
+            - generic [ref=e570]:
+              - img [ref=e571]:
+                - img [ref=e572]
+              - generic [ref=e574]: Integrate Jules
+            - generic [ref=e575]:
+              - link "Configure Render" [ref=e576] [cursor=pointer]:
+                - /url: /settings/integrations
+                - generic [ref=e577]:
+                  - img [ref=e578]
+                  - generic [ref=e580]: Configure Render
+              - link "Download CLI" [ref=e581] [cursor=pointer]:
+                - /url: https://jules.google/docs/cli/reference/
+                - generic [ref=e582]:
+                  - img [ref=e583]:
+                    - img [ref=e584]
+                  - generic [ref=e589]: Download CLI
+              - link "Try API" [ref=e590] [cursor=pointer]:
+                - /url: https://jules.google/docs/api/reference/
+                - generic [ref=e591]:
+                  - img [ref=e592]:
+                    - img [ref=e593]
+                  - generic [ref=e595]: Try API
+        - generic [ref=e596]:
+          - link "Terms" [ref=e597] [cursor=pointer]:
+            - /url: /legal
+          - link "Open source licenses" [ref=e598] [cursor=pointer]:
+            - /url: /licenses
+          - link "Use code with caution" [ref=e599] [cursor=pointer]:
+            - /url: https://g.co/legal/generative-code

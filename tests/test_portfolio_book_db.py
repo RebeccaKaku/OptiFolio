@@ -70,15 +70,16 @@ class TestInitialize:
         assert db_tmp.path.exists()
         assert db_tmp.path.stat().st_size > 0
 
-    def test_schema_version_is_one_after_init(self, initialized):
-        """A freshly initialized database has schema version 1."""
-        assert initialized.schema_version() == 1
+    def test_schema_version_is_current_after_init(self, initialized):
+        """A freshly initialized database has the current schema version."""
+        assert initialized.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
     def test_double_initialize_is_idempotent(self, initialized):
         """Calling initialize() twice does not corrupt the database."""
-        assert initialized.schema_version() == 1
+        current = PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
+        assert initialized.schema_version() == current
         initialized.initialize()  # second call
-        assert initialized.schema_version() == 1
+        assert initialized.schema_version() == current
 
 
 # ── Connection ─────────────────────────────────────────────────────────────
@@ -101,7 +102,7 @@ class TestConnect:
                 "SELECT key, value FROM _schema_meta WHERE key = 'version'"
             ).fetchone()
             assert row["key"] == "version"
-            assert row["value"] == "1"
+            assert row["value"] == str(PortfolioBookDatabase.CURRENT_SCHEMA_VERSION)
         finally:
             conn.close()
 
@@ -144,6 +145,38 @@ class TestSchemaVersionGuards:
         # Should not raise
         db_tmp.initialize()
         assert db_tmp.schema_version() == current
+
+    def test_migration_1_to_2(self, db_tmp):
+        """A database at version 1 is automatically upgraded to version 2."""
+        db_tmp.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_tmp.path))
+        conn.execute(
+            "CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO _schema_meta (key, value) VALUES ('version', '1')"
+        )
+        conn.commit()
+        conn.close()
+
+        # Before init, accounts table does not exist
+        conn = sqlite3.connect(str(db_tmp.path))
+        res = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'"
+        ).fetchone()
+        assert res is None
+        conn.close()
+
+        db_tmp.initialize()
+        assert db_tmp.schema_version() == 2
+
+        # After init, accounts table exists
+        conn = db_tmp.connect()
+        res = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'"
+        ).fetchone()
+        assert res is not None
+        conn.close()
 
     def test_corrupt_version_raises_on_initialize(self, db_tmp):
         """A corrupt version value raises InvalidSchemaMetadataError."""
@@ -205,6 +238,81 @@ class TestExceptionHierarchy:
             pass  # expected
 
 
+# ── Account CRUD ───────────────────────────────────────────────────────────
+
+class TestAccountCRUD:
+    def test_create_and_get_account(self, initialized):
+        """create_account persists all fields; get_account retrieves them."""
+        initialized.create_account(
+            account_id="acc_001",
+            name="Main Brokerage",
+            institution="Interactive Brokers",
+            account_type="brokerage",
+            base_currency="USD",
+            ownership_scope="personal",
+            notes="Primary trading account",
+        )
+
+        row = initialized.get_account("acc_001")
+        assert row is not None
+        assert row["account_id"] == "acc_001"
+        assert row["name"] == "Main Brokerage"
+        assert row["institution"] == "Interactive Brokers"
+        assert row["account_type"] == "brokerage"
+        assert row["base_currency"] == "USD"
+        assert row["ownership_scope"] == "personal"
+        assert row["status"] == "active"
+        assert row["notes"] == "Primary trading account"
+        assert row["created_at"] is not None
+        assert row["updated_at"] is not None
+
+    def test_create_account_validation(self, initialized):
+        """create_account raises ValueError for invalid ownership_scope."""
+        with pytest.raises(ValueError, match="ownership_scope"):
+            initialized.create_account(
+                account_id="acc_bad",
+                name="Bad Account",
+                ownership_scope="illegal_scope",
+            )
+
+    def test_get_account_none_if_missing(self, initialized):
+        """get_account returns None for non-existent IDs."""
+        assert initialized.get_account("no_such_account") is None
+
+    def test_update_account_fields(self, initialized):
+        """update_account modifies specific fields and refreshes updated_at."""
+        initialized.create_account(account_id="acc_upd", name="Before")
+        row_before = initialized.get_account("acc_upd")
+        ts_before = row_before["updated_at"]
+
+        initialized.update_account(
+            "acc_upd", name="After", notes="Updated notes"
+        )
+
+        row_after = initialized.get_account("acc_upd")
+        assert row_after["name"] == "After"
+        assert row_after["notes"] == "Updated notes"
+        assert row_after["updated_at"] >= ts_before
+
+    def test_update_account_validation(self, initialized):
+        """update_account validates ownership_scope and status."""
+        initialized.create_account(account_id="acc_val", name="Test")
+
+        with pytest.raises(ValueError, match="ownership_scope"):
+            initialized.update_account("acc_val", ownership_scope="invalid")
+
+        with pytest.raises(ValueError, match="status"):
+            initialized.update_account("acc_val", status="invalid")
+
+    def test_deactivate_account(self, initialized):
+        """deactivate_account sets status to 'inactive'."""
+        initialized.create_account(account_id="acc_dea", name="Active")
+        assert initialized.get_account("acc_dea")["status"] == "active"
+
+        initialized.deactivate_account("acc_dea")
+        assert initialized.get_account("acc_dea")["status"] == "inactive"
+
+
 # ── Backup & Restore ───────────────────────────────────────────────────────
 
 class TestBackupRestore:
@@ -245,26 +353,21 @@ class TestBackupRestore:
 
     def test_restore_successful_with_overwrite(self, initialized, tmp_path):
         """restore_from() replaces current DB content when overwrite=True."""
-        # 1. Setup: Add some data to DB
         conn = initialized.connect()
         conn.execute("CREATE TABLE test_data (val TEXT)")
         conn.execute("INSERT INTO test_data VALUES ('hello')")
         conn.commit()
         conn.close()
 
-        # 2. Backup
         backup_path = initialized.backup(tmp_path / "backup.sqlite")
 
-        # 3. Modify original DB
         conn = initialized.connect()
         conn.execute("UPDATE test_data SET val = 'world'")
         conn.commit()
         conn.close()
 
-        # 4. Restore
         initialized.restore_from(backup_path, overwrite=True)
 
-        # 5. Verify restored data
         conn = initialized.connect()
         row = conn.execute("SELECT val FROM test_data").fetchone()
         assert row["val"] == "hello"
@@ -272,7 +375,6 @@ class TestBackupRestore:
 
     def test_restore_fails_for_incompatible_version(self, initialized, tmp_path):
         """restore_from() raises UnsupportedSchemaVersionError for newer backups."""
-        # Create a "fake" backup with version 99
         newer_path = tmp_path / "newer.sqlite"
         conn = sqlite3.connect(str(newer_path))
         conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")

@@ -79,6 +79,7 @@ tests/                 # 592 tests, 30 skipped
 
 | Document | Audience |
 |----------|----------|
+| `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` | **Current product north star and AI task roadmap** |
 | `docs/CURRENT_STATE_2026-06-05.md` | Onboarding — what works, what's broken, what's next |
 | `CLAUDE.md` | AI assistant project instructions |
 | `docs/FINANCIAL_LOGIC_AND_MODULE_DESIGN.md` | Architects — target architecture, naming, migration |

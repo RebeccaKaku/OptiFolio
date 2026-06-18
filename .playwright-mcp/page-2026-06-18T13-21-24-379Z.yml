@@ -1,0 +1,234 @@
+- generic [active] [ref=e1]:
+  - 'button "Google Account: Nuvola d''Argento (huolining3@gmail.com)" [ref=e8] [cursor=pointer]':
+    - img [ref=e11]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - button [ref=e16] [cursor=pointer]
+      - generic [ref=e19]:
+        - link "jules" [ref=e21] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e22]:
+            - img [ref=e24]
+            - generic: jules
+        - generic [ref=e26]:
+          - textbox "Search for repo or sessions" [ref=e27]
+          - img:
+            - img
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - button "Recent sessions" [ref=e30] [cursor=pointer]:
+              - generic [ref=e32]: Recent sessions
+              - img [ref=e33]:
+                - img [ref=e34]
+            - generic [ref=e37]:
+              - generic [ref=e38]:
+                - 'link "Task 16 (Agent E): Harden Test Assertions — Warning Content, Class Checks, USD Rate" [ref=e39] [cursor=pointer]':
+                  - /url: /session/7345915718539418009
+                  - img [ref=e41]:
+                    - img [ref=e42]
+                  - generic [ref=e44]: "Task 16 (Agent E): Harden Test Assertions — Warning Content, Class Checks, USD Rate"
+                - button "Task options" [ref=e46] [cursor=pointer]:
+                  - img [ref=e47]:
+                    - img [ref=e48]
+              - generic [ref=e50]:
+                - 'link "Task 15 (Agent D): Fix Provider FX Live Path + Annualized Return Guard" [ref=e51] [cursor=pointer]':
+                  - /url: /session/6619842989645712663
+                  - img [ref=e53]:
+                    - img [ref=e54]
+                  - generic [ref=e56]: "Task 15 (Agent D): Fix Provider FX Live Path + Annualized Return Guard"
+                - button "Task options" [ref=e58] [cursor=pointer]:
+                  - img [ref=e59]:
+                    - img [ref=e60]
+              - generic [ref=e62]:
+                - 'link "Task 14 (Agent C): Add Live Data Validation Smoke Tests" [ref=e63] [cursor=pointer]':
+                  - /url: /session/13538966656362581320
+                  - img [ref=e65]:
+                    - img [ref=e66]
+                  - generic [ref=e68]: "Task 14 (Agent C): Add Live Data Validation Smoke Tests"
+                - button "Task options" [ref=e70] [cursor=pointer]:
+                  - img [ref=e71]:
+                    - img [ref=e72]
+              - generic [ref=e74]:
+                - 'link "Task 13 (Agent B): Fix Timezone Handling — All 9294 Rows Wrongly UTC" [ref=e75] [cursor=pointer]':
+                  - /url: /session/16064114460927838854
+                  - img [ref=e77]:
+                    - img [ref=e78]
+                  - generic [ref=e80]: "Task 13 (Agent B): Fix Timezone Handling — All 9294 Rows Wrongly UTC"
+                - button "Task options" [ref=e82] [cursor=pointer]:
+                  - img [ref=e83]:
+                    - img [ref=e84]
+              - generic [ref=e86]:
+                - 'link "Task 12 (Agent A): Refresh All Stale Data — sync_macro_rates + full_scan" [ref=e87] [cursor=pointer]':
+                  - /url: /session/15098326451861820953
+                  - img [ref=e89]:
+                    - img [ref=e90]
+                  - generic [ref=e92]: "Task 12 (Agent A): Refresh All Stale Data — sync_macro_rates + full_scan"
+                - button "Task options" [ref=e94] [cursor=pointer]:
+                  - img [ref=e95]:
+                    - img [ref=e96]
+              - generic [ref=e98]:
+                - 'link "Task C: Fix 16 skipped tests + implement missing AssetRegistry features" [ref=e99] [cursor=pointer]':
+                  - /url: /session/9738617893676535656
+                  - img [ref=e101]:
+                    - img [ref=e102]
+                  - generic [ref=e104]: "Task C: Fix 16 skipped tests + implement missing AssetRegistry features"
+                - button "Task options" [ref=e106] [cursor=pointer]:
+                  - img [ref=e107]:
+                    - img [ref=e108]
+              - generic [ref=e110]:
+                - 'link "Task B: Wire Ghostfolio compat stub endpoints to real data" [ref=e111] [cursor=pointer]':
+                  - /url: /session/14145627190000664134
+                  - img [ref=e113]:
+                    - img [ref=e114]
+                  - generic [ref=e116]: "Task B: Wire Ghostfolio compat stub endpoints to real data"
+                - button "Task options" [ref=e118] [cursor=pointer]:
+                  - img [ref=e119]:
+                    - img [ref=e120]
+              - generic [ref=e122]:
+                - 'link "Task A: Replace np.random in dashboard_engine with real FinData analytics" [ref=e123] [cursor=pointer]':
+                  - /url: /session/15512514760484525741
+                  - img [ref=e125]:
+                    - img [ref=e126]
+                  - generic [ref=e128]: "Task A: Replace np.random in dashboard_engine with real FinData analytics"
+                - button "Task options" [ref=e130] [cursor=pointer]:
+                  - img [ref=e131]:
+                    - img [ref=e132]
+              - generic [ref=e134]:
+                - 'link "Task 8: Fix Dashboard Hardcoded Date And Approximate Position Values" [ref=e135] [cursor=pointer]':
+                  - /url: /session/10659018792688902087
+                  - img [ref=e137]:
+                    - img [ref=e138]
+                  - generic [ref=e140]: "Task 8: Fix Dashboard Hardcoded Date And Approximate Position Values"
+                - button "Task options" [ref=e142] [cursor=pointer]:
+                  - img [ref=e143]:
+                    - img [ref=e144]
+              - generic [ref=e146]:
+                - 'link "Task 7: FinData Store Cleanup — Delete Dead Code, Fix Re-Exports" [ref=e147] [cursor=pointer]':
+                  - /url: /session/4249914699294190850
+                  - img [ref=e149]:
+                    - img [ref=e150]
+                  - generic [ref=e152]: "Task 7: FinData Store Cleanup — Delete Dead Code, Fix Re-Exports"
+                - button "Task options" [ref=e154] [cursor=pointer]:
+                  - img [ref=e155]:
+                    - img [ref=e156]
+              - button "View more" [ref=e158] [cursor=pointer]:
+                - img [ref=e159]:
+                  - img [ref=e160]
+                - generic [ref=e162]: View more
+          - generic [ref=e163]:
+            - button "Codebases" [ref=e164] [cursor=pointer]:
+              - generic [ref=e165]:
+                - generic [ref=e166]: Codebases
+                - img [ref=e167]:
+                  - img [ref=e168]
+            - generic [ref=e172]:
+              - button "RebeccaKaku / latex-chinese-fonts" [ref=e173] [cursor=pointer]:
+                - img [ref=e174]:
+                  - img [ref=e175]
+                - generic "RebeccaKaku/latex-chinese-fonts" [ref=e179]:
+                  - generic [ref=e180]:
+                    - generic [ref=e181]: RebeccaKaku
+                    - generic [ref=e182]: /
+                  - generic [ref=e183]: latex-chinese-fonts
+                - img [ref=e185]:
+                  - img [ref=e186]
+              - button "RebeccaKaku / MyBlog" [ref=e188] [cursor=pointer]:
+                - img [ref=e189]:
+                  - img [ref=e190]
+                - generic "RebeccaKaku/MyBlog" [ref=e194]:
+                  - generic [ref=e195]:
+                    - generic [ref=e196]: RebeccaKaku
+                    - generic [ref=e197]: /
+                  - generic [ref=e198]: MyBlog
+                - img [ref=e200]:
+                  - img [ref=e201]
+              - button "RebeccaKaku / OptiFolio" [ref=e203] [cursor=pointer]:
+                - img [ref=e204]:
+                  - img [ref=e205]
+                - generic "RebeccaKaku/OptiFolio" [ref=e209]:
+                  - generic [ref=e210]:
+                    - generic [ref=e211]: RebeccaKaku
+                    - generic [ref=e212]: /
+                  - generic [ref=e213]: OptiFolio
+                - img [ref=e215]:
+                  - img [ref=e216]
+        - generic [ref=e218]:
+          - generic [ref=e222] [cursor=pointer]: Daily session limit (5/100)
+          - generic [ref=e223]:
+            - link "Docs" [ref=e224] [cursor=pointer]:
+              - /url: https://jules.google/docs
+              - img [ref=e225]:
+                - img [ref=e226]
+              - generic [ref=e229]: Docs
+            - link [ref=e230] [cursor=pointer]:
+              - /url: https://discord.gg/googlelabs
+              - img [ref=e231]:
+                - img [ref=e232]
+            - link [ref=e234] [cursor=pointer]:
+              - /url: https://x.com/julesagent
+              - img [ref=e235]:
+                - img [ref=e236]
+    - generic [ref=e239]:
+      - generic [ref=e241]:
+        - button [ref=e242] [cursor=pointer]:
+          - img [ref=e243]:
+            - img [ref=e244]
+        - button [ref=e246] [cursor=pointer]:
+          - img [ref=e248]: light_mode
+        - button [ref=e249] [cursor=pointer]:
+          - img [ref=e251]:
+            - img [ref=e252]
+        - button "Feedback" [ref=e257] [cursor=pointer]:
+          - img [ref=e258]:
+            - img [ref=e259]
+          - generic [ref=e262]: Feedback
+        - link [ref=e263] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e264]:
+            - img [ref=e265]
+        - link "PRO" [ref=e269] [cursor=pointer]:
+          - /url: /settings
+      - generic [ref=e273]:
+        - generic [ref=e275]:
+          - button [disabled] [ref=e279]:
+            - img [ref=e281]:
+              - img [ref=e282]
+          - generic [ref=e287]:
+            - generic [ref=e288]:
+              - img [ref=e290]:
+                - img [ref=e291]
+              - text: Code
+            - button [disabled] [ref=e294]:
+              - img [ref=e296]:
+                - img [ref=e297]
+        - generic [ref=e299]:
+          - generic [ref=e301]:
+            - img [ref=e308]
+            - generic [ref=e339]:
+              - textbox [disabled] [ref=e342]
+              - generic [ref=e343]:
+                - button [disabled] [ref=e345]:
+                  - img [ref=e346]:
+                    - img [ref=e347]
+                - button [disabled] [ref=e349]:
+                  - img [ref=e350]:
+                    - img [ref=e351]
+          - generic [ref=e356]:
+            - generic [ref=e362]:
+              - generic [ref=e363]: "1"
+              - generic [ref=e364]: "2"
+              - generic [ref=e365]: "3"
+              - generic [ref=e366]: "4"
+              - generic [ref=e367]: "5"
+            - generic [ref=e380]:
+              - generic [ref=e381]: "1"
+              - generic [ref=e382]: "2"
+              - generic [ref=e383]: "3"
+              - generic [ref=e384]: "4"
+              - generic [ref=e385]: "5"
+            - generic [ref=e398]:
+              - generic [ref=e399]: "1"
+              - generic [ref=e400]: "2"
+              - generic [ref=e401]: "3"
+              - generic [ref=e402]: "4"
+              - generic [ref=e403]: "5"
