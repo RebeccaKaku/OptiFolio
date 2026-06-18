@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import sqlite3
 import logging
+from contextlib import closing
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 from src.core.paths import PROJECT_ROOT
 
@@ -56,7 +57,11 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 1
+    CURRENT_SCHEMA_VERSION: int = 2
+
+    _migrations: dict[int, str] = {
+        1: "_migrate_v1",
+    }
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
@@ -98,29 +103,37 @@ class PortfolioBookDatabase:
             row = cursor.fetchone()
 
             if row is None:
-                # First-time init: write current version
+                # New database: start at v1 and migrate up
+                stored = 1
                 conn.execute(
-                    "INSERT INTO _schema_meta (key, value) VALUES ('version', ?)",
-                    (str(self.CURRENT_SCHEMA_VERSION),),
+                    "INSERT INTO _schema_meta (key, value) VALUES ('version', '1')"
                 )
                 conn.commit()
-                _log.info(
-                    "PortfolioBookDatabase initialized at %s (v%d)",
-                    self._path, self.CURRENT_SCHEMA_VERSION,
-                )
             else:
                 stored = int(row[0])
-                if stored > self.CURRENT_SCHEMA_VERSION:
-                    raise UnsupportedSchemaVersionError(
-                        f"Database schema version {stored} is higher than "
-                        f"this code supports ({self.CURRENT_SCHEMA_VERSION}). "
-                        f"Upgrade OptiFolio or use a compatible database."
-                    )
-                # stored <= CURRENT — already compatible, nothing to do
-                _log.debug(
-                    "PortfolioBookDatabase already at v%d (current: v%d)",
-                    stored, self.CURRENT_SCHEMA_VERSION,
+
+            if stored > self.CURRENT_SCHEMA_VERSION:
+                raise UnsupportedSchemaVersionError(
+                    f"Database schema version {stored} is higher than "
+                    f"this code supports ({self.CURRENT_SCHEMA_VERSION}). "
+                    f"Upgrade OptiFolio or use a compatible database."
                 )
+
+            # Apply migrations sequentially
+            while stored < self.CURRENT_SCHEMA_VERSION:
+                mig_name = self._migrations.get(stored)
+                if mig_name:
+                    getattr(self, mig_name)(conn)
+                    _log.info("Applied migration %s to %s", mig_name, self._path.name)
+
+                stored += 1
+                conn.execute(
+                    "INSERT OR REPLACE INTO _schema_meta (key, value) VALUES ('version', ?)",
+                    (str(stored),),
+                )
+                conn.commit()
+
+            _log.debug("PortfolioBookDatabase at v%d", stored)
         except ValueError as exc:
             raise InvalidSchemaMetadataError(
                 f"Schema version in {self._path} is not a valid integer: {exc}"
@@ -178,16 +191,129 @@ class PortfolioBookDatabase:
         finally:
             conn.close()
 
-    # ── Future extension point ──────────────────────────────────────────
+    # ── Migrations ──────────────────────────────────────────────────────
 
-    # Migration dispatch placeholder.  When DS-002 (accounts) needs to
-    # create business tables, add a private _migrate(version: int) method
-    # and call it from initialize() after confirming the version.
-    #
-    # _migrations: dict[int, Callable[[sqlite3.Connection], None]] = {
-    #     # 1: _migrate_v1_create_accounts,
-    #     # 2: _migrate_v2_create_products,
-    # }
+    def _migrate_v1(self, conn: sqlite3.Connection) -> None:
+        """Create the accounts table."""
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS accounts ("
+            "    account_id   TEXT PRIMARY KEY,"
+            "    name         TEXT NOT NULL,"
+            "    institution  TEXT NOT NULL DEFAULT '',"
+            "    account_type TEXT NOT NULL DEFAULT 'brokerage',"
+            "    base_currency TEXT NOT NULL DEFAULT 'CNY',"
+            "    ownership_scope TEXT NOT NULL DEFAULT 'personal',"
+            "    status       TEXT NOT NULL DEFAULT 'active',"
+            "    notes        TEXT NOT NULL DEFAULT '',"
+            "    created_at   TEXT NOT NULL DEFAULT (datetime('now')),"
+            "    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+
+    # ── Accounts CRUD ───────────────────────────────────────────────────
+
+    def create_account(
+        self,
+        account_id: str,
+        name: str,
+        institution: str = "",
+        account_type: str = "brokerage",
+        base_currency: str = "CNY",
+        ownership_scope: str = "personal",
+        notes: str = "",
+    ) -> None:
+        """Create a new account.
+
+        Args:
+            account_id: Unique identifier.
+            name: Display name.
+            institution: Financial institution name.
+            account_type: e.g., 'brokerage', 'savings', 'retirement'.
+            base_currency: e.g., 'CNY', 'USD'.
+            ownership_scope: 'personal' or 'joint'.
+            notes: Optional notes.
+
+        Raises:
+            ValueError: if ownership_scope is invalid.
+            sqlite3.IntegrityError: if account_id is not unique.
+        """
+        if ownership_scope not in ("personal", "joint"):
+            raise ValueError(
+                f"Invalid ownership_scope: {ownership_scope}. Must be 'personal' or 'joint'."
+            )
+
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(
+                    "INSERT INTO accounts (account_id, name, institution, account_type, "
+                    "  base_currency, ownership_scope, notes) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        account_id,
+                        name,
+                        institution,
+                        account_type,
+                        base_currency,
+                        ownership_scope,
+                        notes,
+                    ),
+                )
+
+    def get_account(self, account_id: str) -> Optional[sqlite3.Row]:
+        """Return the account record, or None if not found."""
+        with closing(self.connect()) as conn:
+            cursor = conn.execute(
+                "SELECT * FROM accounts WHERE account_id = ?", (account_id,)
+            )
+            return cursor.fetchone()
+
+    def update_account(self, account_id: str, **kwargs: Any) -> None:
+        """Update account fields.
+
+        Args:
+            account_id: The account to update.
+            **kwargs: Field names and new values. Supported: name, institution,
+                account_type, base_currency, ownership_scope, status, notes.
+
+        Raises:
+            ValueError: if ownership_scope or status is invalid.
+        """
+        if "ownership_scope" in kwargs:
+            scope = kwargs["ownership_scope"]
+            if scope not in ("personal", "joint"):
+                raise ValueError(
+                    f"Invalid ownership_scope: {scope}. Must be 'personal' or 'joint'."
+                )
+
+        if "status" in kwargs:
+            status = kwargs["status"]
+            if status not in ("active", "inactive"):
+                raise ValueError(
+                    f"Invalid status: {status}. Must be 'active' or 'inactive'."
+                )
+
+        if not kwargs:
+            return
+
+        fields = []
+        values = []
+        for key, value in kwargs.items():
+            fields.append(f"{key} = ?")
+            values.append(value)
+
+        # Always update updated_at
+        fields.append("updated_at = (datetime('now'))")
+        values.append(account_id)
+
+        sql = f"UPDATE accounts SET {', '.join(fields)} WHERE account_id = ?"
+
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(sql, tuple(values))
+
+    def deactivate_account(self, account_id: str) -> None:
+        """Set account status to 'inactive'."""
+        self.update_account(account_id, status="inactive")
 
     @property
     def path(self) -> Path:
