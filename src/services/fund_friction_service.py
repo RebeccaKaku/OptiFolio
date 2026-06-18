@@ -22,8 +22,6 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from src.core.paths import PROJECT_ROOT
-
 
 @dataclass
 class FundFeeInfo:
