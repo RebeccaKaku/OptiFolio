@@ -59,6 +59,22 @@ class FinData:
     def export(self, symbol, start=None, end=None, format="csv"):
         return self._provider.export(symbol, start=start, end=end, format=format)
 
+    def observations(self, series_ids, start=None, end=None, known_at=None):
+        return self._provider.observations(series_ids, start=start, end=end, known_at=known_at)
+
+    def latest_observation(self, series_id, as_of=None, known_at=None):
+        return self._provider.latest_observation(series_id, as_of=as_of, known_at=known_at)
+
+    def observation_series(self):
+        return self._provider.observation_series()
+
+    def observation_coverage(self, series_ids=None, expected_stale_days=None, as_of=None):
+        return self._provider.observation_coverage(
+            series_ids=series_ids,
+            expected_stale_days=expected_stale_days,
+            as_of=as_of,
+        )
+
     def list_assets(self):
         return self._provider._store.list_assets()
 
