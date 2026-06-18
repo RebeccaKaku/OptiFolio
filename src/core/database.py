@@ -359,20 +359,44 @@ class DatabaseManager:
         added_count = 0
         
         # 准备批量插入数据
-        data_to_insert = []
-        for idx, row in df.iterrows():
-            date_str = idx.strftime('%Y-%m-%d') if hasattr(idx, 'strftime') else str(idx)
+        if hasattr(df.index, 'strftime'):
+            dates = df.index.strftime('%Y-%m-%d').tolist()
+        else:
+            dates = df.index.astype(str).tolist()
             
-            data_to_insert.append((
-                asset_id,
-                date_str,
-                float(row.get('open', row.get('Close'))),
-                float(row.get('high', row.get('Close'))),
-                float(row.get('low', row.get('Close'))),
-                float(row.get('close', row.get('Close'))),
-                float(row.get('volume', 0)),
-                'fetcher'
-            ))
+        def get_series(col1, col2):
+            if col1 in df.columns:
+                return df[col1]
+            if col2 in df.columns:
+                return df[col2]
+            return pd.Series(0.0, index=df.index)
+
+        opens = get_series('open', 'Close').astype(float).tolist()
+        highs = get_series('high', 'Close').astype(float).tolist()
+        lows = get_series('low', 'Close').astype(float).tolist()
+        closes = get_series('close', 'Close').astype(float).tolist()
+
+        if 'volume' in df.columns:
+            volumes = df['volume']
+        elif 'Volume' in df.columns:
+            volumes = df['Volume']
+        else:
+            volumes = pd.Series(0.0, index=df.index)
+        volumes = volumes.astype(float).tolist()
+
+        asset_ids = [asset_id] * len(df)
+        sources = ['fetcher'] * len(df)
+
+        data_to_insert = list(zip(
+            asset_ids,
+            dates,
+            opens,
+            highs,
+            lows,
+            closes,
+            volumes,
+            sources
+        ))
         
         # 批量插入，忽略重复
         try:
