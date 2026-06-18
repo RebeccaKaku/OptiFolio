@@ -340,6 +340,60 @@ class DatabaseManager:
         self._commit()
         return 1
     
+    def add_price_data_batch(self, symbol: str, price_data_list: List[Dict[str, Any]]) -> int:
+        """
+        批量添加价格数据 (单个批量 INSERT 替代 N+1 次操作)
+
+        Args:
+            symbol: 资产代码
+            price_data_list: 价格数据字典列表，必须包含date
+
+        Returns:
+            添加/更新的记录数
+        """
+        if not price_data_list:
+            return 0
+
+        asset = self.get_asset(symbol)
+        if not asset:
+            raise ValueError(f"资产 {symbol} 不存在")
+
+        asset_id = asset['id']
+
+        upsert_query = """
+            INSERT INTO price_history
+            (asset_id, date, open, high, low, close, volume, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id, date) DO UPDATE SET
+                open=excluded.open,
+                high=excluded.high,
+                low=excluded.low,
+                close=excluded.close,
+                volume=excluded.volume,
+                source=excluded.source
+        """
+
+        data_to_upsert = []
+        for price_data in price_data_list:
+            data_to_upsert.append((
+                asset_id,
+                price_data['date'],
+                price_data.get('open'),
+                price_data.get('high'),
+                price_data.get('low'),
+                price_data.get('close'),
+                price_data.get('volume'),
+                price_data.get('source', '')
+            ))
+
+        try:
+            self._executemany(upsert_query, data_to_upsert)
+            self._commit()
+            return len(data_to_upsert)
+        except Exception as e:
+            print(f"[Database] 批量添加价格数据失败: {e}")
+            return 0
+
     def add_price_history(self, symbol: str, df: pd.DataFrame) -> int:
         """
         批量添加历史价格数据
@@ -385,17 +439,29 @@ class DatabaseManager:
             added_count = len(data_to_insert)
         except Exception as e:
             print(f"[Database] 批量插入价格数据失败: {e}")
-            # 回退到逐条插入
-            for data in data_to_insert:
+            # 回退到分块插入和逐条插入组合机制以提升回退性能
+            chunk_size = 100
+            for i in range(0, len(data_to_insert), chunk_size):
+                chunk = data_to_insert[i:i+chunk_size]
                 try:
-                    self._execute("""
+                    self._executemany("""
                         INSERT OR IGNORE INTO price_history 
                         (asset_id, date, open, high, low, close, volume, source)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, data)
-                    added_count += 1
-                except:
-                    pass
+                    """, chunk)
+                    added_count += len(chunk)
+                except Exception:
+                    # 分块失败时再逐条插入以隔离错误行
+                    for data in chunk:
+                        try:
+                            self._execute("""
+                                INSERT OR IGNORE INTO price_history
+                                (asset_id, date, open, high, low, close, volume, source)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """, data)
+                            added_count += 1
+                        except:
+                            pass
             self._commit()
         
         return added_count
