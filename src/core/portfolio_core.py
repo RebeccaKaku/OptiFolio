@@ -20,6 +20,7 @@ import numpy as np
 from .interfaces import IPortfolioManager
 from .cache import get_cache, CacheKeys, cached
 from .paths import get_portfolio_config_path
+from src.data_foundation.repository import MarketDataRepository
 
 # 导入现有模块
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -406,6 +407,24 @@ class PortfolioCore(IPortfolioManager):
         portfolio_value = 0.0
         position_values = {}
         
+        # 批量获取持仓资产价格 (Batch fetch prices)
+        symbols_to_fetch = list(self.holdings.keys())
+        batch_prices = {}
+        if symbols_to_fetch:
+            try:
+                repo = MarketDataRepository()
+                end_date_str = datetime.now().strftime("%Y-%m-%d")
+                start_date_str = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+                prices_df = repo.get_prices(symbols_to_fetch, start=start_date_str, end=end_date_str)
+                if not prices_df.empty:
+                    for sym in symbols_to_fetch:
+                        if sym in prices_df.columns:
+                            col = prices_df[sym].dropna()
+                            if not col.empty:
+                                batch_prices[sym] = float(col.iloc[-1])
+            except Exception as e:
+                print(f"[PortfolioCore] 批量获取价格失败: {e}")
+
         for symbol, shares in self.holdings.items():
             asset_currency = self.asset_meta.get(symbol, "USD")
             asset_type = self.asset_type_meta.get(symbol, "us_equity")
@@ -416,8 +435,10 @@ class PortfolioCore(IPortfolioManager):
             if symbol not in self.asset_type_meta:
                 print(f"[PortfolioCore] WARNING: 资产 {symbol} 没有资产类型元数据")
             
-            # 获取价格
-            price = self._get_asset_price(symbol, asset_type)
+            # 优先从批量价格中获取，否则回退到单个获取
+            price = batch_prices.get(symbol)
+            if price is None:
+                price = self._get_asset_price(symbol, asset_type)
             
             if price is None:
                 print(f"[PortfolioCore] ERROR: 无法获取 {symbol} 的价格")
