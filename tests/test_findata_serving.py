@@ -56,6 +56,41 @@ class TestDataProviderPrices:
         assert prices is not None
         assert len(prices) > 0
 
+    def test_prices_invalid_date_range_returns_none(self, tmp_path):
+        provider, _ = _populated_provider(tmp_path, "AAPL")
+        prices = provider.prices("AAPL", start="2024-03-01", end="2024-02-01")
+        assert prices is None
+
+    def test_prices_drops_na_values(self, tmp_path, monkeypatch):
+        provider, _ = _populated_provider(tmp_path, "AAPL")
+
+        # Mock get_prices to return a panel with NaNs
+        dates = pd.date_range("2024-01-01", periods=3, freq="B")
+        mock_panel = pd.DataFrame({"AAPL": [100.0, np.nan, 102.0]}, index=dates)
+        monkeypatch.setattr(provider._store, "get_prices", lambda *args, **kwargs: mock_panel)
+
+        prices = provider.prices("AAPL")
+        assert prices is not None
+        assert len(prices) == 2
+        assert not prices.isna().any()
+
+    def test_prices_empty_symbol_returns_none(self, tmp_path):
+        provider, _ = _populated_provider(tmp_path, "AAPL")
+        prices = provider.prices("")
+        assert prices is None
+
+    def test_prices_empty_panel_returns_none(self, tmp_path, monkeypatch):
+        provider, _ = _populated_provider(tmp_path, "AAPL")
+        monkeypatch.setattr(provider._store, "get_prices", lambda *args, **kwargs: pd.DataFrame())
+        prices = provider.prices("AAPL")
+        assert prices is None
+
+    def test_prices_symbol_not_in_panel_returns_none(self, tmp_path, monkeypatch):
+        provider, _ = _populated_provider(tmp_path, "AAPL")
+        monkeypatch.setattr(provider._store, "get_prices", lambda *args, **kwargs: pd.DataFrame({"OTHER": [1.0, 2.0]}))
+        prices = provider.prices("AAPL")
+        assert prices is None
+
     def test_prices_live_mode_triggers_refresh(self, tmp_path, monkeypatch):
         provider, _ = _populated_provider(tmp_path, "AAPL")
         # live mode should call _trigger_refresh and still return data.
