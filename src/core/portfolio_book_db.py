@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 4
+    CURRENT_SCHEMA_VERSION: int = 5
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
@@ -186,15 +186,13 @@ class PortfolioBookDatabase:
         migrations: Dict[int, Callable[[sqlite3.Connection], None]] = {
             1: self._migrate_v1,
             2: self._migrate_v2,
-            3: self._migrate_v3,
+            4: self._migrate_v4,
         }
 
         for v in range(from_v + 1, to_v + 1):
             if v in migrations:
                 _log.info("Running migration to v%d", v)
                 migrations[v](conn)
-            elif v == 4:
-                _log.debug("No changes for v4")
             conn.execute(
                 "INSERT OR REPLACE INTO _schema_meta (key, value) VALUES ('version', ?)",
                 (str(v),),
@@ -239,40 +237,26 @@ class PortfolioBookDatabase:
             """
         )
 
-    def _migrate_v3(self, conn: sqlite3.Connection) -> None:
-        """Create snapshot_batches and position_snapshots tables."""
+    def _migrate_v4(self, conn: sqlite3.Connection) -> None:
+        """Create cashflow_events table."""
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS snapshot_batches (
-                batch_id   TEXT PRIMARY KEY,
-                status     TEXT NOT NULL DEFAULT 'draft',
-                as_of      TEXT NOT NULL,
-                source     TEXT DEFAULT 'manual',
-                quality    TEXT DEFAULT 'reported',
-                notes      TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS position_snapshots (
-                snapshot_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-                batch_id      TEXT NOT NULL,
-                account_id    TEXT NOT NULL,
-                product_id    TEXT NOT NULL,
-                quantity      REAL NOT NULL,
-                market_value  REAL,
-                cost_basis    REAL,
-                currency      TEXT DEFAULT 'CNY',
-                source        TEXT,
-                quality       TEXT,
-                notes         TEXT,
-                UNIQUE(batch_id, account_id, product_id),
-                FOREIGN KEY (batch_id) REFERENCES snapshot_batches(batch_id),
-                FOREIGN KEY (account_id) REFERENCES accounts(account_id),
-                FOREIGN KEY (product_id) REFERENCES products(product_id)
+            CREATE TABLE IF NOT EXISTS cashflow_events (
+                event_id        TEXT PRIMARY KEY,
+                event_type      TEXT NOT NULL,
+                account_id      TEXT NOT NULL,
+                product_id      TEXT,
+                amount          REAL NOT NULL,
+                currency        TEXT NOT NULL,
+                counter_amount  REAL,
+                counter_currency TEXT,
+                pair_event_id   TEXT,
+                effective_date  TEXT NOT NULL,
+                source          TEXT DEFAULT 'manual',
+                notes           TEXT,
+                created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts (account_id)
             )
             """
         )
@@ -455,90 +439,93 @@ class PortfolioBookDatabase:
     def deactivate_account(self, account_id: str) -> None:
         self.update_account(account_id, status="inactive")
 
-    # ── Snapshots CRUD ──────────────────────────────────────────────────
+    # ── Cashflow CRUD ───────────────────────────────────────────────────
 
-    def create_snapshot_batch(
-        self, batch_id: str, as_of: str, source: str = 'manual',
-        quality: str = 'reported', notes: Optional[str] = None
+    def create_cashflow(
+        self,
+        event_id: str,
+        event_type: str,
+        account_id: str,
+        amount: float,
+        currency: str,
+        effective_date: str,
+        product_id: Optional[str] = None,
+        counter_amount: Optional[float] = None,
+        counter_currency: Optional[str] = None,
+        pair_event_id: Optional[str] = None,
+        source: str = "manual",
+        notes: Optional[str] = None,
     ) -> None:
+        """Record a new cashflow event."""
+        valid_types = {
+            "subscription", "redemption", "interest", "fee",
+            "transfer_in", "transfer_out", "fx_conversion", "dividend", "other"
+        }
+        if event_type not in valid_types:
+            raise ValueError(f"Invalid event_type: {event_type}")
+
+        # Validation: Negative amounts allowed only for certain types
+        if amount < 0 and event_type not in ("redemption", "fee", "transfer_out", "fx_conversion"):
+            raise ValueError(f"Negative amount not allowed for {event_type}")
+
+        # Validation: FX conversions must have both currencies
+        if event_type == "fx_conversion":
+            if not currency or not counter_currency:
+                raise ValueError("FX conversion must have both currency and counter_currency")
+            if counter_amount is None:
+                raise ValueError("FX conversion must have counter_amount")
+
+        sql = """
+            INSERT INTO cashflow_events (
+                event_id, event_type, account_id, product_id, amount, currency,
+                counter_amount, counter_currency, pair_event_id, effective_date,
+                source, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            event_id, event_type, account_id, product_id, amount, currency,
+            counter_amount, counter_currency, pair_event_id, effective_date,
+            source, notes
+        )
         with closing(self.connect()) as conn:
-            with conn:
-                conn.execute(
-                    "INSERT INTO snapshot_batches (batch_id, as_of, source, quality, notes) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (batch_id, as_of, source, quality, notes)
-                )
+            try:
+                with conn:
+                    conn.execute(sql, params)
+            except sqlite3.IntegrityError as exc:
+                if "UNIQUE constraint failed: cashflow_events.event_id" in str(exc):
+                    raise PortfolioBookError(f"Duplicate event_id: {event_id}") from exc
+                raise
 
-    def add_snapshot(
-        self, batch_id: str, account_id: str, product_id: str,
-        quantity: float, market_value: Optional[float] = None,
-        cost_basis: Optional[float] = None, currency: str = 'CNY',
-        source: Optional[str] = None, quality: Optional[str] = None,
-        notes: Optional[str] = None
-    ) -> None:
+    def get_cashflows_for_account(self, account_id: str) -> List[sqlite3.Row]:
+        """Retrieve all cashflow events for a specific account."""
         with closing(self.connect()) as conn:
-            with conn:
-                batch = conn.execute(
-                    "SELECT status FROM snapshot_batches WHERE batch_id = ?",
-                    (batch_id,)
-                ).fetchone()
-                if not batch:
-                    raise PortfolioBookError(f"Batch {batch_id} not found")
-                if batch["status"] != "draft":
-                    raise PortfolioBookError(f"Cannot add to {batch['status']} batch {batch_id}")
-
-                conn.execute(
-                    "INSERT INTO position_snapshots (batch_id, account_id, product_id, quantity, "
-                    "market_value, cost_basis, currency, source, quality, notes) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (batch_id, account_id, product_id, quantity, market_value,
-                     cost_basis, currency, source, quality, notes)
-                )
-
-    def confirm_batch(self, batch_id: str) -> None:
-        with closing(self.connect()) as conn:
-            with conn:
-                cursor = conn.execute(
-                    "UPDATE snapshot_batches SET status = 'confirmed', "
-                    "updated_at = CURRENT_TIMESTAMP WHERE batch_id = ? AND status = 'draft'",
-                    (batch_id,)
-                )
-                if cursor.rowcount == 0:
-                    # Check if it exists at all
-                    batch = conn.execute(
-                        "SELECT status FROM snapshot_batches WHERE batch_id = ?",
-                        (batch_id,)
-                    ).fetchone()
-                    if not batch:
-                        raise PortfolioBookError(f"Batch {batch_id} not found")
-                    else:
-                        raise PortfolioBookError(f"Batch {batch_id} is already {batch['status']}")
-
-    def supersede_batch(self, batch_id: str) -> None:
-        with closing(self.connect()) as conn:
-            with conn:
-                cursor = conn.execute(
-                    "UPDATE snapshot_batches SET status = 'superseded', "
-                    "updated_at = CURRENT_TIMESTAMP WHERE batch_id = ?",
-                    (batch_id,)
-                )
-                if cursor.rowcount == 0:
-                    raise PortfolioBookError(f"Batch {batch_id} not found")
-
-    def get_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
-        with closing(self.connect()) as conn:
-            batch_row = conn.execute(
-                "SELECT * FROM snapshot_batches WHERE batch_id = ?", (batch_id,)
-            ).fetchone()
-            if not batch_row:
-                return None
-
-            batch = dict(batch_row)
-            snapshot_rows = conn.execute(
-                "SELECT * FROM position_snapshots WHERE batch_id = ?", (batch_id,)
+            return conn.execute(
+                "SELECT * FROM cashflow_events WHERE account_id = ? ORDER BY effective_date DESC",
+                (account_id,)
             ).fetchall()
-            batch["snapshots"] = [dict(row) for row in snapshot_rows]
-            return batch
+
+    def get_cashflows_for_product(self, product_id: str) -> List[sqlite3.Row]:
+        """Retrieve all cashflow events for a specific product."""
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                "SELECT * FROM cashflow_events WHERE product_id = ? ORDER BY effective_date DESC",
+                (product_id,)
+            ).fetchall()
+
+    def link_transfer(self, event_a_id: str, event_b_id: str) -> None:
+        """Link two transfer events (e.g., transfer_in and transfer_out)."""
+        with closing(self.connect()) as conn:
+            with conn:
+                # Update event A
+                conn.execute(
+                    "UPDATE cashflow_events SET pair_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
+                    (event_b_id, event_a_id)
+                )
+                # Update event B
+                conn.execute(
+                    "UPDATE cashflow_events SET pair_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
+                    (event_a_id, event_b_id)
+                )
 
     # ── Backup & Restore ────────────────────────────────────────────────
 

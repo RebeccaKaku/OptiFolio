@@ -454,87 +454,112 @@ class TestBackupRestore:
         with pytest.raises(UnsupportedSchemaVersionError, match="99"):
             initialized.restore_from(newer_path, overwrite=True)
 
-# ── Snapshots ──────────────────────────────────────────────────────────────
 
-class TestSnapshots:
+# ── Cashflow CRUD ───────────────────────────────────────────────────────────
+
+class TestCashflowCRUD:
     @pytest.fixture
-    def setup_data(self, initialized):
+    def account(self, initialized):
+        initialized.create_account("acc_cash", "Cash Account")
+        return "acc_cash"
+
+    @pytest.fixture
+    def product(self, initialized):
         from src.domain.products import ProductDefinition
-        initialized.create_account(account_id="acc_1", name="Test Account")
-        p = ProductDefinition(
-            product_id="prod_1", name="Test Product",
-            product_type="equity_fund", currency="CNY"
-        )
+        p = ProductDefinition(product_id="prod_cash", name="Product", product_type="other")
         initialized.create_product(p)
-        return "acc_1", "prod_1"
+        return "prod_cash"
 
-    def test_full_batch_workflow(self, initialized, setup_data):
-        acc_id, prod_id = setup_data
-        batch_id = "batch_20231027"
-
-        # 1. Create draft
-        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27", notes="Initial sync")
-        batch = initialized.get_batch(batch_id)
-        assert batch["status"] == "draft"
-        assert len(batch["snapshots"]) == 0
-
-        # 2. Add snapshot
-        initialized.add_snapshot(
-            batch_id, acc_id, prod_id, quantity=100.0, market_value=1234.56, cost_basis=1000.0
+    def test_create_basic_cashflows(self, initialized, account, product):
+        """Test creation of subscription, redemption, interest, fee, and dividend."""
+        # Subscription
+        initialized.create_cashflow(
+            "ev_001", "subscription", account, 1000.0, "CNY", "2023-01-01", product_id=product
         )
-        batch = initialized.get_batch(batch_id)
-        assert len(batch["snapshots"]) == 1
-        snap = batch["snapshots"][0]
-        assert snap["account_id"] == acc_id
-        assert snap["product_id"] == prod_id
-        assert snap["quantity"] == 100.0
+        # Redemption (negative)
+        initialized.create_cashflow(
+            "ev_002", "redemption", account, -500.0, "CNY", "2023-01-02", product_id=product
+        )
+        # Interest
+        initialized.create_cashflow(
+            "ev_003", "interest", account, 10.0, "CNY", "2023-01-03"
+        )
+        # Fee (negative)
+        initialized.create_cashflow(
+            "ev_004", "fee", account, -5.0, "CNY", "2023-01-04"
+        )
+        # Dividend
+        initialized.create_cashflow(
+            "ev_005", "dividend", account, 20.0, "CNY", "2023-01-05", product_id=product
+        )
 
-        # 3. Confirm
-        initialized.confirm_batch(batch_id)
-        batch = initialized.get_batch(batch_id)
-        assert batch["status"] == "confirmed"
+        flows = initialized.get_cashflows_for_account(account)
+        assert len(flows) == 5
+        # Ordered by date DESC
+        assert flows[0]["event_id"] == "ev_005"
+        assert flows[4]["event_id"] == "ev_001"
 
-    def test_add_to_confirmed_batch_raises(self, initialized, setup_data):
-        acc_id, prod_id = setup_data
-        batch_id = "batch_fixed"
-        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
-        initialized.confirm_batch(batch_id)
+    def test_transfer_pair_and_linking(self, initialized, account):
+        """Test transfer_in/out creation and linking."""
+        initialized.create_account("acc_target", "Target Account")
 
-        with pytest.raises(PortfolioBookError, match="Cannot add to confirmed batch"):
-            initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=50.0)
+        initialized.create_cashflow(
+            "tx_out", "transfer_out", account, -100.0, "USD", "2023-02-01"
+        )
+        initialized.create_cashflow(
+            "tx_in", "transfer_in", "acc_target", 100.0, "USD", "2023-02-01"
+        )
 
-    def test_confirm_non_existent_batch_raises(self, initialized):
-        with pytest.raises(PortfolioBookError, match="not found"):
-            initialized.confirm_batch("no_such_batch")
+        initialized.link_transfer("tx_out", "tx_in")
 
-    def test_supersede_batch(self, initialized):
-        batch_id = "batch_old"
-        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
-        initialized.confirm_batch(batch_id)
+        out_flow = [f for f in initialized.get_cashflows_for_account(account) if f["event_id"] == "tx_out"][0]
+        in_flow = [f for f in initialized.get_cashflows_for_account("acc_target") if f["event_id"] == "tx_in"][0]
 
-        initialized.supersede_batch(batch_id)
-        batch = initialized.get_batch(batch_id)
-        assert batch["status"] == "superseded"
+        assert out_flow["pair_event_id"] == "tx_in"
+        assert in_flow["pair_event_id"] == "tx_out"
 
-    def test_fk_constraints(self, initialized, setup_data):
-        acc_id, prod_id = setup_data
-        batch_id = "batch_fk"
-        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
+    def test_fx_conversion(self, initialized, account):
+        """Test FX conversion requires both currencies and counter_amount."""
+        initialized.create_cashflow(
+            "fx_001", "fx_conversion", account, -100.0, "USD", "2023-03-01",
+            counter_amount=700.0, counter_currency="CNY"
+        )
 
-        # Invalid account
-        with pytest.raises(sqlite3.IntegrityError):
-            initialized.add_snapshot(batch_id, "invalid_acc", prod_id, quantity=10)
+        flow = initialized.get_cashflows_for_account(account)[0]
+        assert flow["event_type"] == "fx_conversion"
+        assert flow["counter_amount"] == 700.0
+        assert flow["counter_currency"] == "CNY"
 
-        # Invalid product
-        with pytest.raises(sqlite3.IntegrityError):
-            initialized.add_snapshot(batch_id, acc_id, "invalid_prod", quantity=10)
+    def test_validation_negative_amounts(self, initialized, account):
+        """Negative amounts only allowed for redemption, fee, transfer_out."""
+        # Disallowed
+        for etype in ("subscription", "interest", "dividend", "transfer_in", "other"):
+            with pytest.raises(ValueError, match="Negative amount not allowed"):
+                initialized.create_cashflow(f"err_{etype}", etype, account, -1.0, "CNY", "2023-01-01")
 
-    def test_unique_constraint(self, initialized, setup_data):
-        acc_id, prod_id = setup_data
-        batch_id = "batch_uniq"
-        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27")
+        # Allowed
+        for etype in ("redemption", "fee", "transfer_out"):
+            initialized.create_cashflow(f"ok_{etype}", etype, account, -1.0, "CNY", "2023-01-01")
 
-        initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=10)
+    def test_validation_fx_currencies(self, initialized, account):
+        """FX conversion must have both currencies and counter_amount."""
+        with pytest.raises(ValueError, match="must have both currency and counter_currency"):
+            initialized.create_cashflow("fx_err1", "fx_conversion", account, 100.0, "USD", "2023-01-01")
 
-        with pytest.raises(sqlite3.IntegrityError):
-            initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=20)
+        with pytest.raises(ValueError, match="must have counter_amount"):
+            initialized.create_cashflow("fx_err2", "fx_conversion", account, 100.0, "USD", "2023-01-01", counter_currency="CNY")
+
+    def test_duplicate_event_id_rejected(self, initialized, account):
+        """Reject duplicate event_ids with PortfolioBookError."""
+        initialized.create_cashflow("dup", "interest", account, 10.0, "CNY", "2023-01-01")
+        with pytest.raises(PortfolioBookError, match="Duplicate event_id"):
+            initialized.create_cashflow("dup", "interest", account, 20.0, "CNY", "2023-01-02")
+
+    def test_get_cashflows_for_product(self, initialized, account, product):
+        """Test retrieval filter by product_id."""
+        initialized.create_cashflow("p1", "subscription", account, 100.0, "CNY", "2023-01-01", product_id=product)
+        initialized.create_cashflow("p2", "interest", account, 10.0, "CNY", "2023-01-02") # no product_id
+
+        flows = initialized.get_cashflows_for_product(product)
+        assert len(flows) == 1
+        assert flows[0]["event_id"] == "p1"
