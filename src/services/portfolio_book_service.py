@@ -596,6 +596,40 @@ def _handle_sqlite_error(exc: _sqlite3.Error) -> Dict[str, Any]:
     return failure("Database error", error_code="DATABASE_ERROR")
 
 
+def _detect_currency(product_id: str) -> str:
+    """Detect product currency based on ID pattern.
+
+    Priority:
+    1. Contains "USD" (case-insensitive) -> "USD"
+    2. Contains "HKD" or "HK" -> "HKD"
+    3. Contains "EUR" -> "EUR"
+    4. 6-digit numeric -> "CNY" (domestic CN fund/stock)
+    5. Starts with BOC prefixes (AMHQLXTT, GRSDR, LXTTZY) -> "CNY"
+    6. Fallback -> "CNY" + WARNING log
+    """
+    pid_upper = product_id.upper()
+
+    if "USD" in pid_upper:
+        return "USD"
+    if "HKD" in pid_upper or "HK" in pid_upper:
+        return "HKD"
+    if "EUR" in pid_upper:
+        return "EUR"
+
+    if product_id.isdigit() and len(product_id) == 6:
+        return "CNY"
+
+    boc_prefixes = ("AMHQLXTT", "GRSDR", "LXTTZY")
+    if pid_upper.startswith(boc_prefixes):
+        return "CNY"
+
+    _log.warning(
+        "Could not auto-detect currency for product %r, defaulting to CNY",
+        product_id
+    )
+    return "CNY"
+
+
 def _dict_to_product(data: Dict[str, Any]) -> ProductDefinition:
     """Build a ProductDefinition from request dict, routing unknown fields to metadata."""
     known_fields = {
@@ -615,12 +649,17 @@ def _dict_to_product(data: Dict[str, Any]) -> ProductDefinition:
         else:
             extra[key] = value
 
-    kwargs.setdefault("currency", "CNY")
     kwargs.setdefault("data_source", "manual")
+
     for field_name in ("product_id", "name", "product_type"):
         value = kwargs.get(field_name)
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"{field_name} must not be empty")
+
+    # Auto-detect currency if not provided
+    if "currency" not in kwargs or not kwargs["currency"]:
+        kwargs["currency"] = _detect_currency(kwargs["product_id"])
+
     currency = kwargs["currency"]
     if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
         raise ValueError("currency must be a 3-letter currency code")

@@ -407,6 +407,66 @@ class TestProductService:
         assert result["data"]["product_type"] == ptype
 
 
+class TestProductCurrencyAutoDetection:
+    def test_detect_usd_from_id(self, svc):
+        result = svc.create_product({
+            "product_id": "LXTTZYUSD01B", "name": "BOC USD WMP",
+            "product_type": "bank_wmp",
+        })
+        assert result["data"]["currency"] == "USD"
+
+    def test_detect_hkd_from_id(self, svc):
+        result = svc.create_product({
+            "product_id": "QQGPJHKDTKA", "name": "HK Fund",
+            "product_type": "equity_fund",
+        })
+        assert result["data"]["currency"] == "HKD"
+
+    def test_detect_hkd_from_hk_suffix(self, svc):
+        result = svc.create_product({
+            "product_id": "9988.HK", "name": "Alibaba",
+            "product_type": "stock",
+        })
+        assert result["data"]["currency"] == "HKD"
+
+    def test_detect_eur_from_id(self, svc):
+        result = svc.create_product({
+            "product_id": "EUREX_TEST", "name": "Euro Test",
+            "product_type": "other",
+        })
+        assert result["data"]["currency"] == "EUR"
+
+    def test_detect_cny_from_6digit_numeric(self, svc):
+        result = svc.create_product({
+            "product_id": "600519", "name": "Moutai",
+            "product_type": "stock",
+        })
+        assert result["data"]["currency"] == "CNY"
+
+    def test_detect_cny_from_boc_prefix(self, svc):
+        result = svc.create_product({
+            "product_id": "GRSDR260056", "name": "BOC CNY WMP",
+            "product_type": "bank_wmp",
+        })
+        assert result["data"]["currency"] == "CNY"
+
+    def test_explicit_currency_overrides_detection(self, svc):
+        result = svc.create_product({
+            "product_id": "600519", "name": "Moutai USD",
+            "product_type": "stock",
+            "currency": "USD",
+        })
+        assert result["data"]["currency"] == "USD"
+
+    def test_fallback_to_cny_with_warning(self, svc, caplog):
+        result = svc.create_product({
+            "product_id": "UNKNOWN_ASSET_123", "name": "Mystery",
+            "product_type": "other",
+        })
+        assert result["data"]["currency"] == "CNY"
+        assert "Could not auto-detect currency" in caplog.text
+
+
 # ── No SQLite leakage ───────────────────────────────────────────────────────
 
 
