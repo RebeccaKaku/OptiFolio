@@ -78,7 +78,7 @@ class CnStockFetcher(FetcherProtocol):
         return df.loc[start_dt:end_dt]
 
     def _parse_symbol(self, symbol: str) -> tuple[str, str]:
-        from src.core.symbols import _infer_exchange_prefix
+        from optifolio_contracts.symbols import _infer_exchange_prefix
 
         symbol = symbol.strip().lower()
         code_match = re.search(r"\d{6}", symbol)
@@ -92,7 +92,7 @@ class CnStockFetcher(FetcherProtocol):
 
     @staticmethod
     def _infer_exchange_prefix(code: str) -> str:
-        from src.core.symbols import _infer_exchange_prefix as _shared_prefix
+        from optifolio_contracts.symbols import _infer_exchange_prefix as _shared_prefix
 
         return _shared_prefix(code)
 

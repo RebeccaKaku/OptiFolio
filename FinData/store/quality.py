@@ -137,7 +137,7 @@ class QualityGate:
                 repository is created.
         """
         if repository is None:
-            from src.data_foundation import MarketDataRepository
+            from findata.store import MarketDataRepository
 
             repository = MarketDataRepository()
         self.repository = repository

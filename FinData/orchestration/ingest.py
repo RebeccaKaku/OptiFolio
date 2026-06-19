@@ -14,7 +14,7 @@ import yaml
 
 from FinData.adapters import get_fetcher
 from FinData.store.repository import CanonicalStore
-from src.core.calendars import get_calendar
+from findata.calendars import get_timezone
 
 # PROJECT_ROOT resolved via environment or cwd walk (avoids src.core.paths import)
 def _find_project_root() -> Path:
@@ -113,11 +113,11 @@ def ingest_portfolio(
             result["no_data"].append(symbol)
             continue
 
-        cal = get_calendar(atype)
+        tz = get_timezone(atype)
         report = store.accept(
             fetch_result.data, asset_id=symbol,
             source=fetch_result.provider, currency=meta["currency"],
-            timezone=cal.timezone,
+            timezone=tz,
         )
         if report.passed:
             result["ingested"].append(symbol)

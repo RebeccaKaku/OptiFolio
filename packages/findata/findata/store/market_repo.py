@@ -365,7 +365,7 @@ class MarketDataRepository:
         CN stock symbols may be stored bare (600519) or prefixed (sh600519).
         Query both so lookups don't fail on format mismatches.
         """
-        from src.core.symbols import normalize_cn_symbol
+        from optifolio_contracts.symbols import normalize_cn_symbol
 
         return normalize_cn_symbol(asset_id)
 
