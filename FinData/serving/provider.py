@@ -52,6 +52,21 @@ class DataProvider:
             self._trigger_refresh(symbols)
         return self._store.get_prices(symbols, start=start, end=end)
 
+    def get_metadata(self, symbol: str, asset_type: str = None) -> Optional[Dict[str, Any]]:
+        """Return metadata for an asset from its designated fetcher."""
+        from FinData.adapters import get_fetcher
+
+        # If type not provided, try to infer or probe common types
+        types_to_try = [asset_type] if asset_type else ["bank_wmp", "cn_fund", "us_equity"]
+
+        for t in types_to_try:
+            fetcher = get_fetcher(t)
+            if fetcher and hasattr(fetcher, "get_metadata"):
+                meta = fetcher.get_metadata(symbol)
+                if meta:
+                    return meta
+        return None
+
     # ── derived transforms ──
 
     def returns(self, symbol: str, start: str = None, end: str = None,

@@ -250,12 +250,24 @@ class CnFundFetcher:
 # ── FinData adapter wrapper ───────────────────────────────────────────
 
 from . import _run_async
+from typing import Optional, Dict, Any
 
 class CnFundFetcherAdapter(FetcherProtocol):
     PROVIDER = "akshare-cn-fund"
 
     def __init__(self):
         self._fetcher = CnFundFetcher()
+
+    def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        info = self._fetcher.fund_map.get(symbol)
+        if not info:
+            return None
+        return {
+            "symbol": symbol,
+            "name": info.get("基金简称"),
+            "product_type": info.get("基金类型"),
+            "currency": "CNY",  # Default for CN funds, unless it's QDII which might be USD but our current detector/registry handles it.
+        }
 
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
         t0 = time.time()

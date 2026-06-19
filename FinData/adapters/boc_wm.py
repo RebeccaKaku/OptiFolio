@@ -70,6 +70,10 @@ class BocFetcher:
         """
         return self.load_metadata_index().get(code)
 
+    def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Alias for get_product_metadata for unified interface."""
+        return self.get_product_metadata(symbol)
+
 
     async def fetch_all_products(self) -> List[str]:
         """

@@ -41,6 +41,10 @@ class FetcherProtocol:
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
         raise NotImplementedError
 
+    def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Return static metadata for a symbol (name, currency, etc.)."""
+        return None
+
 
 """Fetcher registry — maps asset types to fetcher instances.
 

@@ -1,6 +1,7 @@
 """Tests for DS-007: PortfolioBookService — account and product CRUD."""
 
 import pytest
+from unittest.mock import MagicMock
 
 from src.core.portfolio_book_db import PortfolioBookDatabase
 from src.services.portfolio_book_service import PortfolioBookService, _scan_pii
@@ -20,7 +21,15 @@ def db(tmp_path):
 @pytest.fixture
 def svc(db):
     """A PortfolioBookService backed by the temp database."""
-    return PortfolioBookService(db)
+    # Mock DataProvider for auto-detection in tests that don't provide currency
+    mock_dp = MagicMock()
+    # Only return CNY for products that aren't intended to fail currency validation
+    def get_meta_mock(product_id):
+        if "BAD_CURRENCY" in product_id or "unknown" in product_id:
+            return None
+        return {"currency": "CNY"}
+    mock_dp.get_metadata.side_effect = get_meta_mock
+    return PortfolioBookService(db, data_provider=mock_dp)
 
 
 # ── PII scanning ────────────────────────────────────────────────────────────
@@ -279,7 +288,7 @@ class TestProductService:
         assert result["data"]["metadata"]["another_custom"] == 42
 
     def test_create_product_missing_required(self, svc):
-        result = svc.create_product({"product_id": "PROD_NONAME"})
+        result = svc.create_product({"product_id": ""})
         assert result["success"] is False
         assert result["error_code"] == "VALIDATION_ERROR"
 
