@@ -49,7 +49,7 @@ class DatabaseManager:
         if self.db_path.exists():
             return
 
-        same_dir_legacy = self.db_path.parent / "fm_database.db"
+        same_dir_legacy = self.db_path.parent / "optifolio_db.db"
         candidates = [same_dir_legacy, *get_legacy_database_candidates()]
         for legacy_path in candidates:
             if legacy_path == self.db_path:
