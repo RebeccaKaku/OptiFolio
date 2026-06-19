@@ -467,6 +467,116 @@ class PortfolioBookService:
             _log.exception("Unexpected error updating product %r", product_id)
             return failure("Internal server error", error_code="INTERNAL_ERROR")
 
+    # ── Exposure Batches ──────────────────────────────────────────
+
+    def create_exposure_batch(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new exposure batch for a product."""
+        try:
+            batch_id = data["batch_id"]
+            product_id = data["product_id"]
+            as_of = data["as_of"]
+            known_at = data["known_at"]
+
+            # Validate product exists
+            if self._db.get_product(product_id) is None:
+                return failure(f"Product {product_id!r} not found", error_code="NOT_FOUND")
+
+            self._db.create_exposure_batch(
+                batch_id=batch_id,
+                product_id=product_id,
+                as_of=as_of,
+                known_at=known_at,
+                source=data.get("source", "manual"),
+                quality=data.get("quality", "reported"),
+                notes=data.get("notes"),
+            )
+            batch = self._db.get_exposure_batch(batch_id)
+            return success(batch, "Exposure batch created")
+        except KeyError as exc:
+            return failure(
+                f"Missing required field: {exc.args[0]}",
+                error_code="VALIDATION_ERROR",
+            )
+        except sqlite3_err as exc:
+            return _handle_sqlite_error(exc)
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error creating exposure batch")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def add_product_exposure(self, batch_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a single exposure component to a draft batch."""
+        try:
+            dimension = data["dimension"]
+            bucket = data["bucket"]
+            weight_ppm = data["weight_ppm"]
+
+            if not isinstance(weight_ppm, int) or weight_ppm < 0 or weight_ppm > 1000000:
+                return failure("weight_ppm must be an integer between 0 and 1,000,000", error_code="VALIDATION_ERROR")
+
+            # Check sum of weights for this dimension in the current batch
+            batch = self._db.get_exposure_batch(batch_id)
+            if not batch:
+                return failure(f"Batch {batch_id!r} not found", error_code="NOT_FOUND")
+
+            if batch["status"] != "draft":
+                return failure(f"Cannot add to {batch['status']} batch", error_code="VALIDATION_ERROR")
+
+            current_sum = sum(e["weight_ppm"] for e in batch["exposures"] if e["dimension"] == dimension)
+            if current_sum + weight_ppm > 1000000:
+                return failure(
+                    f"Total weight for dimension {dimension!r} would exceed 1,000,000 (currently {current_sum})",
+                    error_code="VALIDATION_ERROR"
+                )
+
+            self._db.add_product_exposure(
+                batch_id=batch_id,
+                dimension=dimension,
+                bucket=bucket,
+                weight_ppm=weight_ppm,
+                method=data.get("method", "actual"),
+                source_ref=data.get("source_ref"),
+                notes=data.get("notes"),
+            )
+            return success(None, "Exposure added to batch")
+        except KeyError as exc:
+            return failure(
+                f"Missing required field: {exc.args[0]}",
+                error_code="VALIDATION_ERROR",
+            )
+        except (ValueError, TypeError) as exc:
+            return failure(str(exc), error_code="VALIDATION_ERROR")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error adding exposure to batch")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def get_exposure_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Get exposure batch details."""
+        try:
+            batch = self._db.get_exposure_batch(batch_id)
+            if not batch:
+                return failure(f"Batch {batch_id!r} not found", error_code="NOT_FOUND")
+            return success(batch)
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error getting exposure batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def confirm_exposure_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Confirm an exposure batch."""
+        try:
+            self._db.confirm_exposure_batch(batch_id)
+            return success(None, "Exposure batch confirmed")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error confirming exposure batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
 
 # ── Internal helpers ────────────────────────────────────────────────────────
 

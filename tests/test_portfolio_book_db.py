@@ -530,6 +530,41 @@ class TestBackupRestore:
 
         assert db.verify_backup(db_path) is False
 
+    def test_v9_backup_restore_roundtrip(self, initialized, tmp_path):
+        """v9 backup includes exposure_batches and product_exposures."""
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(product_id="p1", name="P1", product_type="bank_wmp")
+        initialized.create_product(p)
+
+        initialized.create_exposure_batch("eb1", "p1", "2026-06-01", "2026-06-01")
+        initialized.add_product_exposure("eb1", "asset_class", "equity", 1000000)
+
+        backup_path = tmp_path / "v9_backup.sqlite"
+        initialized.backup(backup_path)
+        assert initialized.verify_backup(backup_path) is True
+
+        # Restore into a new DB
+        db2 = PortfolioBookDatabase(path=tmp_path / "restored_v9.sqlite")
+        db2.restore_from(backup_path)
+
+        batch = db2.get_exposure_batch("eb1")
+        assert batch["product_id"] == "p1"
+        assert len(batch["exposures"]) == 1
+        assert batch["exposures"][0]["bucket"] == "equity"
+
+    def test_v9_verify_backup_fails_if_exposure_table_missing(self, tmp_path):
+        """verify_backup returns False if a v9 DB is missing exposure tables."""
+        db_path = tmp_path / "missing_v9.sqlite"
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP TABLE product_exposures")
+        conn.commit()
+        conn.close()
+
+        assert db.verify_backup(db_path) is False
+
     def test_restore_refuses_overwrite_without_flag(self, initialized, tmp_path):
         """restore_from() raises FileExistsError if target exists and overwrite=False."""
         backup_path = initialized.backup(tmp_path / "backup.sqlite")
@@ -860,6 +895,34 @@ class TestV6Migration:
             assert quantity_col["notnull"] == 0  # nullable
         finally:
             conn.close()
+
+    def test_v8_to_v9_migration(self, tmp_path):
+        """Migrating from v8 to v9 creates the new exposure tables."""
+        db_path = tmp_path / "v8_legacy_mig.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '8')")
+        # Add minimal v8 structure
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE products (product_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE snapshot_batches (batch_id TEXT PRIMARY KEY, as_of TEXT)")
+        conn.execute("CREATE TABLE position_snapshots (snapshot_id INTEGER PRIMARY KEY, batch_id TEXT, account_id TEXT, product_id TEXT)")
+        conn.execute("CREATE TABLE cashflow_events (event_id TEXT PRIMARY KEY, event_type TEXT, account_id TEXT, amount REAL, currency TEXT, effective_date TEXT)")
+        conn.execute("CREATE TABLE snapshot_batch_accounts (batch_id TEXT, account_id TEXT, coverage TEXT, PRIMARY KEY(batch_id, account_id))")
+        conn.execute("CREATE TABLE import_drafts (import_id TEXT PRIMARY KEY, contract_version INTEGER, target_kind TEXT, source_type TEXT, source_ref TEXT)")
+        conn.execute("CREATE TABLE import_candidates (candidate_id TEXT PRIMARY KEY, import_id TEXT, field_name TEXT, review_status TEXT)")
+        conn.commit()
+        conn.close()
+
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+        assert db.schema_version() == 9
+
+        conn = db.connect()
+        # Should have exposure_batches and product_exposures
+        conn.execute("SELECT * FROM exposure_batches").fetchall()
+        conn.execute("SELECT * FROM product_exposures").fetchall()
+        conn.close()
 
     def test_v5_to_v6_preserves_old_snapshots(self, tmp_path):
         """Migrating from v5 to v6 preserves all existing snapshot data."""

@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 8
+    CURRENT_SCHEMA_VERSION: int = 9
     _ACCOUNT_UPDATE_FIELDS = frozenset(
         {
             "name",
@@ -203,6 +203,7 @@ class PortfolioBookDatabase:
             6: self._migrate_v6,
             7: self._migrate_v7,
             8: self._migrate_v8,
+            9: self._migrate_v9,
         }
 
         for v in range(from_v + 1, to_v + 1):
@@ -249,6 +250,44 @@ class PortfolioBookDatabase:
                 extra_json   TEXT NOT NULL DEFAULT "{}",
                 created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    def _migrate_v9(self, conn: sqlite3.Connection) -> None:
+        """Create exposure_batches and product_exposures tables."""
+        conn.execute(
+            """
+            CREATE TABLE exposure_batches (
+                exposure_batch_id TEXT PRIMARY KEY,
+                product_id        TEXT NOT NULL,
+                as_of             TEXT NOT NULL,
+                known_at          TEXT NOT NULL,
+                source            TEXT NOT NULL DEFAULT 'manual',
+                quality           TEXT NOT NULL DEFAULT 'reported' CHECK (quality IN ('reported', 'estimated', 'stale', 'unknown')),
+                status            TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'confirmed', 'superseded')),
+                notes             TEXT,
+                created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (product_id) REFERENCES products (product_id)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX idx_exposure_batches_product_as_of ON exposure_batches (product_id, as_of)")
+        conn.execute("CREATE INDEX idx_exposure_batches_status ON exposure_batches (status)")
+
+        conn.execute(
+            """
+            CREATE TABLE product_exposures (
+                exposure_batch_id TEXT NOT NULL,
+                dimension         TEXT NOT NULL,
+                bucket            TEXT NOT NULL,
+                weight_ppm        INTEGER NOT NULL CHECK (weight_ppm >= 0 AND weight_ppm <= 1000000),
+                method            TEXT NOT NULL DEFAULT 'actual' CHECK (method IN ('actual', 'reported', 'estimated', 'proxy', 'unknown')),
+                source_ref        TEXT,
+                notes             TEXT,
+                PRIMARY KEY (exposure_batch_id, dimension, bucket),
+                FOREIGN KEY (exposure_batch_id) REFERENCES exposure_batches (exposure_batch_id) ON DELETE CASCADE
             )
             """
         )
@@ -1136,6 +1175,121 @@ class PortfolioBookDatabase:
         }
         return mapping.get(event_type, "unclassified")
 
+    # ── Product Exposures CRUD ──────────────────────────────────────────
+
+    def create_exposure_batch(
+        self, batch_id: str, product_id: str, as_of: str, known_at: str,
+        source: str = 'manual', quality: str = 'reported', notes: Optional[str] = None
+    ) -> None:
+        """Create a new exposure batch for a product."""
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO exposure_batches (
+                        exposure_batch_id, product_id, as_of, known_at,
+                        source, quality, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (batch_id, product_id, as_of, known_at, source, quality, notes)
+                )
+
+    def add_product_exposure(
+        self, batch_id: str, dimension: str, bucket: str, weight_ppm: int,
+        method: str = 'actual', source_ref: Optional[str] = None,
+        notes: Optional[str] = None
+    ) -> None:
+        """Add a single exposure component to a draft batch."""
+        with closing(self.connect()) as conn:
+            with conn:
+                batch = conn.execute(
+                    "SELECT status FROM exposure_batches WHERE exposure_batch_id = ?",
+                    (batch_id,)
+                ).fetchone()
+                if not batch:
+                    raise PortfolioBookError(f"Exposure batch {batch_id} not found")
+                if batch["status"] != "draft":
+                    raise PortfolioBookError(
+                        f"Cannot add to {batch['status']} exposure batch {batch_id}"
+                    )
+
+                conn.execute(
+                    """
+                    INSERT INTO product_exposures (
+                        exposure_batch_id, dimension, bucket, weight_ppm,
+                        method, source_ref, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (batch_id, dimension, bucket, weight_ppm, method, source_ref, notes)
+                )
+
+    def confirm_exposure_batch(self, batch_id: str) -> None:
+        """Confirm an exposure batch."""
+        with closing(self.connect()) as conn:
+            with conn:
+                batch = conn.execute(
+                    "SELECT status FROM exposure_batches WHERE exposure_batch_id = ?",
+                    (batch_id,)
+                ).fetchone()
+                if not batch:
+                    raise PortfolioBookError(f"Exposure batch {batch_id} not found")
+                if batch["status"] != "draft":
+                    raise PortfolioBookError(f"Batch {batch_id} is already {batch['status']}")
+
+                conn.execute(
+                    "UPDATE exposure_batches SET status = 'confirmed', updated_at = CURRENT_TIMESTAMP "
+                    "WHERE exposure_batch_id = ?",
+                    (batch_id,)
+                )
+
+    def supersede_exposure_batch(self, batch_id: str) -> None:
+        """Mark an exposure batch as superseded."""
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(
+                    "UPDATE exposure_batches SET status = 'superseded', updated_at = CURRENT_TIMESTAMP "
+                    "WHERE exposure_batch_id = ?",
+                    (batch_id,)
+                )
+
+    def get_exposure_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch an exposure batch with all its components and residuals."""
+        with closing(self.connect()) as conn:
+            batch_row = conn.execute(
+                "SELECT * FROM exposure_batches WHERE exposure_batch_id = ?",
+                (batch_id,)
+            ).fetchone()
+            if not batch_row:
+                return None
+
+            batch = dict(batch_row)
+            exposure_rows = conn.execute(
+                "SELECT * FROM product_exposures WHERE exposure_batch_id = ? "
+                "ORDER BY dimension, weight_ppm DESC",
+                (batch_id,)
+            ).fetchall()
+
+            exposures = [dict(row) for row in exposure_rows]
+            batch["exposures"] = exposures
+
+            # Calculate unknown residuals per dimension
+            residuals = {}
+            sums = {}
+            for exp in exposures:
+                dim = exp["dimension"]
+                sums[dim] = sums.get(dim, 0) + exp["weight_ppm"]
+
+            for dim, total in sums.items():
+                if total > 1000000:
+                     # This should have been caught by DB check constraint if individual weights were > 1M,
+                     # but sum can still exceed 1M. Validation should happen in service layer.
+                     pass
+                if total < 1000000:
+                    residuals[dim] = 1000000 - total
+
+            batch["unknown_residuals"] = residuals
+            return batch
+
     # ── Backup & Restore ────────────────────────────────────────────────
 
     def backup(self, target_path: str | Path, overwrite: bool = False) -> Path:
@@ -1251,6 +1405,7 @@ class PortfolioBookDatabase:
             if version >= 4: required.append("cashflow_events")
             if version >= 6: required.append("snapshot_batch_accounts")
             if version >= 8: required.extend(["import_drafts", "import_candidates"])
+            if version >= 9: required.extend(["exposure_batches", "product_exposures"])
 
             for table in required:
                 if table not in actual_tables:
