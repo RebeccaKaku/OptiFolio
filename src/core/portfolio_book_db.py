@@ -73,7 +73,12 @@ class PortfolioBookDatabase:
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
-            path = PROJECT_ROOT / "local" / "portfolio_book.sqlite"
+            import os
+            env_path = os.environ.get("OPTIFOLIO_DB_PATH")
+            if env_path:
+                path = Path(env_path)
+            else:
+                path = PROJECT_ROOT / "local" / "portfolio_book.sqlite"
         self._path: Path = Path(path)
 
     # ── Public API ──────────────────────────────────────────────────────
@@ -554,6 +559,12 @@ class PortfolioBookDatabase:
             json.dumps(extra)
         )
 
+    def list_products(self) -> List[ProductDefinition]:
+        """List all products."""
+        with closing(self.connect()) as conn:
+            rows = conn.execute("SELECT * FROM products ORDER BY product_id ASC").fetchall()
+            return [self._from_row(row) for row in rows]
+
     def _from_row(self, row: sqlite3.Row) -> ProductDefinition:
         """Convert database row to ProductDefinition."""
         extra = json.loads(row["extra_json"])
@@ -661,6 +672,18 @@ class PortfolioBookDatabase:
     def deactivate_account(self, account_id: str) -> None:
         self.update_account(account_id, status="inactive")
 
+    def list_accounts(self, status: str = "active") -> List[sqlite3.Row]:
+        if status not in ("active", "inactive", "all"):
+            raise ValueError(f"Invalid status filter: {status}")
+        sql = "SELECT * FROM accounts"
+        params = []
+        if status != "all":
+            sql += " WHERE status = ?"
+            params.append(status)
+        sql += " ORDER BY account_id ASC"
+        with closing(self.connect()) as conn:
+            return conn.execute(sql, tuple(params)).fetchall()
+
     # ── Snapshots CRUD ──────────────────────────────────────────────────
 
     def create_snapshot_batch(
@@ -696,7 +719,9 @@ class PortfolioBookDatabase:
             raise ValueError("cost_basis must not be negative")
 
         with closing(self.connect()) as conn:
-            with conn:
+            # Atomic check-then-write using BEGIN IMMEDIATE to prevent confirm race
+            conn.execute("BEGIN IMMEDIATE")
+            try:
                 batch = conn.execute(
                     "SELECT status FROM snapshot_batches WHERE batch_id = ?",
                     (batch_id,)
@@ -732,6 +757,10 @@ class PortfolioBookDatabase:
                     (batch_id, account_id, product_id, quantity, market_value,
                      cost_basis, currency, source, quality, notes)
                 )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def set_batch_account_coverage(
         self, batch_id: str, account_id: str, coverage: str,
@@ -749,7 +778,8 @@ class PortfolioBookDatabase:
             )
 
         with closing(self.connect()) as conn:
-            with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
                 batch = conn.execute(
                     "SELECT status FROM snapshot_batches WHERE batch_id = ?",
                     (batch_id,),
@@ -780,10 +810,15 @@ class PortfolioBookDatabase:
                     "coverage = excluded.coverage, notes = excluded.notes",
                     (batch_id, account_id, coverage, notes),
                 )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def confirm_batch(self, batch_id: str) -> None:
         with closing(self.connect()) as conn:
-            with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
                 batch = conn.execute(
                     "SELECT status FROM snapshot_batches WHERE batch_id = ?",
                     (batch_id,),
@@ -791,6 +826,7 @@ class PortfolioBookDatabase:
                 if batch is None:
                     raise PortfolioBookError(f"Batch {batch_id} not found")
                 if batch["status"] != "draft":
+                    # Distinct error for 'already_confirmed' as per DS-008 spec
                     raise PortfolioBookError(
                         f"Batch {batch_id} is already {batch['status']}"
                     )
@@ -813,7 +849,13 @@ class PortfolioBookDatabase:
                     (batch_id,)
                 )
                 if cursor.rowcount == 0:
-                    raise PortfolioBookError(f"Batch {batch_id} not found")
+                    # This should be unreachable under BEGIN IMMEDIATE if we checked status above,
+                    # but kept for double-safety.
+                    raise PortfolioBookError(f"Batch {batch_id} could not be confirmed")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def supersede_batch(self, batch_id: str) -> None:
         with closing(self.connect()) as conn:

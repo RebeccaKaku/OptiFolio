@@ -271,6 +271,167 @@ class PortfolioBookService:
             _log.exception("Unexpected error creating product")
             return failure("Internal server error", error_code="INTERNAL_ERROR")
 
+    # ── Snapshot Batches ──────────────────────────────────────────
+
+    def create_snapshot_batch(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new snapshot batch (draft)."""
+        try:
+            batch_id = data["batch_id"]
+            as_of = data["as_of"]
+            self._db.create_snapshot_batch(
+                batch_id=batch_id,
+                as_of=as_of,
+                source=data.get("source", "manual"),
+                quality=data.get("quality", "reported"),
+                notes=data.get("notes"),
+            )
+            batch = self._db.get_batch(batch_id)
+            return success(batch, "Snapshot batch created")
+        except KeyError as exc:
+            return failure(
+                f"Missing required field: {exc.args[0]}",
+                error_code="VALIDATION_ERROR",
+            )
+        except sqlite3_err as exc:
+            return _handle_sqlite_error(exc)
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error creating snapshot batch")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def get_snapshot_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Get batch details including positions, coverage, and progress."""
+        try:
+            batch = self._db.get_batch(batch_id)
+            if not batch:
+                return failure(
+                    f"Batch {batch_id!r} not found",
+                    error_code="NOT_FOUND",
+                )
+            progress = self._db.get_batch_progress(batch_id)
+            # Standardize batch dict
+            batch_dict = dict(batch)
+            batch_dict["progress"] = progress
+            return success(batch_dict)
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error getting snapshot batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def set_batch_account_coverage(
+        self, batch_id: str, account_id: str, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Register or update account coverage for a batch."""
+        try:
+            coverage = data["coverage"]
+            self._db.set_batch_account_coverage(
+                batch_id=batch_id,
+                account_id=account_id,
+                coverage=coverage,
+                notes=data.get("notes"),
+            )
+            return success(None, "Account coverage updated")
+        except KeyError as exc:
+            return failure(
+                f"Missing required field: {exc.args[0]}",
+                error_code="VALIDATION_ERROR",
+            )
+        except (ValueError, TypeError) as exc:
+            return failure(str(exc), error_code="VALIDATION_ERROR")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error setting account coverage")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def add_snapshot_position(
+        self, batch_id: str, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Add a single position snapshot to a draft batch."""
+        try:
+            self._db.add_snapshot(
+                batch_id=batch_id,
+                account_id=data["account_id"],
+                product_id=data["product_id"],
+                quantity=data.get("quantity"),
+                market_value=data.get("market_value"),
+                cost_basis=data.get("cost_basis"),
+                currency=data.get("currency", "CNY"),
+                source=data.get("source"),
+                quality=data.get("quality"),
+                notes=data.get("notes"),
+            )
+            return success(None, "Position added to batch")
+        except KeyError as exc:
+            return failure(
+                f"Missing required field: {exc.args[0]}",
+                error_code="VALIDATION_ERROR",
+            )
+        except (ValueError, TypeError) as exc:
+            return failure(str(exc), error_code="VALIDATION_ERROR")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error adding position to batch")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def validate_snapshot_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Perform confirm-readiness validation without changing state."""
+        try:
+            batch = self._db.get_batch(batch_id)
+            if not batch:
+                return failure(f"Batch {batch_id!r} not found", error_code="NOT_FOUND")
+
+            progress = self._db.get_batch_progress(batch_id)
+            errors = []
+            warnings = []
+
+            # Rules as per DS-008 spec
+            coverage = batch.get("account_coverage", [])
+            if not coverage:
+                errors.append("At least one account must be registered in coverage")
+
+            for acc in coverage:
+                if acc["coverage"] == "partial":
+                    warnings.append(f"Account {acc['account_id']} has partial coverage")
+
+            is_confirmable = len(errors) == 0
+            return success(
+                {
+                    "is_confirmable": is_confirmable,
+                    "is_complete": progress["is_complete"],
+                    "errors": errors,
+                    "warnings": warnings,
+                    "account_progress": progress["accounts"],
+                }
+            )
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error validating batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def confirm_snapshot_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Atomically confirm a draft batch."""
+        try:
+            self._db.confirm_batch(batch_id)
+            return success(None, "Snapshot batch confirmed")
+        except PortfolioBookError as exc:
+            msg = str(exc).lower()
+            if "already confirmed" in msg:  # Matches DB error
+                return failure(str(exc), error_code="ALREADY_CONFIRMED")
+            # If status is superseded, it's also not a draft
+            if "already superseded" in msg:
+                return failure(str(exc), error_code="ALREADY_CONFIRMED")
+            if "already" in msg: # Catch-all for already confirmed/superseded
+                 return failure(str(exc), error_code="ALREADY_CONFIRMED")
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error confirming batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
     def update_product(self, product_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing product.
 
