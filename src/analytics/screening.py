@@ -24,12 +24,14 @@ class ScreeningCriteria:
                 to sum to 1 before scoring.
         higher_is_better: True when a larger metric value is desirable.
         field: Key used to look up the raw metric value from each product dict.
+        is_critical: If True, missing this metric makes the product incomparable.
     """
 
     name: str
     weight: float
     higher_is_better: bool
     field: str
+    is_critical: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,9 @@ class ScreenedProduct:
         score: Composite score 0–100 (higher is better).
         rank: 1-based rank (1 = best).
         metrics: Raw metric values keyed by field name.
+        coverage: Ratio of weights for which metrics were known [0, 1].
+        incomparable: True if product was excluded from ranking.
+        incomparable_reasons: Why the product is incomparable.
     """
 
     product_id: str
@@ -50,7 +55,10 @@ class ScreenedProduct:
     product_type: str
     score: float
     rank: int
-    metrics: Dict[str, float] = field(default_factory=dict)
+    metrics: Dict[str, float | None] = field(default_factory=dict)
+    coverage: float = 1.0
+    incomparable: bool = False
+    incomparable_reasons: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -70,89 +78,127 @@ class ProductScreener(ABC):
         self,
         products: List[Dict[str, Any]],
         criteria: List[ScreeningCriteria],
+        min_coverage: float = 0.8,
     ) -> List[ScreenedProduct]:
         """Score and rank a list of product dicts against screening criteria.
 
         Steps:
-        1. Extract raw metric values for every (product, criterion) pair.
-        2. Min-max normalise each metric to [0, 1].
-        3. Invert normalised value when *higher_is_better* is False.
-        4. Weighted-sum score → scale to 0–100.
-        5. Sort descending by score, assign rank.
+        1. Extract raw metric values, detecting missing data and critical failures.
+        2. Filter incomparable products (missing critical fields or low coverage).
+        3. Min-max normalise each metric for comparable products.
+        4. Weighted-sum score with weight renormalisation for partial data.
+        5. Sort by (score DESC, product_id ASC) and assign ranks.
 
         Returns an empty list when ``products`` is empty.
         """
         if not products:
             return []
 
-        # ── 1. Extract raw values ──────────────────────────────────────
-        raw: List[Dict[str, float]] = []
-        for p in products:
-            vals: Dict[str, float] = {}
+        total_weight = sum(c.weight for c in criteria)
+        results: List[ScreenedProduct] = []
+
+        # ── 1. Extract values & identify incomparability ──────────────
+        for i, p in enumerate(products):
+            metrics: Dict[str, float | None] = {}
+            reasons: List[str] = []
+            known_weight = 0.0
+
             for c in criteria:
-                v = p.get(c.field)
-                vals[c.field] = float(v) if v is not None else 0.0
-            raw.append(vals)
+                val = p.get(c.field)
+                if val is not None:
+                    try:
+                        f_val = float(val)
+                        metrics[c.field] = f_val
+                        known_weight += c.weight
+                    except (ValueError, TypeError):
+                        metrics[c.field] = None
+                else:
+                    metrics[c.field] = None
 
-        # ── 2. Min-max normalise per metric ───────────────────────────
-        norm: List[Dict[str, float]] = [{} for _ in products]
-        for c in criteria:
-            field = c.field
-            values = [r[field] for r in raw]
-            v_min = min(values)
-            v_max = max(values)
-            span = v_max - v_min
-            if span == 0.0:
-                # All identical — every product gets neutral 0.5
-                for nd in norm:
-                    nd[field] = 0.5
-            else:
-                for i, r in enumerate(raw):
-                    n = (r[field] - v_min) / span
-                    norm[i][field] = 1.0 - n if not c.higher_is_better else n
+                if metrics[c.field] is None and c.is_critical:
+                    reasons.append(f"Missing critical field: {c.field}")
 
-        # ── 3. Normalise weights to sum to 1 ──────────────────────────
-        total_w = sum(c.weight for c in criteria)
-        if total_w <= 0:
-            # All-zero weights → every criterion gets equal weight
-            n_criteria = max(len(criteria), 1)
-            w_map = {c.field: 1.0 / n_criteria for c in criteria}
-        else:
-            w_map = {c.field: c.weight / total_w for c in criteria}
+            coverage = known_weight / total_weight if total_weight > 0 else 1.0
+            if coverage < min_coverage:
+                reasons.append(f"Coverage {coverage:.2f} below threshold {min_coverage}")
 
-        # ── 4. Weighted sum → 0–100 ──────────────────────────────────
-        scores: List[float] = []
-        for nd in norm:
-            s = sum(nd.get(field, 0) * w_map.get(field, 0) for field in w_map)
-            scores.append(round(s * 100, 2))
+            results.append(
+                ScreenedProduct(
+                    product_id=str(p.get("product_id", i)),
+                    name=str(p.get("name", "")),
+                    product_type=str(p.get("product_type", "")),
+                    score=0.0,
+                    rank=0,
+                    metrics=metrics,
+                    coverage=round(coverage, 4),
+                    incomparable=len(reasons) > 0,
+                    incomparable_reasons=reasons,
+                )
+            )
 
-        # ── 5. Rank (descending score) ───────────────────────────────
-        indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
-        rank_by_idx: Dict[int, int] = {}
+        comparable = [r for r in results if not r.incomparable]
+
+        # ── 2. Normalise metrics for comparable products ──────────────
+        if comparable:
+            norm_values: List[Dict[str, float]] = [{} for _ in comparable]
+            for c in criteria:
+                field = c.field
+                values = [r.metrics[field] for r in comparable if r.metrics[field] is not None]
+                if not values:
+                    continue
+
+                v_min = min(values)
+                v_max = max(values)
+                span = v_max - v_min
+
+                for idx, r in enumerate(comparable):
+                    v = r.metrics[field]
+                    if v is None:
+                        continue
+
+                    if span == 0:
+                        n = 0.5
+                    else:
+                        n = (v - v_min) / span
+
+                    norm_values[idx][field] = 1.0 - n if not c.higher_is_better else n
+
+            # ── 3. Weighted score with weight renormalisation ──────────
+            for idx, r in enumerate(comparable):
+                active_weights = sum(c.weight for c in criteria if r.metrics[c.field] is not None)
+                if active_weights <= 0:
+                    r_score = 50.0
+                else:
+                    s = 0.0
+                    for c in criteria:
+                        v_norm = norm_values[idx].get(c.field)
+                        if v_norm is not None:
+                            s += v_norm * (c.weight / active_weights)
+                    r_score = round(s * 100, 2)
+
+                # Update in-place in results list via index or just use comparable
+                # Since results contains the same objects, we update them
+                object.__setattr__(r, "score", r_score)
+
+        # ── 4. Rank comparable products ───────────────────────────────
+        # Stable sort: score DESC, then product_id ASC
+        comparable.sort(key=lambda x: (-x.score, x.product_id))
+
         prev_score: float | None = None
         prev_rank: int = 0
-        for pos, (idx, sc) in enumerate(indexed, start=1):
-            if sc != prev_score:
-                rank_by_idx[idx] = pos
+        for pos, r in enumerate(comparable, start=1):
+            if r.score != prev_score:
+                rank = pos
                 prev_rank = pos
             else:
-                rank_by_idx[idx] = prev_rank
-            prev_score = sc
+                rank = prev_rank
 
-        # Build results sorted descending by score
-        results = [
-            ScreenedProduct(
-                product_id=str(products[i].get("product_id", i)),
-                name=str(products[i].get("name", "")),
-                product_type=str(products[i].get("product_type", "")),
-                score=scores[i],
-                rank=rank_by_idx[i],
-                metrics=raw[i],
-            )
-            for i in range(len(products))
-        ]
-        results.sort(key=lambda r: r.score, reverse=True)
-        return results
+            object.__setattr__(r, "rank", rank)
+            prev_score = r.score
+
+        # Final return: comparable (sorted) then incomparable
+        incomparable = [r for r in results if r.incomparable]
+        return comparable + incomparable
 
 
 # ── Money-market fund screener ──────────────────────────────────────────
