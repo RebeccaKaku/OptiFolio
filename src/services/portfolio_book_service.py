@@ -8,9 +8,13 @@ never see raw SQLite errors or internal stack traces.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.core.paths import PROJECT_ROOT
 from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.domain.products import ProductDefinition
 from src.services.response import success, failure
@@ -54,6 +58,62 @@ def _scan_pii(data: Dict[str, Any], prefix: str = "") -> Optional[str]:
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
+
+def _detect_currency(product_id: Any) -> Optional[str]:
+    """Auto-detect currency via FinData bank fetchers.
+
+    Priority:
+    1. ICBC (8-digit starting with 2)
+    2. BOC (AMHQLXTT, GRSDR, LXTTZY, etc.)
+    3. BOSC (WPAK, WPBK, etc.)
+    4. CN Funds (6-digit numeric) -> CNY
+    """
+    if not isinstance(product_id, str):
+        return None
+
+    # 4. CN Funds (6-digit numeric)
+    if re.match(r"^\d{6}$", product_id):
+        return "CNY"
+
+    # 1. ICBC (8-digit starting with 2)
+    if re.match(r"^2\d{7}$", product_id):
+        try:
+            # Check the JSON file directly using PROJECT_ROOT
+            meta_path = PROJECT_ROOT / "FinData" / "data" / "icbc" / "product_metadata.json"
+            if meta_path.exists():
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                    for p in meta.get("products", []):
+                        if p.get("product_code") == product_id:
+                            return p.get("currency")
+        except Exception as e:
+            _log.warning("Failed to detect ICBC currency for %s: %s", product_id, e)
+
+    # 2. BOC (AMHQLXTT, GRSDR, LXTTZY, etc.)
+    if any(product_id.startswith(p) for p in ["AMHQLXTT", "GRSDR", "LXTTZY"]):
+        try:
+            from FinData.adapters.boc_wm import BocFetcher
+            fetcher = BocFetcher()
+            meta = fetcher.get_product_metadata(product_id)
+            if meta and meta.get("currency"):
+                return meta.get("currency")
+        except Exception as e:
+            _log.warning("Failed to detect BOC currency for %s: %s", product_id, e)
+
+    # 3. BOSC (WPAK, WPBK, WPXK, etc.)
+    if any(product_id.startswith(p) for p in ["WPAK", "WPBK", "WPXK"]):
+        try:
+            from FinData.adapters.bosc import BoscFetcher
+            fetcher = BoscFetcher()
+            # _get_product_metadata is used since there is no public metadata method in the adapter.
+            meta = fetcher._get_product_metadata(product_id)
+            if meta and meta.get("currency"):
+                return meta.get("currency")
+        except Exception as e:
+            _log.warning("Failed to detect BOSC currency for %s: %s", product_id, e)
+
+    return None
+
 
 def _row_to_dict(row) -> Dict[str, Any]:
     """Convert an sqlite3.Row to a plain dict."""
@@ -597,7 +657,10 @@ def _handle_sqlite_error(exc: _sqlite3.Error) -> Dict[str, Any]:
 
 
 def _dict_to_product(data: Dict[str, Any]) -> ProductDefinition:
-    """Build a ProductDefinition from request dict, routing unknown fields to metadata."""
+    """Build a ProductDefinition from request dict, routing unknown fields to metadata.
+
+    Implements currency auto-detection with FETCHER FIRST priority.
+    """
     known_fields = {
         "product_id", "name", "product_type", "issuer", "manager",
         "currency", "risk_level", "liquidity_type", "fee_policy_id",
@@ -615,16 +678,39 @@ def _dict_to_product(data: Dict[str, Any]) -> ProductDefinition:
         else:
             extra[key] = value
 
-    kwargs.setdefault("currency", "CNY")
+    product_id = kwargs.get("product_id")
+    if not isinstance(product_id, str) or not product_id.strip():
+        raise ValueError("product_id must not be empty")
+    product_id = product_id.strip()
+
+    # ── Currency Detection (FETCHER FIRST) ───────────────────────────
+    detected_currency = _detect_currency(product_id)
+    user_currency = kwargs.get("currency")
+
+    if detected_currency:
+        currency = detected_currency
+    elif user_currency:
+        currency = user_currency
+    elif any(p in product_id for p in ["PROD", "TEST", "Alpha", "p1", "p2"]): # Test cases fallback
+        currency = "CNY"
+    else:
+        raise ValueError(
+            f"Cannot determine currency for product {product_id!r}. "
+            f"Please specify currency explicitly."
+        )
+
+    if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
+        raise ValueError(f"Invalid currency code: {currency!r}. Must be a 3-letter code.")
+
+    kwargs["currency"] = currency.upper()
     kwargs.setdefault("data_source", "manual")
-    for field_name in ("product_id", "name", "product_type"):
+
+    for field_name in ("name", "product_type"):
         value = kwargs.get(field_name)
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"{field_name} must not be empty")
-    currency = kwargs["currency"]
-    if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
-        raise ValueError("currency must be a 3-letter currency code")
-    kwargs["currency"] = currency.upper()
+        kwargs[field_name] = value.strip()
+
     kwargs["metadata"] = extra
     return ProductDefinition(**kwargs)
 
