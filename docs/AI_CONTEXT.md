@@ -12,7 +12,7 @@
 - **Tagline**: "Risk engine first, allocation advice second"
 - **Runtime**: Python 3.14.2 (Windows), >=3.11,<3.14 supported
 - **Build**: Hatchling (`pyproject.toml`)
-- **Tests**: 759 passed, 0 failures (use `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`)
+- **Tests**: 905 passed, 0 failures (use `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`)
 
 ## Architecture (Current — 2026-06-19)
 
@@ -27,7 +27,7 @@ FinData/                       # Self-contained data department — the ONLY dat
 src/
   analytics/                   # alerts, concentration, exposure, fx_exposure, liquidity, returns, rule_engine, screening
   api/                         # fastapi_app.py (port 8011), ghostfolio_compat.py, static_dashboard.py
-  core/                        # valuation, calendars, corporate_actions, fees, dashboard_engine, config_manager, portfolio_book_db.py (# accounts, products, snapshots, cashflows, backup (v7))
+  core/                        # valuation, calendars, corporate_actions, fees, dashboard_engine, config_manager, portfolio_book_db.py (# accounts, products, snapshots, cashflows, backup (v8))
   data_foundation/             # canonical schema + MarketDataRepository (DuckDB/Parquet) — used BY FinData, not instead of it
   domain/                      # products, positions, instruments, series, observations, cashflows
   research/                    # BacktestEngine (vectorbt + pandas fallback), qlib_adapter (placeholder)
@@ -108,7 +108,7 @@ src/api/            →  FastAPI → JSONResponse
 ### src/core/portfolio_book_db.py
 - Versioned SQLite database for personal data (accounts, products, snapshots, cashflows).
 - Strictly isolated from market data (`FinData`).
-- Implements a sequential migration system (currently at v7).
+- Implements a sequential migration system (currently at v8).
 - Supports full database backup and verified restore functionality.
 
 ## Planning & Task Status (2026-06-19)
