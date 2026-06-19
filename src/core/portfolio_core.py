@@ -20,8 +20,6 @@ import numpy as np
 from .interfaces import IPortfolioManager
 from .cache import get_cache, CacheKeys, cached
 from .paths import get_portfolio_config_path
-from src.data_foundation.repository import MarketDataRepository
-
 # 导入现有模块
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
@@ -412,6 +410,7 @@ class PortfolioCore(IPortfolioManager):
         batch_prices = {}
         if symbols_to_fetch:
             try:
+                from src.data_foundation.repository import MarketDataRepository
                 repo = MarketDataRepository()
                 end_date_str = datetime.now().strftime("%Y-%m-%d")
                 start_date_str = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
