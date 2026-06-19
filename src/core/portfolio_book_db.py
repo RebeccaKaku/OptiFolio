@@ -1031,55 +1031,195 @@ class PortfolioBookDatabase:
 
     # ── Backup & Restore ────────────────────────────────────────────────
 
-    def backup(self, target_path: str | Path) -> Path:
+    def backup(self, target_path: str | Path, overwrite: bool = False) -> Path:
+        """Create a backup of the current database.
+
+        Args:
+            target_path: Path to the backup file.
+            overwrite: If True, overwrite the target file if it exists.
+
+        Returns:
+            The path to the backup file.
+
+        Raises:
+            PortfolioBookError: if the source is not initialized or verification fails.
+            FileExistsError: if target exists and overwrite is False.
+        """
         target = Path(target_path)
+
+        # 1. Source must exist and be initialized
+        # schema_version() raises FileNotFoundError if it doesn't exist,
+        # or InvalidSchemaMetadataError if it's not initialized properly.
+        self.schema_version()
+
+        # 2. Source != Target
+        if self._path.exists() and target.exists():
+            if self._path.resolve() == target.resolve():
+                raise PortfolioBookError("Source and target database paths are the same.")
+
+        # 3. Target exists and overwrite=False
+        if target.exists() and not overwrite:
+            raise FileExistsError(
+                f"Backup target already exists at {target}. Use overwrite=True."
+            )
+
         target.parent.mkdir(parents=True, exist_ok=True)
+
+        # Use connect() for source to ensure PRAGMAs are set (though backup() is low-level)
         source_conn = self.connect()
+        # Destination is a raw new connection
         dest_conn = sqlite3.connect(str(target))
         try:
             source_conn.backup(dest_conn)
-            _log.info("Backup created at %s", target)
         finally:
             dest_conn.close()
             source_conn.close()
+
+        # 4. Immediate verification
+        if not self.verify_backup(target):
+            if target.exists():
+                target.unlink()
+            raise PortfolioBookError(f"Backup verification failed for {target}")
+
+        _log.info("Backup created and verified at %s", target)
         return target
 
     def verify_backup(self, backup_path: str | Path) -> bool:
+        """Verify the integrity and compatibility of a backup file.
+
+        Checks:
+        1. File exists and is a valid SQLite database.
+        2. PRAGMA integrity_check returns 'ok'.
+        3. _schema_meta table exists and contains a valid version.
+        4. Version is not higher than CURRENT_SCHEMA_VERSION.
+        5. Core tables for the stated version are present.
+        """
         path = Path(backup_path)
         if not path.exists():
             return False
+
+        conn = None
         try:
-            tmp_db = PortfolioBookDatabase(path=path)
-            tmp_db.schema_version()
+            conn = sqlite3.connect(str(path))
+            # 1. Integrity check
+            cursor = conn.execute("PRAGMA integrity_check")
+            rows = cursor.fetchall()
+            if not rows or rows[0][0] != "ok":
+                _log.error("Backup %s failed integrity check", path)
+                return False
+
+            # 2. Check metadata table
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='_schema_meta'"
+            )
+            if not cursor.fetchone():
+                _log.error("Backup %s missing _schema_meta table", path)
+                return False
+
+            # 3. Check version
+            cursor = conn.execute(
+                "SELECT value FROM _schema_meta WHERE key = 'version'"
+            )
+            row = cursor.fetchone()
+            if not row:
+                _log.error("Backup %s missing version in _schema_meta", path)
+                return False
+
+            version = int(row[0])
+            if version > self.CURRENT_SCHEMA_VERSION:
+                _log.warning(
+                    "Backup %s version %d is newer than supported %d",
+                    path, version, self.CURRENT_SCHEMA_VERSION
+                )
+                return False
+
+            # 4. Check core tables for the version
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            actual_tables = {r[0] for r in cursor.fetchall()}
+
+            required = []
+            if version >= 1: required.append("accounts")
+            if version >= 2: required.append("products")
+            if version >= 3: required.extend(["snapshot_batches", "position_snapshots"])
+            if version >= 4: required.append("cashflow_events")
+            if version >= 6: required.append("snapshot_batch_accounts")
+
+            for table in required:
+                if table not in actual_tables:
+                    _log.error("Backup %s missing core table: %s", path, table)
+                    return False
+
             return True
-        except (PortfolioBookError, sqlite3.Error, FileNotFoundError):
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            _log.error("Verification failed for %s: %s", path, exc)
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def restore_from(self, backup_path: str | Path, overwrite: bool = False) -> None:
+        """Atomically restore the database from a backup file.
+
+        The process involves:
+        1. Verifying the backup file.
+        2. Restoring into a temporary file in the same directory.
+        3. Running migrations on the temporary file if needed.
+        4. Verifying the final temporary database.
+        5. Atomically replacing the current database with the temporary one.
+
+        Args:
+            backup_path: Path to the backup file.
+            overwrite: If True, allow replacing an existing database file.
+
+        Raises:
+            PortfolioBookError: if verification fails.
+            FileExistsError: if target exists and overwrite is False.
+            UnsupportedSchemaVersionError: if backup version is too new.
+        """
         backup_path = Path(backup_path)
+
+        # 1. Full verify before restore
         if not self.verify_backup(backup_path):
             raise PortfolioBookError(f"Invalid backup file: {backup_path}")
+
+        # 2. Check target existence
         if self._path.exists() and not overwrite:
             raise FileExistsError(
-                f"Database already exists at {self._path}. "
-                f"Use overwrite=True to restore anyway."
+                f"Database already exists at {self._path}. Use overwrite=True."
             )
-        backup_db = PortfolioBookDatabase(path=backup_path)
-        backup_version = backup_db.schema_version()
-        if backup_version > self.CURRENT_SCHEMA_VERSION:
-            raise UnsupportedSchemaVersionError(
-                f"Backup version {backup_version} is higher than "
-                f"this code supports ({self.CURRENT_SCHEMA_VERSION})."
-            )
+
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        dest_conn = sqlite3.connect(str(self._path))
-        source_conn = sqlite3.connect(str(backup_path))
+        temp_path = self._path.with_suffix(".restore.tmp")
+
         try:
-            source_conn.backup(dest_conn)
-            _log.info("Database restored from %s", backup_path)
+            # 3. Restore into temp file
+            source_conn = sqlite3.connect(str(backup_path))
+            temp_conn = sqlite3.connect(str(temp_path))
+            try:
+                source_conn.backup(temp_conn)
+            finally:
+                temp_conn.close()
+                source_conn.close()
+
+            # 4. Initialize (runs migrations + version check)
+            temp_db = PortfolioBookDatabase(path=temp_path)
+            temp_db.initialize()
+
+            # 5. Final verify of migrated temp file
+            if not self.verify_backup(temp_path):
+                raise PortfolioBookError("Restored temporary database failed verification.")
+
+            # 6. Atomic replace
+            # Note: Path.replace() is atomic on POSIX.
+            temp_path.replace(self._path)
+            _log.info("Database restored atomically from %s", backup_path)
         finally:
-            source_conn.close()
-            dest_conn.close()
+            # 7. Cleanup
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError as exc:
+                    _log.warning("Failed to clean up temp restore file %s: %s", temp_path, exc)
 
     @property
     def path(self) -> Path:

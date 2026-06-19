@@ -412,6 +412,41 @@ class TestBackupRestore:
         assert backup_path.exists()
         assert initialized.verify_backup(backup_path) is True
 
+    def test_backup_rejects_uninitialized_source(self, tmp_path):
+        """backup() raises FileNotFoundError or InvalidSchemaMetadataError for uninitialized source."""
+        uninit_db = PortfolioBookDatabase(path=tmp_path / "uninit.sqlite")
+        with pytest.raises(FileNotFoundError):
+            uninit_db.backup(tmp_path / "target.sqlite")
+
+        # Exists but no metadata
+        uninit_db.path.touch()
+        with pytest.raises(InvalidSchemaMetadataError):
+            uninit_db.backup(tmp_path / "target2.sqlite")
+
+    def test_backup_rejects_source_equals_target(self, initialized):
+        """backup() raises PortfolioBookError if source and target resolve to the same file."""
+        with pytest.raises(PortfolioBookError, match="same"):
+            initialized.backup(initialized.path)
+
+    def test_backup_rejects_existing_target_without_overwrite(self, initialized, tmp_path):
+        """backup() raises FileExistsError if target exists and overwrite=False."""
+        target = tmp_path / "exists.sqlite"
+        target.touch()
+        with pytest.raises(FileExistsError):
+            initialized.backup(target, overwrite=False)
+
+    def test_backup_deletes_failed_target(self, initialized, tmp_path, monkeypatch):
+        """backup() deletes the target file if verification fails."""
+        target = tmp_path / "fail.sqlite"
+
+        # Mock verify_backup to return False
+        monkeypatch.setattr(initialized, "verify_backup", lambda p: False)
+
+        with pytest.raises(PortfolioBookError, match="verification failed"):
+            initialized.backup(target)
+
+        assert not target.exists()
+
     def test_verify_returns_false_for_garbage(self, tmp_path):
         """verify_backup() returns False for non-DB or corrupt files."""
         db = PortfolioBookDatabase(path=tmp_path / "never_init.sqlite")
@@ -431,6 +466,28 @@ class TestBackupRestore:
         conn.close()
         assert db.verify_backup(empty_db) is False
 
+    def test_verify_rejects_integrity_failure(self, initialized, tmp_path):
+        """verify_backup() returns False if integrity check fails."""
+        backup_path = initialized.backup(tmp_path / "corrupt.sqlite")
+        # Manually corrupt the file by writing junk into it
+        with open(backup_path, "r+b") as f:
+            f.seek(100)
+            f.write(b"CORRUPT")
+
+        assert initialized.verify_backup(backup_path) is False
+
+    def test_verify_rejects_missing_core_tables(self, tmp_path):
+        """verify_backup() returns False if version table is present but core tables are missing."""
+        fake_db = tmp_path / "fake.sqlite"
+        conn = sqlite3.connect(str(fake_db))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '6')")
+        conn.commit()
+        conn.close()
+
+        db = PortfolioBookDatabase()
+        assert db.verify_backup(fake_db) is False
+
     def test_restore_refuses_overwrite_without_flag(self, initialized, tmp_path):
         """restore_from() raises FileExistsError if target exists and overwrite=False."""
         backup_path = initialized.backup(tmp_path / "backup.sqlite")
@@ -440,28 +497,45 @@ class TestBackupRestore:
 
     def test_restore_successful_with_overwrite(self, initialized, tmp_path):
         """restore_from() replaces current DB content when overwrite=True."""
-        conn = initialized.connect()
-        conn.execute("CREATE TABLE test_data (val TEXT)")
-        conn.execute("INSERT INTO test_data VALUES ('hello')")
-        conn.commit()
-        conn.close()
-
+        # 1. Add some data
+        initialized.create_account(account_id="acc1", name="Original")
         backup_path = initialized.backup(tmp_path / "backup.sqlite")
 
-        conn = initialized.connect()
-        conn.execute("UPDATE test_data SET val = 'world'")
+        # 2. Modify data
+        initialized.update_account("acc1", name="Modified")
+        assert initialized.get_account("acc1")["name"] == "Modified"
+
+        # 3. Restore
+        initialized.restore_from(backup_path, overwrite=True)
+
+        # 4. Verify original name restored
+        assert initialized.get_account("acc1")["name"] == "Original"
+
+    def test_restore_with_migration(self, initialized, tmp_path):
+        """Restoring a lower-version backup runs migrations to current version."""
+        v1_path = tmp_path / "v1.sqlite"
+        conn = sqlite3.connect(str(v1_path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '1')")
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        conn.execute("INSERT INTO accounts (account_id, name) VALUES ('v1_acc', 'V1 Account')")
         conn.commit()
         conn.close()
 
-        initialized.restore_from(backup_path, overwrite=True)
+        # Target DB
+        db = PortfolioBookDatabase(path=tmp_path / "restored.sqlite")
+        db.restore_from(v1_path)
 
-        conn = initialized.connect()
-        row = conn.execute("SELECT val FROM test_data").fetchone()
-        assert row["val"] == "hello"
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
+        assert db.get_account("v1_acc")["name"] == "V1 Account"
+        # Verify a newer table exists
+        conn = db.connect()
+        # Should not raise "no such table"
+        conn.execute("SELECT * FROM products").fetchall()
         conn.close()
 
     def test_restore_fails_for_incompatible_version(self, initialized, tmp_path):
-        """restore_from() raises UnsupportedSchemaVersionError for newer backups."""
+        """restore_from() raises PortfolioBookError (via verify_backup) for newer backups."""
         newer_path = tmp_path / "newer.sqlite"
         conn = sqlite3.connect(str(newer_path))
         conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -469,8 +543,43 @@ class TestBackupRestore:
         conn.commit()
         conn.close()
 
-        with pytest.raises(UnsupportedSchemaVersionError, match="99"):
+        with pytest.raises(PortfolioBookError, match="Invalid backup file"):
             initialized.restore_from(newer_path, overwrite=True)
+
+    def test_restore_atomic_on_failure(self, initialized, tmp_path, monkeypatch):
+        """If restore fails during migration or verify, original DB is untouched."""
+        initialized.create_account("acc_orig", "Original")
+        backup_path = initialized.backup(tmp_path / "backup.sqlite")
+
+        # Create a new account in current DB that isn't in backup
+        initialized.create_account("acc_new", "New")
+
+        # Mock initialize to fail during restore's temp_db.initialize()
+        def mock_init(self):
+            raise RuntimeError("Boom!")
+
+        # We need to mock initialize on the temp_db instance inside restore_from
+        # or just mock the class method globally during the call.
+        original_init = PortfolioBookDatabase.initialize
+        monkeypatch.setattr(PortfolioBookDatabase, "initialize", mock_init)
+
+        with pytest.raises(RuntimeError, match="Boom!"):
+            initialized.restore_from(backup_path, overwrite=True)
+
+        # Restore initialize
+        monkeypatch.setattr(PortfolioBookDatabase, "initialize", original_init)
+
+        # Verify original DB still has 'acc_new' (not replaced by backup)
+        assert initialized.get_account("acc_new") is not None
+        # And temp files are gone
+        assert not (initialized.path.parent / "restored.sqlite.restore.tmp").exists()
+
+    def test_restore_no_temp_files_left(self, initialized, tmp_path):
+        """Successful restore leaves no temp files."""
+        backup_path = initialized.backup(tmp_path / "backup.sqlite")
+        initialized.restore_from(backup_path, overwrite=True)
+        temp_files = list(initialized.path.parent.glob("*.tmp"))
+        assert len(temp_files) == 0
 
 
 # ── Cashflow CRUD ───────────────────────────────────────────────────────────
