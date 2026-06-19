@@ -609,6 +609,9 @@ def create_app() -> FastAPI:
     from .portfolio_book_api import router as book_router
     app.include_router(book_router)
 
+    from .my_money_api import router as my_money_router
+    app.include_router(my_money_router)
+
     app.mount("/static", StaticFiles(directory="src/api/static"), name="static")
 
     return app

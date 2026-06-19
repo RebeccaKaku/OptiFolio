@@ -918,6 +918,32 @@ class PortfolioBookDatabase:
             batch["account_coverage"] = [dict(row) for row in coverage_rows]
             return batch
 
+    def get_latest_confirmed_batch(self, as_of: str) -> Optional[Dict[str, Any]]:
+        """Return the most recent confirmed batch on or before as_of date."""
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                "SELECT batch_id FROM snapshot_batches "
+                "WHERE status = 'confirmed' AND as_of <= ? "
+                "ORDER BY as_of DESC, created_at DESC LIMIT 1",
+                (as_of,)
+            ).fetchone()
+            if not row:
+                return None
+            return self.get_batch(row["batch_id"])
+
+    def get_previous_confirmed_batch(self, as_of: str) -> Optional[Dict[str, Any]]:
+        """Return the confirmed batch immediately preceding as_of date."""
+        with closing(self.connect()) as conn:
+            row = conn.execute(
+                "SELECT batch_id FROM snapshot_batches "
+                "WHERE status = 'confirmed' AND as_of < ? "
+                "ORDER BY as_of DESC, created_at DESC LIMIT 1",
+                (as_of,)
+            ).fetchone()
+            if not row:
+                return None
+            return self.get_batch(row["batch_id"])
+
     def get_batch_progress(self, batch_id: str) -> Dict[str, Any]:
         """Return batch progress including per-account coverage and completeness.
 
@@ -1024,6 +1050,16 @@ class PortfolioBookDatabase:
             return conn.execute(
                 "SELECT * FROM cashflow_events WHERE product_id = ? ORDER BY effective_date DESC",
                 (product_id,)
+            ).fetchall()
+
+    def get_cashflows_for_period(self, start_date: str, end_date: str) -> List[sqlite3.Row]:
+        """Retrieve all cashflow events in the range (start_date, end_date]."""
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                "SELECT * FROM cashflow_events "
+                "WHERE effective_date > ? AND effective_date <= ? "
+                "ORDER BY effective_date ASC",
+                (start_date, end_date)
             ).fetchall()
 
     def link_transfer(self, event_a_id: str, event_b_id: str) -> None:

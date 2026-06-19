@@ -70,9 +70,10 @@
 <body>
     <div id="app">
         <header>
-            <h1>OptiFolio 建账向导</h1>
+            <h1>OptiFolio 我的钱</h1>
             <nav id="wizard-steps">
-                <span class="step active" data-step="1">1. 账户</span>
+                <span class="step active" data-step="0">概览</span>
+                <span class="step" data-step="1">1. 账户</span>
                 <span class="step" data-step="2">2. 产品</span>
                 <span class="step" data-step="3">3. 快照</span>
                 <span class="step" data-step="4">4. 确认</span>
@@ -80,8 +81,41 @@
         </header>
 
         <main>
+            <!-- Step 0: Dashboard -->
+            <section id="step-0" class="wizard-panel">
+                <h2>资产概览</h2>
+                <div id="summary-container">
+                    <div class="alert alert-info" id="summary-loading">正在加载资产汇总...</div>
+                    <div id="summary-content" style="display:none">
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                            <div style="background:#0f172a; padding:20px; border-radius:8px; border:1px solid #334155;">
+                                <div style="color:#94a3b8; font-size:0.9rem;">总资产 (${state.reportingCurrency || 'CNY'})</div>
+                                <div style="font-size:1.8rem; font-weight:bold; color:#60a5fa;" id="total-assets">¥ 0.00</div>
+                                <div id="total-is-exact-badge" class="badge">确认</div>
+                            </div>
+                            <div style="background:#0f172a; padding:20px; border-radius:8px; border:1px solid #334155;">
+                                <div style="color:#94a3b8; font-size:0.9rem;">收益状态</div>
+                                <div style="font-size:1.2rem; font-weight:bold;" id="return-status">--</div>
+                                <div style="font-size:0.8rem; color:#64748b;" id="return-reason">--</div>
+                            </div>
+                        </div>
+
+                        <div id="usd-container" style="display:none; background:#0f172a; padding:16px; border-radius:8px; border:1px solid #334155; margin-bottom: 24px;">
+                            <div style="color:#94a3b8; font-size:0.8rem;">美元合计 (USD)</div>
+                            <div style="font-size:1.2rem; color:#34d399;" id="usd-total">$ 0.00</div>
+                        </div>
+
+                        <h3>币种分布</h3>
+                        <div id="currency-breakdown" style="margin-bottom: 24px;"></div>
+
+                        <h3>数据质量</h3>
+                        <div id="quality-breakdown" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 24px;"></div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Step 1: Accounts -->
-            <section id="step-1" class="wizard-panel">
+            <section id="step-1" class="wizard-panel" style="display:none">
                 <h2>第一步：管理账户</h2>
                 <div id="account-list"></div>
                 <hr>
@@ -160,12 +194,14 @@
 
     <script>
         const state = {
-            currentStep: 1,
+            currentStep: 0,
             accounts: [],
             products: [],
             currentBatchId: null,
             batchData: null,
-            validation: null
+            validation: null,
+            summary: null,
+            reportingCurrency: 'CNY'
         };
 
         const API_BASE = '/api/book';
@@ -218,7 +254,9 @@
         }
 
         async function loadStepData() {
-            if (state.currentStep === 1) {
+            if (state.currentStep === 0) {
+                await loadSummary();
+            } else if (state.currentStep === 1) {
                 const res = await api('/accounts?status=all');
                 state.accounts = res.data;
                 renderAccountList();
@@ -438,16 +476,71 @@
             }
         };
 
+        async function loadSummary() {
+            try {
+                const res = await api(`/summary?reporting_currency=${state.reportingCurrency}`);
+                state.summary = res.data;
+                renderSummary();
+            } catch (err) {
+                document.getElementById('summary-loading').textContent = `加载失败: ${err.message}`;
+            }
+        }
+
+        function renderSummary() {
+            const s = state.summary;
+            document.getElementById('summary-loading').style.display = 'none';
+            if (!s.has_data) {
+                document.getElementById('summary-container').innerHTML = `
+                    <div class="alert alert-info">${s.message}</div>
+                    <button onclick="state.currentStep=1; updateUI();">开始建账</button>
+                `;
+                return;
+            }
+
+            document.getElementById('summary-content').style.display = 'block';
+            document.getElementById('total-assets').textContent = `${s.reporting_currency === 'CNY' ? '¥' : '$'} ${s.total_assets_reporting.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+            const exactBadge = document.getElementById('total-is-exact-badge');
+            exactBadge.textContent = s.total_is_exact ? '确认' : '估算';
+            exactBadge.className = 'badge ' + (s.total_is_exact ? 'badge-green' : 'badge-yellow');
+
+            const retStatus = document.getElementById('return-status');
+            retStatus.textContent = s.return_status.toUpperCase();
+            retStatus.style.color = s.return_status === 'available' ? '#4ade80' : (s.return_status === 'estimated' ? '#fbbf24' : '#f87171');
+            document.getElementById('return-reason').textContent = s.return_reason;
+
+            if (s.usd_total !== undefined) {
+                document.getElementById('usd-container').style.display = 'block';
+                document.getElementById('usd-total').textContent = `$ ${s.usd_total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            } else {
+                document.getElementById('usd-container').style.display = 'none';
+            }
+
+            const currContainer = document.getElementById('currency-breakdown');
+            currContainer.innerHTML = Object.entries(s.by_currency).map(([curr, data]) => `
+                <div class="list-item">
+                    <span><strong>${curr}</strong></span>
+                    <span>${data.amount_original.toLocaleString()} (${data.amount_reporting.toLocaleString()} ${s.reporting_currency})</span>
+                </div>
+            `).join('');
+
+            const qualContainer = document.getElementById('quality-breakdown');
+            qualContainer.innerHTML = Object.entries(s.quality_summary).map(([qual, count]) => `
+                <span class="badge ${qual === 'confirmed' ? 'badge-green' : (qual === 'reported' ? 'badge-blue' : 'badge-yellow')}">${qual}: ${count}</span>
+            `).join('');
+        }
+
         function updateUI() {
             document.querySelectorAll('.wizard-panel').forEach(p => p.style.display = 'none');
-            document.getElementById(`step-${state.currentStep}`).style.display = 'block';
+            const panel = document.getElementById(`step-${state.currentStep}`);
+            if (panel) panel.style.display = 'block';
 
             document.querySelectorAll('.step').forEach(s => {
                 const sNum = parseInt(s.dataset.step);
                 s.className = 'step' + (sNum === state.currentStep ? ' active' : (sNum < state.currentStep ? ' done' : ''));
             });
 
-            document.getElementById('prev-btn').disabled = state.currentStep === 1;
+            document.getElementById('prev-btn').disabled = state.currentStep === 0;
             document.getElementById('next-btn').style.display = state.currentStep === 4 ? 'none' : 'inline-block';
 
             loadStepData();

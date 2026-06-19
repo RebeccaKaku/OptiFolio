@@ -33,6 +33,8 @@ class ApplicationServices:
     ingestion: IngestionService
     alerts: AlertEngine              # risk alert checks
     portfolio_book: "PortfolioBookService"  # DS-007 — personal book CRUD
+    book_valuation: "BookValuationService"  # DS-012
+    my_money: "MyMoneyService"              # DS-015
 
 
 @lru_cache(maxsize=1)
@@ -40,8 +42,16 @@ def get_application_services() -> ApplicationServices:
     api_service = get_enhanced_api_service()
     from src.core.portfolio_book_db import PortfolioBookDatabase
     from src.services.portfolio_book_service import PortfolioBookService
+    from src.services.book_valuation_service import BookValuationService
+    from src.services.my_money_service import MyMoneyService
+    from FinData.serving.provider import DataProvider
+
     portfolio_book_db = PortfolioBookDatabase()
     portfolio_book_db.initialize()
+
+    data_provider = DataProvider()
+    book_val_svc = BookValuationService(portfolio_book_db, data_provider)
+
     return ApplicationServices(
         system=SystemService(api_service),
         dashboard=DashboardService(api_service),
@@ -52,4 +62,6 @@ def get_application_services() -> ApplicationServices:
         ingestion=IngestionService(),
         alerts=AlertEngine(),
         portfolio_book=PortfolioBookService(portfolio_book_db),
+        book_valuation=book_val_svc,
+        my_money=MyMoneyService(portfolio_book_db, book_val_svc, data_provider),
     )
