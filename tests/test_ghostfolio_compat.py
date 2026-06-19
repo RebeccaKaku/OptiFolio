@@ -1,6 +1,9 @@
 """Tests for Ghostfolio-compatible API adapter."""
 
 import os
+# Isolate tests from local developer portfolio files
+os.environ["OPTIFOLIO_PORTFOLIO_PATH"] = "nonexistent_portfolio_config_for_testing.yaml"
+
 from datetime import date, datetime
 import pandas as pd
 import pytest

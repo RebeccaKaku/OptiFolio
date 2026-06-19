@@ -8,7 +8,7 @@ validation lives here — all business logic is delegated to
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.exceptions import RequestValidationError

@@ -388,3 +388,141 @@ def test_new_money_friction_cost_vs_benefit():
         assert p.status == "failed"
         assert len(p.allocations) == 0
         assert any("does not exceed costs" in r["reason"] for r in p.rejected_candidates)
+
+def test_new_money_currency_purpose_constraint():
+    engine = NewMoneyEngine()
+    
+    # Candidate P_CNY belongs to "core" bucket (constrained to CNY)
+    # Candidate P_USD belongs to "core" bucket (constrained to CNY) - should be rejected!
+    c_cny = CandidateProduct(
+        asset_id="P_CNY", name="CNY Product", currency="CNY",
+        asset_class="deposit", issuer="BANK_A", purpose_bucket="core", liquidity_level="low"
+    )
+    c_usd = CandidateProduct(
+        asset_id="P_USD", name="USD Product", currency="USD",
+        asset_class="deposit", issuer="BANK_A", purpose_bucket="core", liquidity_level="low"
+    )
+    
+    request = NewMoneyRequest(
+        new_cash_amount=Decimal("10000"),
+        currency="CNY",
+        reporting_currency="CNY",
+        fx_rates={"CNY": Decimal("1"), "USD": Decimal("7.2")},
+        current_total_value=Decimal("0"),
+        current_exposures={},
+        gaps=[],
+        candidates=[c_cny, c_usd],
+        constraints=NewMoneyConstraints(
+            purpose_bucket_currencies={"core": "CNY"}
+        )
+    )
+    
+    proposals = engine.run(request)
+    for p in proposals:
+        # P_USD should be rejected because its currency (USD) doesn't match the "core" bucket base currency (CNY)
+        rejected_ids = [item["asset_id"] for item in p.rejected_candidates]
+        assert "P_USD" in rejected_ids
+        assert any("base currency CNY" in item["reason"] for item in p.rejected_candidates if item["asset_id"] == "P_USD")
+        
+        # P_CNY should be allocated successfully
+        assert any(a.asset_id == "P_CNY" for a in p.allocations)
+        assert not any(a.asset_id == "P_USD" for a in p.allocations)
+
+def test_new_money_multiple_gaps():
+    engine = NewMoneyEngine()
+    
+    # Gap in asset class "bond" and gap in product "P_GAP_1"
+    gap_product = AllocationGapItem(
+        bucket="P_GAP_1", current_weight=Decimal("0"), min=Decimal("0.1"), max=Decimal("0.2"),
+        status="below", gap_to_min=Decimal("0.1"), gap_to_max=Decimal("0.2"),
+        amount_range=(Decimal("10000"), Decimal("20000")), quality="exact"
+    )
+    gap_asset_class = AllocationGapItem(
+        bucket="bond", current_weight=Decimal("0"), min=Decimal("0.3"), max=Decimal("0.5"),
+        status="below", gap_to_min=Decimal("0.3"), gap_to_max=Decimal("0.5"),
+        amount_range=(Decimal("30000"), Decimal("50000")), quality="exact"
+    )
+    
+    gaps = [
+        AllocationGapReport(scope="total", dimension="product", items=[gap_product], unknown_pct=Decimal("0")),
+        AllocationGapReport(scope="total", dimension="asset_class", items=[gap_asset_class], unknown_pct=Decimal("0"))
+    ]
+    
+    # P1 is bond (fills bond gap, gap=0.3)
+    # P2 is cash (no gap)
+    # P3 is bond and asset_id P_GAP_1 (fills both bond gap and product gap, total gap = 0.3 + 0.1 = 0.4)
+    # Under gap_first, P3 should be sorted first (score 0.4), then P1 (score 0.3), then P2 (score 0)
+    c1 = CandidateProduct(asset_id="P1", name="P1", currency="CNY", asset_class="bond", issuer="I", purpose_bucket="B", liquidity_level="low")
+    c2 = CandidateProduct(asset_id="P2", name="P2", currency="CNY", asset_class="cash", issuer="I", purpose_bucket="B", liquidity_level="low")
+    c3 = CandidateProduct(asset_id="P_GAP_1", name="P3", currency="CNY", asset_class="bond", issuer="I", purpose_bucket="B", liquidity_level="low")
+    
+    request = NewMoneyRequest(
+        new_cash_amount=Decimal("100000"),
+        currency="CNY",
+        reporting_currency="CNY",
+        fx_rates={"CNY": Decimal("1")},
+        current_total_value=Decimal("100000"),
+        current_exposures={},
+        gaps=gaps,
+        candidates=[c1, c2, c3],
+        constraints=NewMoneyConstraints(
+            single_product_max_pct=Decimal("0.4")
+        )
+    )
+    
+    proposals = {p.strategy: p for p in engine.run(request)}
+    gap_first_allocs = proposals["gap_first"].allocations
+    
+    # Check that gap_first strategy sorts and allocates to P_GAP_1 first, then P1.
+    # Total value = 200,000. Cap per product = 40% * 200k = 80,000.
+    # P_GAP_1 gets 80,000 (first candidate, fills product gap & asset class gap).
+    # P1 gets 20,000 (remaining cash).
+    assert len(gap_first_allocs) == 2
+    assert gap_first_allocs[0].asset_id == "P_GAP_1"
+    assert gap_first_allocs[0].amount_original == Decimal("80000")
+    assert gap_first_allocs[1].asset_id == "P1"
+    assert gap_first_allocs[1].amount_original == Decimal("20000")
+
+def test_new_money_residual_cash_exposures():
+    engine = NewMoneyEngine()
+    
+    # Setup request where some cash is not allocated (max product cap restricts it)
+    request = NewMoneyRequest(
+        new_cash_amount=Decimal("100000"),
+        currency="CNY",
+        reporting_currency="CNY",
+        fx_rates={"CNY": Decimal("1")},
+        current_total_value=Decimal("0"),
+        current_exposures={},
+        gaps=[],
+        candidates=[
+            CandidateProduct(
+                asset_id="P1", name="P1", currency="CNY", asset_class="bond", issuer="I1", purpose_bucket="B", liquidity_level="low"
+            )
+        ],
+        constraints=NewMoneyConstraints(
+            single_product_max_pct=Decimal("0.4") # Can allocate at most 40% (40,000 CNY)
+        )
+    )
+    
+    proposals = engine.run(request)
+    for p in proposals:
+        assert p.status == "partial"
+        assert p.residual_cash == Decimal("60000")
+        
+        # Verify that post_trade_weights contains the residual cash (60%)
+        # across different dimensions, ensuring weights sum to 100%
+        w = p.post_trade_weights
+        assert w["product"]["P1"] == pytest.approx(Decimal("0.4"))
+        assert w["product"]["cash"] == pytest.approx(Decimal("0.6"))
+        
+        assert w["asset_class"]["bond"] == pytest.approx(Decimal("0.4"))
+        assert w["asset_class"]["cash"] == pytest.approx(Decimal("0.6"))
+        
+        assert w["currency"]["CNY"] == pytest.approx(Decimal("1.0"))
+        
+        assert w["liquidity"]["low"] == pytest.approx(Decimal("0.4"))
+        assert w["liquidity"]["high"] == pytest.approx(Decimal("0.6"))
+        
+        assert w["issuer"]["I1"] == pytest.approx(Decimal("0.4"))
+        assert w["issuer"]["cash"] == pytest.approx(Decimal("0.6"))

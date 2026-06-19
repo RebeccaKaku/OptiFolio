@@ -39,6 +39,7 @@ class NewMoneyConstraints:
     max_cash_retention_pct: Decimal = Decimal("1.0")  # Max % of NEW cash that can remain as residual
     expected_holding_period_years: Decimal = Decimal("1.0")
     no_trade_band_pct: Decimal = Decimal("0")
+    purpose_bucket_currencies: Dict[str, str] = field(default_factory=dict)  # Map from purpose_bucket to its base currency
 
 
 @dataclass(frozen=True)
@@ -138,9 +139,19 @@ class NewMoneyEngine:
         for dim, buckets in request.current_exposures.items():
             post_trade_weights[dim] = {b: w * scaling_factor for b, w in buckets.items()}
 
-        # 1. Filter candidates by currency
+        # 1. Filter candidates by currency and currency-purpose constraints
         valid_candidates = []
         for c in request.candidates:
+            # Check currency-purpose constraint
+            if request.constraints.purpose_bucket_currencies:
+                allowed_currency = request.constraints.purpose_bucket_currencies.get(c.purpose_bucket)
+                if allowed_currency and c.currency != allowed_currency:
+                    rejected_candidates.append({
+                        "asset_id": c.asset_id,
+                        "reason": f"Currency {c.currency} does not match purpose bucket {c.purpose_bucket} base currency {allowed_currency}"
+                    })
+                    continue
+
             if c.currency == request.reporting_currency:
                 valid_candidates.append(c)
             elif c.currency in request.fx_rates:
@@ -217,6 +228,36 @@ class NewMoneyEngine:
                 self._update_weights(candidate, alloc_rep, post_trade_weights, post_trade_total_val_rep)
             else:
                  rejected_candidates.append({"asset_id": candidate.asset_id, "reason": "Constraints reached or no gap"})
+
+        # Track residual cash in post_trade_weights to ensure exposures sum to 100%
+        if residual_cash_orig > 0 and post_trade_total_val_rep > 0:
+            residual_cash_rep = self._to_reporting(residual_cash_orig, request.currency, request.fx_rates)
+            residual_w = residual_cash_rep / post_trade_total_val_rep
+            
+            # 1. Currency
+            if "currency" not in post_trade_weights:
+                post_trade_weights["currency"] = {}
+            post_trade_weights["currency"][request.currency] = post_trade_weights["currency"].get(request.currency, Decimal("0")) + residual_w
+            
+            # 2. Asset Class
+            if "asset_class" not in post_trade_weights:
+                post_trade_weights["asset_class"] = {}
+            post_trade_weights["asset_class"]["cash"] = post_trade_weights["asset_class"].get("cash", Decimal("0")) + residual_w
+            
+            # 3. Liquidity
+            if "liquidity" not in post_trade_weights:
+                post_trade_weights["liquidity"] = {}
+            post_trade_weights["liquidity"]["high"] = post_trade_weights["liquidity"].get("high", Decimal("0")) + residual_w
+
+            # 4. Issuer
+            if "issuer" not in post_trade_weights:
+                post_trade_weights["issuer"] = {}
+            post_trade_weights["issuer"]["cash"] = post_trade_weights["issuer"].get("cash", Decimal("0")) + residual_w
+
+            # 5. Product
+            if "product" not in post_trade_weights:
+                post_trade_weights["product"] = {}
+            post_trade_weights["product"]["cash"] = post_trade_weights["product"].get("cash", Decimal("0")) + residual_w
 
         # Final constraints check
         # Liquidity floor check
@@ -320,6 +361,8 @@ class NewMoneyEngine:
         return min(residual_rep, limit_prod_rep, limit_iss_rep, limit_trade_rep)
 
     def _can_allocate(self, candidate: CandidateProduct, amount_rep: Decimal, residual_orig: Decimal, request: NewMoneyRequest, weights: Dict[str, Dict[str, Decimal]], total_val_rep: Decimal) -> bool:
+        if total_val_rep <= 0:
+            return False
         residual_rep = self._to_reporting(residual_orig, request.currency, request.fx_rates)
         if amount_rep > residual_rep: return False
 
@@ -334,6 +377,8 @@ class NewMoneyEngine:
         return True
 
     def _update_weights(self, candidate: CandidateProduct, amount_rep: Decimal, weights: Dict[str, Dict[str, Decimal]], total_val_rep: Decimal):
+        if total_val_rep <= 0:
+            return
         w_inc = amount_rep / total_val_rep
         dims = {
             "product": candidate.asset_id,

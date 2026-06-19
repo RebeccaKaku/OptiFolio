@@ -143,7 +143,12 @@ async def ghostfolio_portfolio_details():
             "hasError": True,
             "accounts": [],
             "holdings": {},
-            "summary": {},
+            "summary": {
+                "currentNetWorth": 0.0,
+                "totalInvestment": 0.0,
+                "grossPerformance": 0.0,
+                "grossPerformancePercentage": 0.0,
+            },
             "platforms": [],
         }
 
@@ -153,7 +158,12 @@ async def ghostfolio_portfolio_details():
             "hasError": True,
             "accounts": [],
             "holdings": {},
-            "summary": {},
+            "summary": {
+                "currentNetWorth": 0.0,
+                "totalInvestment": 0.0,
+                "grossPerformance": 0.0,
+                "grossPerformancePercentage": 0.0,
+            },
             "platforms": [],
         }
 
@@ -215,11 +225,27 @@ async def ghostfolio_portfolio_performance():
         )
     except Exception as exc:
         logger.warning("Ghostfolio performance failed: %s", exc)
-        return {"chart": [], "performance": {}}
+        return {
+            "chart": [],
+            "performance": {
+                "currentNetWorth": 0.0,
+                "totalInvestment": 0.0,
+                "grossPerformance": 0.0,
+                "grossPerformancePercentage": 0.0,
+            },
+        }
 
     if not value_res.get("success") or not chart_res.get("success"):
         logger.info("Ghostfolio performance: upstream error")
-        return {"chart": [], "performance": {}}
+        return {
+            "chart": [],
+            "performance": {
+                "currentNetWorth": 0.0,
+                "totalInvestment": 0.0,
+                "grossPerformance": 0.0,
+                "grossPerformancePercentage": 0.0,
+            },
+        }
 
     value_data = value_res.get("data") or {}
     history_records = chart_res.get("data", {}).get("records", [])
