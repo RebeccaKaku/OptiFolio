@@ -19,6 +19,11 @@ _log = logging.getLogger(__name__)
 class BocStructuredDepositFetcher:
     """Scrapes BOC structural deposit data from public HTML pages."""
 
+    def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Scrape metadata for a single structural deposit (synchronous wrapper)."""
+        from . import _run_async
+        return _run_async(self.fetch_personal_detail(symbol))
+
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
@@ -188,7 +193,7 @@ class BocStructuredDepositFetcher:
 
     def _parse_detail(self, text: str, code: str) -> Dict[str, Any]:
         """Parse vertical newline-separated BOC structural deposit detail page."""
-        result: Dict[str, Any] = {"product_code": code, "source": "boc_structural_deposit_html"}
+        result: Dict[str, Any] = {"product_code": code, "source": "boc_structural_deposit_html", "currency": "CNY"}
         currency_map = {"人民币": "CNY", "美元": "USD", "欧元": "EUR", "港币": "HKD", "英镑": "GBP", "日元": "JPY", "澳元": "AUD"}
 
         lines = [l.strip() for l in text.split('\n') if l.strip()]

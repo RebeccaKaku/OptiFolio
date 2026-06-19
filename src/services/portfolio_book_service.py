@@ -79,8 +79,9 @@ class PortfolioBookService:
     happen here; the underlying database is never exposed to callers.
     """
 
-    def __init__(self, db: PortfolioBookDatabase) -> None:
+    def __init__(self, db: PortfolioBookDatabase, data_provider: Any = None) -> None:
         self._db = db
+        self._data_provider = data_provider
 
     # ── Accounts ────────────────────────────────────────────────────────
 
@@ -251,6 +252,36 @@ class PortfolioBookService:
                     f"and is not accepted",
                     error_code="PII_REJECTED",
                 )
+
+            product_id = data.get("product_id")
+            if not product_id:
+                return failure("Missing product_id", error_code="VALIDATION_ERROR")
+
+            # Auto-detect currency via bank metadata fetcher
+            # Priority: Fetcher > User-provided
+            fetcher_currency = None
+            if self._data_provider:
+                try:
+                    meta = self._data_provider.get_metadata(product_id)
+                    if meta and meta.get("currency"):
+                        fetcher_currency = meta["currency"]
+                except Exception as e:
+                    _log.warning("Metadata fetcher failed for %s: %s", product_id, e)
+
+            if fetcher_currency:
+                data["currency"] = fetcher_currency
+                _log.info("Using fetcher-detected currency %s for product %s", data["currency"], product_id)
+
+            currency = data.get("currency")
+            if not currency:
+                return failure(
+                    f"Cannot determine currency for product {product_id!r}. Please specify currency.",
+                    error_code="VALIDATION_ERROR"
+                )
+
+            # Validate currency format if provided (either by user or fetcher)
+            if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
+                 return failure("currency must be a 3-letter currency code", error_code="VALIDATION_ERROR")
 
             product = _dict_to_product(data)
             self._db.create_product(product)
@@ -615,7 +646,6 @@ def _dict_to_product(data: Dict[str, Any]) -> ProductDefinition:
         else:
             extra[key] = value
 
-    kwargs.setdefault("currency", "CNY")
     kwargs.setdefault("data_source", "manual")
     for field_name in ("product_id", "name", "product_type"):
         value = kwargs.get(field_name)

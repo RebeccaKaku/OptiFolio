@@ -26,8 +26,10 @@ class BoscFetcher:
         self.data_dir = Path(data_dir)
         self.raw_dir = self.data_dir / "raw"
         self.processed_dir = self.data_dir / "processed"
+        self.metadata_path = self.data_dir / "product_metadata.json"
         self.save_raw = save_raw
         self.verify_ssl = verify_ssl
+        self._metadata_cache: Optional[Dict[str, Any]] = None
 
         # Ensure directories exist
         self.raw_dir.mkdir(parents=True, exist_ok=True)
@@ -39,6 +41,25 @@ class BoscFetcher:
             "X-Requested-With": "XMLHttpRequest",
             "Referer": "https://www.bosc.cn/zh/dtjr/grlc/xjgllcp/",
         }
+
+    def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Return static metadata for a BOSC product from local JSON."""
+        if self._metadata_cache is None:
+            if not self.metadata_path.exists():
+                return None
+            try:
+                with open(self.metadata_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                self._metadata_cache = {
+                    p["product_code"]: p
+                    for p in raw.get("products", [])
+                    if p.get("product_code")
+                }
+            except Exception as e:
+                print(f"    [BOSC] Error reading metadata: {e}")
+                self._metadata_cache = {}
+
+        return self._metadata_cache.get(symbol)
 
     async def fetch_all_products(self, max_pages: int = 50) -> List[Dict]:
         """Query all D709 (现金管理类) products via the stable GET API.

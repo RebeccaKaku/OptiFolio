@@ -104,7 +104,7 @@ class ProductCreateRequest(StrictRequestModel):
     product_type: str = Field(min_length=1, description="Product type")
     issuer: Optional[str] = Field(default=None, description="Issuer name")
     manager: Optional[str] = Field(default=None, description="Fund manager name")
-    currency: str = Field(default="CNY", description="3-letter ISO 4217 currency code")
+    currency: Optional[str] = Field(default=None, description="3-letter ISO 4217 currency code")
     risk_level: Optional[str] = Field(default=None, description="Risk level label")
     liquidity_type: Optional[str] = Field(default=None, description="Liquidity classification")
     fee_policy_id: Optional[str] = Field(default=None, description="Fee policy reference")

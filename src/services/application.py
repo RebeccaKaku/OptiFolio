@@ -61,7 +61,7 @@ def get_application_services() -> ApplicationServices:
         research=ResearchService(),
         ingestion=IngestionService(),
         alerts=AlertEngine(),
-        portfolio_book=PortfolioBookService(portfolio_book_db),
+        portfolio_book=PortfolioBookService(portfolio_book_db, data_provider),
         book_valuation=book_val_svc,
         my_money=MyMoneyService(portfolio_book_db, book_val_svc, data_provider),
     )

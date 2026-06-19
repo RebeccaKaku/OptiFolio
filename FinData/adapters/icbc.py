@@ -24,7 +24,9 @@ class IcbcFetcher:
         self.data_dir = Path(data_dir)
         self.raw_dir = self.data_dir / "raw"
         self.processed_dir = self.data_dir / "processed"
+        self.metadata_path = self.data_dir / "product_metadata.json"
         self.save_raw = save_raw
+        self._metadata_cache: Optional[Dict[str, Any]] = None
         
         # Ensure directories exist
         self.raw_dir.mkdir(parents=True, exist_ok=True)
@@ -43,6 +45,25 @@ class IcbcFetcher:
             "Referer": "https://www.icbc.com.cn/",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
+
+    def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Return static metadata for an ICBC product from local JSON."""
+        if self._metadata_cache is None:
+            if not self.metadata_path.exists():
+                return None
+            try:
+                with open(self.metadata_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                self._metadata_cache = {
+                    p["product_code"]: p
+                    for p in raw.get("products", [])
+                    if p.get("product_code")
+                }
+            except Exception as e:
+                print(f"    [ICBC] Error reading metadata: {e}")
+                self._metadata_cache = {}
+
+        return self._metadata_cache.get(symbol)
 
     async def fetch_all_products(self) -> List[str]:
         """

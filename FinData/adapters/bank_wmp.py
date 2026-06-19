@@ -3,6 +3,7 @@
 import re
 import time
 import asyncio
+from typing import Optional, Dict, Any
 from . import FetcherProtocol, FetchResult, _run_async
 
 
@@ -37,6 +38,7 @@ class BankWmpFetcher(FetcherProtocol):
         self._boc = None
         self._icbc = None
         self._bosc = None
+        self._boc_structured = None
 
     def _get_boc(self):
         if self._boc is None:
@@ -55,6 +57,25 @@ class BankWmpFetcher(FetcherProtocol):
             from .bosc import BoscFetcher
             self._bosc = BoscFetcher()
         return self._bosc
+
+    def _get_boc_structured(self):
+        if self._boc_structured is None:
+            from .boc_structured import BocStructuredDepositFetcher
+            self._boc_structured = BocStructuredDepositFetcher()
+        return self._boc_structured
+
+    def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
+        kind = self._classify(symbol)
+        if kind == "boc":
+            # Try structured first, then wealth management
+            if symbol.startswith(("GRSDR", "CSDPY")):
+                return self._get_boc_structured().get_metadata(symbol)
+            return self._get_boc().get_metadata(symbol)
+        elif kind == "icbc":
+            return self._get_icbc().get_metadata(symbol)
+        elif kind == "bosc":
+            return self._get_bosc().get_metadata(symbol)
+        return None
 
     # ── fetch ───────────────────────────────────────────────────────
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:

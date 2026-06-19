@@ -66,6 +66,9 @@ class FinData:
     def panel(self, symbols, start=None, end=None, mode="fast"):
         return self._provider_ref.panel(symbols, start=start, end=end, mode=mode)
 
+    def get_metadata(self, symbol, asset_type=None):
+        return self._provider_ref.get_metadata(symbol, asset_type=asset_type)
+
     def returns(self, symbol, start=None, end=None, frequency="D"):
         return self._provider_ref.returns(symbol, start=start, end=end, frequency=frequency)
 
