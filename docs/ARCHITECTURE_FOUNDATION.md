@@ -3,7 +3,7 @@
 This is the runnable architecture. The goal is to keep the asset-allocation core
 independent from data providers, storage engines, and research frameworks.
 
-Last updated: 2026-06-05 (added FinData, reflected current state).
+Last updated: 2026-06-19 (DS-014 merged, v8 schema, 905 tests).
 
 ## Runtime Path
 
@@ -14,6 +14,8 @@ Last updated: 2026-06-05 (added FinData, reflected current state).
 5. `FinData` fd singleton is the ONLY public data API (`from FinData import fd`).
 6. `PortfolioServiceV2` consumes fd for date-aware valuation.
 7. FastAPI exposes the service layer on port 8011.
+8. `PortfolioBookDatabase` (v8 SQLite, `local/`) stores personal accounts, products, snapshots, cashflows — strictly separate from market data.
+9. Analytics pipeline: `book_valuation → reconciliation → currency_aggregation → return_attribution` (all pure functions).
 
 ## Module Boundaries
 
@@ -23,6 +25,11 @@ Last updated: 2026-06-05 (added FinData, reflected current state).
 - `src/analytics/`: risk analytics — alerts, exposure, concentration, FX, liquidity, returns, rules, screening.
 - `src/research/`: backtesting engine and future research adapters.
 - `src/services/`: application orchestration only; no quant math should live here.
+- `src/core/portfolio_book_db.py`: Personal book — versioned SQLite for accounts, products, snapshots, cashflows. Strictly separate from FinData.
+- `src/core/book_valuation.py`: Valuation source priority engine (DS-012, pure function).
+- `src/analytics/reconciliation.py`: Snapshot pair reconciliation (DS-011).
+- `src/analytics/currency_aggregation.py`: Dual-currency aggregation (DS-013).
+- `src/analytics/return_attribution.py`: Return + FX decomposition (DS-014).
 - `src/api/`: FastAPI routes (port 8011); no business logic here.
 - `portfolio/`: existing optimization algorithms (PyPortfolioOpt, cvxpy).
 - `app.py`: **FROZEN** legacy Streamlit dashboard — do not edit.
