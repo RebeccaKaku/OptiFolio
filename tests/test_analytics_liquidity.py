@@ -370,7 +370,7 @@ def test_bank_wmp_liquidity_type_t0():
 # ── unknown / default ───────────────────────────────────────────────────
 
 
-def test_unknown_symbol_is_7_days():
+def test_unknown_symbol_is_unknown():
     analyzer = LiquidityAnalyzer()
     positions = {"X_UNKNOWN123": _pv("X_UNKNOWN123", 5000.0)}
     report = analyzer.analyze(
@@ -378,7 +378,7 @@ def test_unknown_symbol_is_7_days():
         product_registry={},
         as_of=date.today(), total_value=5000.0,
     )
-    bucket = _find_bucket(report, "7天内")
+    bucket = _find_bucket(report, "未知")
     assert bucket.value == 5000.0
 
 
@@ -551,7 +551,7 @@ def test_time_deposit_past_maturity_is_t0():
 
 
 def test_deposit_unknown_type_warns():
-    """Deposit with no maturity/term metadata warns and defaults to T+0."""
+    """Deposit with no maturity/term metadata warns and defaults to Unknown."""
     analyzer = LiquidityAnalyzer()
     registry = {"DEP_UNK": _product("DEP_UNK", "deposit", "未知存款类型")}
     positions = {"DEP_UNK": _pv("DEP_UNK", 5000.0)}
@@ -560,8 +560,8 @@ def test_deposit_unknown_type_warns():
         product_registry=registry,
         as_of=date.today(), total_value=5000.0,
     )
-    t0 = _find_bucket(report, "T+0")
-    assert t0.value == 5000.0
+    unk = _find_bucket(report, "未知")
+    assert unk.value == 5000.0
     assert hasattr(analyzer, "_warnings")
     assert any("DEP_UNK" in w for w in analyzer._warnings)
 
