@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 from src.services import get_application_services
 from .ghostfolio_compat import router as ghostfolio_router
 from .static_dashboard import router as dashboard_router
-from .portfolio_book_api import router as book_router
 from src.services.response import success
 
 
@@ -78,7 +77,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=allow_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "Accept"],
     )
 
@@ -605,6 +604,8 @@ def create_app() -> FastAPI:
 
     app.include_router(ghostfolio_router)
     app.include_router(dashboard_router)
+
+    from .portfolio_book_api import router as book_router
     app.include_router(book_router)
 
     return app

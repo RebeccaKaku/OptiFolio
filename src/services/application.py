@@ -9,7 +9,6 @@ from src.api.enhanced_api_service import get_enhanced_api_service
 
 from .asset_service import AssetService
 from .dashboard_service import DashboardService
-from .portfolio_book_service import PortfolioBookService
 from .portfolio_service import PortfolioService
 from .portfolio_service_v2 import PortfolioServiceV2
 from .research_service import ResearchService
@@ -29,30 +28,28 @@ class ApplicationServices:
     dashboard: DashboardService
     portfolio: PortfolioService      # legacy
     portfolio_v2: PortfolioServiceV2  # NEW — date-aware valuation
-    portfolio_book: PortfolioBookService
     assets: AssetService
     research: ResearchService
     ingestion: IngestionService
     alerts: AlertEngine              # risk alert checks
+    portfolio_book: "PortfolioBookService"  # DS-007 — personal book CRUD
 
 
 @lru_cache(maxsize=1)
 def get_application_services() -> ApplicationServices:
-    from src.core.portfolio_book_db import PortfolioBookDatabase
     api_service = get_enhanced_api_service()
-
-    # Initialize the personal portfolio book database
-    book_db = PortfolioBookDatabase()
-    book_db.initialize()
-
+    from src.core.portfolio_book_db import PortfolioBookDatabase
+    from src.services.portfolio_book_service import PortfolioBookService
+    portfolio_book_db = PortfolioBookDatabase()
+    portfolio_book_db.initialize()
     return ApplicationServices(
         system=SystemService(api_service),
         dashboard=DashboardService(api_service),
         portfolio=PortfolioService(api_service),
         portfolio_v2=PortfolioServiceV2(),
-        portfolio_book=PortfolioBookService(book_db),
         assets=AssetService(api_service),
         research=ResearchService(),
         ingestion=IngestionService(),
         alerts=AlertEngine(),
+        portfolio_book=PortfolioBookService(portfolio_book_db),
     )

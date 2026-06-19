@@ -2,8 +2,8 @@
 
 ## Project Context
 
-OptiFolio v0.2.0 — personal multi-asset portfolio risk engine. Python 3.14.2 on Windows.
-592 tests green. FinData is the self-contained data department (32 files, ~4200 lines).
+OptiFolio v0.2.0 — personal multi-asset portfolio risk engine on Python 3.14 / Windows.
+Test counts change frequently; use `docs/AI_CONTEXT.md` and a fresh test run. FinData is the self-contained data department.
 
 ## Critical Rules
 
@@ -83,3 +83,15 @@ portfolio/        ← optimization algorithms (PyPortfolioOpt, cvxpy)
 - Asset types: `us_equity`, `cn_stock`, `cn_fund_etf`, `cn_fund_open`, `cn_money_market_fund`, `bank_wmp`, `forex`, `crypto`
 - Canonical columns: `asset_id`, `date`, `open`, `high`, `low`, `close`, `adj_close`, `volume`, `currency`, `source`, `timezone`
 - Date strings: ISO format `YYYY-MM-DD`
+
+
+
+## Spec-driven working protocol
+
+- Product priority comes from `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md`.
+- DeepSeek-sized work comes from one file in `plans/deepseek/`; also obey `plans/deepseek/README.md`.
+- One session implements one task. Do not start the next numbered task or broaden the allowed-file list.
+- Before editing, inspect `git status`, restate the contract, and list intended files. Preserve pre-existing changes.
+- Stop only when the spec conflicts with the code, requires a forbidden file, risks real data, or needs an architectural decision.
+- Never stage, commit, push, touch `local/`, or write real financial data unless the user explicitly requests it.
+- Finish with changed files, financial assumptions, exact test results, non-goals, and residual risks.

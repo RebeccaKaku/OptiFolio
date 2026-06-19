@@ -1289,6 +1289,94 @@ class TestLinkTransferHardened:
             initialized.link_transfer("in_100", "in_100")
 
 
+# ── DS-007: List methods ──────────────────────────────────────────────────
+
+class TestListAccounts:
+    def test_list_active_accounts(self, initialized):
+        """list_accounts('active') returns only active accounts."""
+        initialized.create_account(account_id="acc_a", name="Alpha")
+        initialized.create_account(account_id="acc_b", name="Beta")
+        initialized.create_account(account_id="acc_c", name="Charlie")
+        initialized.deactivate_account("acc_b")
+
+        rows = initialized.list_accounts("active")
+        ids = [r["account_id"] for r in rows]
+        assert "acc_a" in ids
+        assert "acc_b" not in ids
+        assert "acc_c" in ids
+
+    def test_list_inactive_accounts(self, initialized):
+        """list_accounts('inactive') returns only inactive accounts."""
+        initialized.create_account(account_id="acc_x", name="X-ray")
+        initialized.deactivate_account("acc_x")
+
+        rows = initialized.list_accounts("inactive")
+        assert len(rows) == 1
+        assert rows[0]["account_id"] == "acc_x"
+
+    def test_list_all_accounts(self, initialized):
+        """list_accounts('all') returns all accounts regardless of status."""
+        initialized.create_account(account_id="a1", name="A1")
+        initialized.create_account(account_id="a2", name="A2")
+        initialized.deactivate_account("a2")
+
+        rows = initialized.list_accounts("all")
+        assert len(rows) == 2
+
+    def test_list_accounts_ordered_by_name_then_id(self, initialized):
+        """List accounts returns rows ordered by name, then account_id."""
+        initialized.create_account(account_id="z1", name="Same Name")
+        initialized.create_account(account_id="a1", name="Same Name")
+        initialized.create_account(account_id="mid", name="Alpha")
+
+        rows = initialized.list_accounts("all")
+        names = [(r["name"], r["account_id"]) for r in rows]
+        assert names == [("Alpha", "mid"), ("Same Name", "a1"), ("Same Name", "z1")]
+
+    def test_list_accounts_invalid_status(self, initialized):
+        """Invalid status argument raises ValueError."""
+        with pytest.raises(ValueError, match="status must be"):
+            initialized.list_accounts("deleted")
+
+    def test_list_accounts_empty(self, initialized):
+        """List accounts on a fresh database returns empty list."""
+        rows = initialized.list_accounts("all")
+        assert rows == []
+
+
+class TestListProducts:
+    def test_list_products(self, initialized):
+        """list_products() returns all products."""
+        from src.domain.products import ProductDefinition
+        p1 = ProductDefinition(product_id="p1", name="Product One", product_type="bank_wmp")
+        p2 = ProductDefinition(product_id="p2", name="Product Two", product_type="equity_fund")
+        initialized.create_product(p1)
+        initialized.create_product(p2)
+
+        products = initialized.list_products()
+        assert len(products) == 2
+        assert {p.product_id for p in products} == {"p1", "p2"}
+
+    def test_list_products_ordered_by_name_then_id(self, initialized):
+        """List products returns ordered by name, then product_id."""
+        from src.domain.products import ProductDefinition
+        p1 = ProductDefinition(product_id="b", name="Beta", product_type="bank_wmp")
+        p2 = ProductDefinition(product_id="a", name="Alpha", product_type="bank_wmp")
+        p3 = ProductDefinition(product_id="c", name="Alpha", product_type="bank_wmp")
+        initialized.create_product(p1)
+        initialized.create_product(p2)
+        initialized.create_product(p3)
+
+        products = initialized.list_products()
+        order = [(p.name, p.product_id) for p in products]
+        assert order == [("Alpha", "a"), ("Alpha", "c"), ("Beta", "b")]
+
+    def test_list_products_empty(self, initialized):
+        """List products on a fresh database returns empty list."""
+        products = initialized.list_products()
+        assert products == []
+
+
 class TestWealthClassification:
     def test_all_classifications(self, initialized):
         assert initialized.classify_wealth_flow("external_contribution") == "external_flow"

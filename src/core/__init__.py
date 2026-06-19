@@ -1,24 +1,14 @@
 """
-核心业务逻辑模块 — 与UI框架完全解耦
-"""
+核心业务逻辑模块。
 
-"""
-核心业务逻辑模块 — 与UI框架完全解耦
-
-Import note: modules that depend on src.data_foundation (calendars,
-valuation, etc.) are NOT re-exported here to avoid circular imports.
-Import them directly from their submodules:
-
-    from src.core.calendars import ExchangeCalendar, get_calendar
+Import directly from submodules — do NOT use package-level imports:
     from src.core.valuation import ValuationEngine
-"""
+    from src.core.calendars import ExchangeCalendar, get_calendar
+    from src.core.portfolio_book_db import PortfolioBookDatabase
 
-from .asset_manager import AssetManager
-from .corporate_actions import CorporateActionProcessor
-from .dashboard_engine import DashboardEngine
-from .fees import FeeProcessor
-from .portfolio_core import PortfolioCore
-from .portfolio_history import PortfolioHistoryTracker
+The lazy __getattr__ below exists only so tests with ``from src.core
+import X`` still work; new code should import from submodules directly.
+"""
 
 __all__ = [
     "AssetManager",
@@ -28,3 +18,20 @@ __all__ = [
     "PortfolioCore",
     "PortfolioHistoryTracker",
 ]
+
+_LAZY = {
+    "AssetManager": ".asset_manager",
+    "CorporateActionProcessor": ".corporate_actions",
+    "DashboardEngine": ".dashboard_engine",
+    "FeeProcessor": ".fees",
+    "PortfolioCore": ".portfolio_core",
+    "PortfolioHistoryTracker": ".portfolio_history",
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY:
+        import importlib
+        mod = importlib.import_module(_LAZY[name], __package__)
+        return getattr(mod, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
