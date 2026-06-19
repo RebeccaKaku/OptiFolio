@@ -3,7 +3,7 @@
 > **Product priority:** Read `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` before proposing or implementing new work. It is the current product north star and overrides older feature queues when priorities conflict.
 
 > This document is the source of truth for AI assistants working on this codebase.
-> Last updated: 2026-06-05. Always cross-check with `docs/CURRENT_STATE_2026-06-05.md`.
+> Last updated: 2026-06-19. Always cross-check with `docs/CURRENT_STATE_2026-06-05.md`.
 
 ## Project Identity
 
@@ -12,9 +12,9 @@
 - **Tagline**: "Risk engine first, allocation advice second"
 - **Runtime**: Python 3.14.2 (Windows), >=3.11,<3.14 supported
 - **Build**: Hatchling (`pyproject.toml`)
-- **Tests**: 592 passed, 30 skipped, 0 failures (use `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`)
+- **Tests**: 724 passed, 0 failures (use `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`)
 
-## Architecture (Current — 2026-06-05)
+## Architecture (Current — 2026-06-19)
 
 ```
 FinData/                       # Self-contained data department — the ONLY data path
@@ -27,7 +27,7 @@ FinData/                       # Self-contained data department — the ONLY dat
 src/
   analytics/                   # alerts, concentration, exposure, fx_exposure, liquidity, returns, rule_engine, screening
   api/                         # fastapi_app.py (port 8011), ghostfolio_compat.py, static_dashboard.py
-  core/                        # valuation, calendars, corporate_actions, fees, dashboard_engine, config_manager
+  core/                        # valuation, calendars, corporate_actions, fees, dashboard_engine, config_manager, portfolio_book_db.py (# accounts, products, snapshots, cashflows, backup (v6))
   data_foundation/             # canonical schema + MarketDataRepository (DuckDB/Parquet) — used BY FinData, not instead of it
   domain/                      # products, positions, instruments, series, observations, cashflows
   research/                    # BacktestEngine (vectorbt + pandas fallback), qlib_adapter (placeholder)
@@ -105,7 +105,20 @@ src/api/            →  FastAPI → JSONResponse
 - Ghostfolio compat routes at `/api/v1/portfolio/*` (some endpoints still stubs).
 - New endpoints should use `@app.get`/`@app.post` with `tags` kwarg.
 
-## Recent Changes (2026-06-05)
+### src/core/portfolio_book_db.py
+- Versioned SQLite database for personal data (accounts, products, snapshots, cashflows).
+- Strictly isolated from market data (`FinData`).
+- Implements a sequential migration system (currently at v6).
+- Supports full database backup and verified restore functionality.
+
+## Planning & Task Status (2026-06-19)
+
+- **DeepSeek Plans**: Found in `plans/deepseek/` (DS-001 through DS-006C).
+- **Batch 1 Complete**: Personal Book Foundation (DS-001~DS-006) is fully implemented.
+- **Task System**: "Jules Suggested tasks system" is actively used for ongoing improvements.
+- **Handoff Status**: Many tasks in `docs/JULES_CLOUD_TASKS.md` are now completed.
+
+## Recent Changes (2026-06-19)
 
 - Crossroads bugs fixed: QualityGate repo sharing (H2), `_is_duplicate` canonicalization (H3), `check_stale_prices` envelope unwrap (H5), `ohlcv()` multi-field (H1), `_trigger_refresh` wired (H4).
 - `MarketDataRepository.get_prices()` now supports multi-field queries.
@@ -150,6 +163,7 @@ python -m pytest tests/test_findata_fetcher.py::TestBankWmpClassification -v
 | `src/api/fastapi_app.py` | ~610 | FastAPI entrypoint |
 | `src/services/application.py` | ~45 | Service graph |
 | `src/services/portfolio_service_v2.py` | ~760 | Canonical portfolio service |
+| `src/core/portfolio_book_db.py` | ~930 | Personal portfolio book (SQLite) |
 | `src/core/valuation.py` | ~420 | ValuationEngine |
 | `src/analytics/alerts.py` | ~500 | AlertEngine |
 | `src/analytics/exposure.py` | 209 | ExposureAnalyzer |
