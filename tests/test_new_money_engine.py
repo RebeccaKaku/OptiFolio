@@ -4,6 +4,7 @@ from src.analytics.new_money_engine import (
     NewMoneyEngine, NewMoneyRequest, CandidateProduct,
     NewMoneyConstraints, AllocationGapReport
 )
+from src.analytics.trade_friction import AllocationFrictionInput
 from src.analytics.allocation_targets import AllocationGapItem, AllocationGapReport
 
 def test_new_money_basic_allocation():
@@ -17,11 +18,7 @@ def test_new_money_basic_allocation():
         fx_rates={"CNY": Decimal("1")},
         current_total_value=Decimal("900000"),
         current_exposures={
-            "product": {"EXISTING": Decimal("1.0")},
-            "issuer": {"BANK_A": Decimal("1.0")},
-            "currency": {"CNY": Decimal("1.0")},
-            "asset_class": {"cash": Decimal("1.0")},
-            "purpose_bucket": {"core": Decimal("1.0")}
+            "product": {"EXISTING": Decimal("1.0")}
         },
         gaps=[],
         candidates=[
@@ -32,16 +29,13 @@ def test_new_money_basic_allocation():
                 asset_class="bond",
                 issuer="BANK_B",
                 purpose_bucket="core",
-                liquidity_level="low",
-                min_trade_amount=Decimal("1000")
+                liquidity_level="low"
             )
         ],
-        constraints=NewMoneyConstraints(
-            single_product_max_pct=Decimal("0.2"),
-            single_issuer_max_pct=Decimal("0.2")
-        )
+        constraints=NewMoneyConstraints()
     )
 
+    # 2. Run
     proposals = engine.run(request)
 
     assert len(proposals) == 3
@@ -321,3 +315,76 @@ def test_new_money_max_cash_retention():
         assert p.status == "partial"
         assert p.residual_cash == Decimal("20000")
         assert "max_cash_retention_pct" in p.binding_constraints
+
+def test_new_money_friction_rejection():
+    engine = NewMoneyEngine()
+    # 10k new money, 1M total value. Allocation weight = 1%.
+    # Global no-trade band = 2%.
+
+    request = NewMoneyRequest(
+        new_cash_amount=Decimal("10000"),
+        currency="CNY",
+        reporting_currency="CNY",
+        fx_rates={"CNY": Decimal("1")},
+        current_total_value=Decimal("990000"),
+        current_exposures={},
+        gaps=[],
+        candidates=[
+            CandidateProduct(
+                asset_id="P1", name="P1", currency="CNY", asset_class="C",
+                issuer="I", purpose_bucket="B", liquidity_level="low",
+                friction_input=AllocationFrictionInput(
+                    buy_fee_rate=Decimal("0"),
+                    sell_fee_rate=Decimal("0"),
+                    mgmt_fee_diff_rate=Decimal("0"),
+                    fixed_fees=Decimal("0"),
+                    fx_spread_rate=Decimal("0")
+                )
+            )
+        ],
+        constraints=NewMoneyConstraints(
+            no_trade_band_pct=Decimal("0.02") # 2%
+        )
+    )
+
+    proposals = engine.run(request)
+    for p in proposals:
+        assert p.status == "failed"
+        assert len(p.allocations) == 0
+        assert any("within no-trade band" in r["reason"] for r in p.rejected_candidates)
+
+def test_new_money_friction_cost_vs_benefit():
+    engine = NewMoneyEngine()
+
+    request = NewMoneyRequest(
+        new_cash_amount=Decimal("10000"),
+        currency="CNY",
+        reporting_currency="CNY",
+        fx_rates={"CNY": Decimal("1")},
+        current_total_value=Decimal("0"),
+        current_exposures={},
+        gaps=[],
+        candidates=[
+            CandidateProduct(
+                asset_id="P1", name="P1", currency="CNY", asset_class="C",
+                issuer="I", purpose_bucket="B", liquidity_level="low",
+                monetized_benefit_annual_rate=Decimal("0.01"), # 1% benefit
+                friction_input=AllocationFrictionInput(
+                    buy_fee_rate=Decimal("0.02"), # 2% cost > 1% benefit
+                    sell_fee_rate=Decimal("0"),
+                    mgmt_fee_diff_rate=Decimal("0"),
+                    fixed_fees=Decimal("0"),
+                    fx_spread_rate=Decimal("0")
+                )
+            )
+        ],
+        constraints=NewMoneyConstraints(
+            expected_holding_period_years=Decimal("1.0")
+        )
+    )
+
+    proposals = engine.run(request)
+    for p in proposals:
+        assert p.status == "failed"
+        assert len(p.allocations) == 0
+        assert any("does not exceed costs" in r["reason"] for r in p.rejected_candidates)
