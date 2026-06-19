@@ -51,11 +51,12 @@ class EnhancedAssetManager(IAssetManager):
         # 传统导入器（用于向后兼容）
         self.importer = AssetImporter(registry_path)
         
-        # 数据获取器工厂 (factory module removed; legacy path kept for compatibility)
+        # 数据获取器 — now uses FinData adapters (data_core factory removed)
         try:
-            from src.data_core.fetchers.factory import get_factory
-            self.fetcher_factory = get_factory()
+            from FinData.adapters import get_fetcher as _get_fin_fetcher
+            self.fetcher_factory = _get_fin_fetcher  # callable, same interface
         except ImportError:
+            _log.warning("FinData adapters unavailable, fetcher disabled")
             self.fetcher_factory = None
         
         # 迁移现有数据到数据库
@@ -317,30 +318,29 @@ class EnhancedAssetManager(IAssetManager):
     def register_asset_type(self, asset_type: str,
                            fetcher_class: Any,
                            importer_class: Optional[Any] = None) -> bool:
-        """注册新的资产类型（委托给工厂）"""
+        """注册新的资产类型（委托给 FinData adapter registry）"""
         try:
-            from src.data_core.fetchers.factory import register_fetcher
-            register_fetcher(asset_type, fetcher_class)
-            _log.info(f"[EnhancedAssetManager] 已注册新资产类型: {asset_type}")
+            from FinData.adapters import FETCHER_REGISTRY
+            FETCHER_REGISTRY[asset_type] = fetcher_class()
+            _log.info("[EnhancedAssetManager] Registered new asset type: %s", asset_type)
             return True
         except Exception as e:
-            _log.error(f"[EnhancedAssetManager] 注册资产类型失败: {e}")
+            _log.error("[EnhancedAssetManager] Failed to register type %s: %s", asset_type, e)
             return False
     
     def get_supported_types(self) -> List[str]:
-        """获取支持的资产类型列表"""
+        """获取支持的资产类型列表（从 FinData adapter registry）"""
         try:
-            from src.data_core.fetchers.factory import get_factory
-            factory = get_factory()
-            return factory.get_supported_asset_types()
-        except:
+            from FinData.adapters import FETCHER_REGISTRY
+            return [k for k, v in FETCHER_REGISTRY.items() if v is not None]
+        except Exception:
             return ['cn_stock', 'cn_fund', 'us_equity', 'currency']
     
     def get_fetcher_for_type(self, asset_type: str) -> Optional[Any]:
         """获取资产类型对应的Fetcher"""
         if self.fetcher_factory is None:
             return None
-        return self.fetcher_factory.get_fetcher(asset_type)
+        return self.fetcher_factory(asset_type)
     
     # ==================== 关注机制相关方法 ====================
     

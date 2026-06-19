@@ -30,10 +30,10 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 try:
-    from src.data_core.fetchers.factory import get_factory
+    from FinData.adapters import get_fetcher as _get_fin_fetcher
 except ImportError as e:
-    _log.warning(f"[PortfolioCore] 数据获取器工厂不可用: {e}")
-    get_factory = None
+    _log.warning("[PortfolioCore] FinData adapters unavailable: %s", e)
+    _get_fin_fetcher = None
 
 try:
     from FinData.adapters.forex import CurrencyFetcher
@@ -96,11 +96,11 @@ class PortfolioCore(IPortfolioManager):
         
         # 数据获取器
         try:
-            self.factory = get_factory() if get_factory else None
+            self.fetcher = _get_fin_fetcher
             self.fx_fetcher = CurrencyFetcher() if CurrencyFetcher else None
         except Exception as e:
             _log.error(f"[PortfolioCore] 初始化数据获取器失败: {e}")
-            self.factory = None
+            self.fetcher = None
             self.fx_fetcher = None
         
         # 加载配置
@@ -271,12 +271,12 @@ class PortfolioCore(IPortfolioManager):
                 self.cache.set(cache_key, local_price, 600, "prices")
             return local_price
         
-        if not self.factory:
+        if not self.fetcher:
             _log.warning(f"[PortfolioCore] 无法获取价格：数据获取器工厂未初始化")
             return None
         
         # 获取对应的 fetcher
-        fetcher = self.factory.get_fetcher(asset_type)
+        fetcher = _get_fin_fetcher(asset_type)
         if not fetcher:
             _log.warning(f"[PortfolioCore] 无法获取 {symbol} 的fetcher (类型: {asset_type})")
             return None
@@ -356,12 +356,12 @@ class PortfolioCore(IPortfolioManager):
             "symbol": symbol,
             "asset_currency": asset_currency,
             "asset_type": asset_type,
-            "factory_available": self.factory is not None,
+            "factory_available": self.fetcher is not None,
             "fetcher_available": False
         }
         
-        if self.factory and asset_type != "未知":
-            fetcher = self.factory.get_fetcher(asset_type)
+        if self.fetcher and asset_type != "未知":
+            fetcher = _get_fin_fetcher(asset_type)
             result["fetcher_available"] = fetcher is not None
             if fetcher:
                 result["fetcher_class"] = fetcher.__class__.__name__
