@@ -11,8 +11,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+import sqlite3
+import decimal
+from decimal import Decimal
 from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.domain.products import ProductDefinition
+from src.domain.exposures import ExposureBatch, ExposureEntry
 from src.services.response import success, failure
 
 _log = logging.getLogger(__name__)
@@ -67,6 +71,39 @@ def _product_to_dict(p: ProductDefinition) -> Dict[str, Any]:
     if d.get("metadata") is None:
         d["metadata"] = {}
     return d
+
+
+def _exposure_batch_to_dict(b: ExposureBatch) -> Dict[str, Any]:
+    """Convert an ExposureBatch to a JSON-safe dict."""
+    entries = []
+    for e in b.entries:
+        entries.append({
+            "dimension": e.dimension,
+            "bucket": e.bucket,
+            "weight": float(e.weight),
+            "method": e.method,
+            "source_ref": e.source_ref,
+            "notes": e.notes,
+        })
+
+    # Calculate unknown_residual for each dimension present
+    dims = {e.dimension for e in b.entries}
+    residuals = {}
+    for d in dims:
+        residuals[d] = float(b.get_residual(d))
+
+    return {
+        "exposure_batch_id": b.batch_id,
+        "product_id": b.product_id,
+        "as_of": b.as_of,
+        "known_at": b.known_at,
+        "entries": entries,
+        "unknown_residuals": residuals,
+        "source": b.source,
+        "quality": b.quality,
+        "status": b.status,
+        "notes": b.notes,
+    }
 
 
 # ── Service ─────────────────────────────────────────────────────────────────
@@ -465,6 +502,119 @@ class PortfolioBookService:
             return failure(str(exc), error_code="DATABASE_ERROR")
         except Exception:
             _log.exception("Unexpected error updating product %r", product_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    # ── Exposure Batches ──────────────────────────────────────────
+
+    def create_exposure_batch(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new exposure batch (draft)."""
+        try:
+            pii_field = _scan_pii(data)
+            if pii_field:
+                return failure(
+                    f"Field {pii_field!r} looks like sensitive personal information "
+                    f"and is not accepted",
+                    error_code="PII_REJECTED",
+                )
+
+            batch_id = data["exposure_batch_id"]
+            product_id = data["product_id"]
+            as_of = data["as_of"]
+            known_at = data["known_at"]
+
+            entries = []
+            for entry_data in data.get("entries", []):
+                entries.append(ExposureEntry(
+                    dimension=entry_data["dimension"],
+                    bucket=entry_data["bucket"],
+                    weight=Decimal(str(entry_data["weight"])),
+                    method=entry_data.get("method", "unknown"),
+                    source_ref=entry_data.get("source_ref"),
+                    notes=entry_data.get("notes"),
+                ))
+
+            batch = ExposureBatch(
+                batch_id=batch_id,
+                product_id=product_id,
+                as_of=as_of,
+                known_at=known_at,
+                entries=entries,
+                source=data.get("source", "manual"),
+                quality=data.get("quality", "unknown"),
+                status=data.get("status", "draft"),
+                notes=data.get("notes"),
+            )
+
+            self._db.create_exposure_batch(batch)
+            created = self._db.get_exposure_batch(batch_id)
+            return success(_exposure_batch_to_dict(created), "Exposure batch created")
+        except KeyError as exc:
+            return failure(
+                f"Missing required field: {exc.args[0]}",
+                error_code="VALIDATION_ERROR",
+            )
+        except (ValueError, TypeError, decimal.InvalidOperation) as exc:
+            return failure(str(exc), error_code="VALIDATION_ERROR")
+        except sqlite3_err as exc:
+            return _handle_sqlite_error(exc)
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error creating exposure batch")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def get_exposure_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Get a single exposure batch by ID."""
+        try:
+            batch = self._db.get_exposure_batch(batch_id)
+            if batch is None:
+                return failure(
+                    f"Exposure batch {batch_id!r} not found",
+                    error_code="NOT_FOUND",
+                )
+            return success(_exposure_batch_to_dict(batch))
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error getting exposure batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def confirm_exposure_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Confirm an exposure batch."""
+        try:
+            self._db.confirm_exposure_batch(batch_id)
+            return success(None, "Exposure batch confirmed")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error confirming exposure batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def supersede_exposure_batch(self, batch_id: str) -> Dict[str, Any]:
+        """Supersede an exposure batch."""
+        try:
+            self._db.supersede_exposure_batch(batch_id)
+            return success(None, "Exposure batch superseded")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error superseding exposure batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def get_effective_exposure(self, product_id: str, as_of: str, known_at: Optional[str] = None) -> Dict[str, Any]:
+        """Get the most recent effective exposure for a product."""
+        try:
+            batch = self._db.get_effective_exposure(product_id, as_of, known_at)
+            if batch is None:
+                return failure(
+                    f"No effective exposure found for product {product_id!r}",
+                    error_code="NOT_FOUND",
+                )
+            return success(_exposure_batch_to_dict(batch))
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error getting effective exposure for %r", product_id)
             return failure("Internal server error", error_code="INTERNAL_ERROR")
 
 
