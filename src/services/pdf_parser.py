@@ -6,9 +6,12 @@ No business logic, no AI, no fee parsing.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from io import BytesIO
 from typing import List, Optional
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass

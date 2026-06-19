@@ -20,10 +20,13 @@ Usage::
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_log = logging.getLogger(__name__)
 
 import httpx
 
@@ -124,9 +127,9 @@ class BocPdfPipeline:
         """Process BOC products in the current portfolio."""
         codes = self._get_portfolio_boc_codes()
         if not codes:
-            print("No BOC products found in portfolio.")
+            _log.info("No BOC products found in portfolio.")
             return []
-        print(f"Processing {len(codes)} BOC products from portfolio: {codes}")
+        _log.info(f"Processing {len(codes)} BOC products from portfolio: {codes}")
         return self.process_products(codes, use_ai_fallback=use_ai_fallback)
 
     def save_results(self, results: List[PipelineResult]) -> Path:

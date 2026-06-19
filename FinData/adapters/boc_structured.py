@@ -6,11 +6,14 @@ Institutional: https://www.bankofchina.com/cbservice/csdp/ — announcements + p
 No JSON API exists for these products — data is scraped from HTML pages.
 """
 
+import logging
 import re
 from typing import Dict, Any, Optional, List
 
 import httpx
 from bs4 import BeautifulSoup
+
+_log = logging.getLogger(__name__)
 
 
 class BocStructuredDepositFetcher:
@@ -24,7 +27,7 @@ class BocStructuredDepositFetcher:
 
     async def fetch_personal_list(self) -> List[str]:
         """Get product codes from the personal structural deposit bill page."""
-        print("    [BOC-SD] Fetching personal structural deposit list...")
+        _log.info("    [BOC-SD] Fetching personal structural deposit list...")
         url = "https://www.boc.cn/sdbapp/pbsd4/"
         entries: List[Dict[str, str]] = []
         try:
@@ -38,13 +41,13 @@ class BocStructuredDepositFetcher:
                     if re.match(r'^[A-Z0-9]{8,15}$', text) and text.isupper():
                         entries.append({"code": text, "href": href})
         except Exception as e:
-            print(f"    [BOC-SD] Error: {e}")
-        print(f"    [BOC-SD] Found {len(entries)} personal structural deposits.")
+            _log.error("    [BOC-SD] Error: %s", e)
+        _log.info("    [BOC-SD] Found %d personal structural deposits.", len(entries))
         return [e["code"] for e in entries]
 
     async def fetch_personal_detail(self, code: str) -> Optional[Dict[str, Any]]:
         """Scrape detail data for a single personal structural deposit."""
-        print(f"    [BOC-SD] Detail for: {code}")
+        _log.info("    [BOC-SD] Detail for: %s", code)
         try:
             async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
                 # Find the detail URL from the list page
@@ -70,7 +73,7 @@ class BocStructuredDepositFetcher:
                 text = soup2.get_text("\n", strip=True)
                 return self._parse_detail(text, code)
         except Exception as e:
-            print(f"    [BOC-SD] Error: {e}")
+            _log.error("    [BOC-SD] Error: %s", e)
             return None
 
     # ── Personal structural deposits — prospectus listing (在售产品) ───
@@ -85,7 +88,7 @@ class BocStructuredDepositFetcher:
         Args:
             max_pages: Maximum pages to scrape (default 3 = ~60 recent products).
         """
-        print("    [BOC-SD] Fetching personal structural deposit prospectuses...")
+        _log.info("    [BOC-SD] Fetching personal structural deposit prospectuses...")
         results: List[Dict[str, str]] = []
         seen_codes: set = set()
         try:
@@ -125,8 +128,8 @@ class BocStructuredDepositFetcher:
                     if new_on_page == 0:
                         break
         except Exception as e:
-            print(f"    [BOC-SD] Error: {e}")
-        print(f"    [BOC-SD] Found {len(results)} personal products (scanned {max_pages} pages).")
+            _log.error("    [BOC-SD] Error: %s", e)
+        _log.info("    [BOC-SD] Found %d personal products (scanned %d pages).", len(results), max_pages)
         return results
 
     # ── Institutional structural deposits (机构结构性存款) ──────────────
@@ -140,7 +143,7 @@ class BocStructuredDepositFetcher:
         Args:
             max_pages: Maximum pages to scrape (default 5 = ~100 recent products).
         """
-        print("    [BOC-SD] Fetching institutional structural deposit list...")
+        _log.info("    [BOC-SD] Fetching institutional structural deposit list...")
         results: List[Dict[str, str]] = []
         seen_codes: set = set()
         try:
@@ -177,8 +180,8 @@ class BocStructuredDepositFetcher:
                     if new_on_page == 0:
                         break
         except Exception as e:
-            print(f"    [BOC-SD] Error: {e}")
-        print(f"    [BOC-SD] Found {len(results)} institutional products (scanned {max_pages} pages).")
+            _log.error("    [BOC-SD] Error: %s", e)
+        _log.info("    [BOC-SD] Found %d institutional products (scanned %d pages).", len(results), max_pages)
         return results
 
     # ── Shared parser ──────────────────────────────────────────────────

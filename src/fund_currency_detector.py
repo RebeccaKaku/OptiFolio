@@ -4,8 +4,11 @@ QDII基金币种检测器
 专门用于判断QDII基金的交易币种，基于复杂的匹配规则
 """
 
+import logging
 import re
 from typing import Optional, Tuple
+
+_log = logging.getLogger(__name__)
 
 
 class FundCurrencyDetector:
@@ -152,9 +155,10 @@ def should_filter_fund(fund_name: str) -> Tuple[bool, str]:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     # 测试代码
     detector = FundCurrencyDetector()
-    
+
     test_cases = [
         # (基金名称, 预期币种, 说明)
         ("华夏全球股票(QDII)(人民币)", "CNY", "人民币QDII"),
@@ -175,12 +179,12 @@ if __name__ == "__main__":
         ("富国全球消费精选混合(QDII)美元", "USD", "美元结尾"),
         ("华夏全球股票美元现汇(QDII)", "USD", "美元现汇在(QDII)前"),
     ]
-    
-    print("=== QDII基金币种检测器测试 ===")
+
+    _log.info("=== QDII基金币种检测器测试 ===")
     for fund_name, expected_currency, description in test_cases:
         currency, reason = detector.detect_currency(fund_name)
         status = "✓" if currency == expected_currency else "✗"
-        print(f"{status} {description}")
-        print(f"  名称: {fund_name}")
-        print(f"  预期: {expected_currency}, 实际: {currency} ({reason})")
-        print()
+        _log.info("%s %s", status, description)
+        _log.info("  名称: %s", fund_name)
+        _log.info("  预期: %s, 实际: %s (%s)", expected_currency, currency, reason)
+        _log.info("")

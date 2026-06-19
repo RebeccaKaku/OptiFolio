@@ -26,10 +26,13 @@ Usage::
 from __future__ import annotations
 
 import copy
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+_log = logging.getLogger(__name__)
 
 import pandas as pd
 

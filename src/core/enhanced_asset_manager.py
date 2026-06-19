@@ -8,10 +8,13 @@
 4. 保持向后兼容性
 """
 
+import logging
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
+
+_log = logging.getLogger(__name__)
 
 from .interfaces import IAssetManager
 from .cache import get_cache, cached
@@ -67,9 +70,9 @@ class EnhancedAssetManager(IAssetManager):
         try:
             migrated_count = self.db.migrate_from_file_system()
             if migrated_count > 0:
-                print(f"[EnhancedAssetManager] 已从文件系统迁移 {migrated_count} 个资产到数据库")
+                _log.info(f"[EnhancedAssetManager] 已从文件系统迁移 {migrated_count} 个资产到数据库")
         except Exception as e:
-            print(f"[EnhancedAssetManager] 数据迁移失败: {e}")
+            _log.error(f"[EnhancedAssetManager] 数据迁移失败: {e}")
     
     # ==================== IAssetProvider 接口实现 ====================
     
@@ -88,7 +91,7 @@ class EnhancedAssetManager(IAssetManager):
         
         if not db_asset:
             # 资产不存在，尝试自动导入
-            print(f"[自动导入] 资产 {symbol} 不存在，正在导入...")
+            _log.info(f"[自动导入] 资产 {symbol} 不存在，正在导入...")
             result = self.import_asset(symbol)
             if not result.get("success"):
                 return {
@@ -186,7 +189,7 @@ class EnhancedAssetManager(IAssetManager):
         """
         try:
             # 1. 使用传统导入器
-            print(f"[导入] 开始导入资产: {symbol}")
+            _log.info(f"[导入] 开始导入资产: {symbol}")
             asset_def = self.importer.import_asset(
                 symbol=symbol,
                 asset_type=asset_type,
@@ -204,7 +207,7 @@ class EnhancedAssetManager(IAssetManager):
             asset_data = asset_def.to_dict()
             asset_id = self.db.add_or_update_asset(asset_data)
             
-            print(f"[导入] 资产已保存到数据库，ID: {asset_id}")
+            _log.info(f"[导入] 资产已保存到数据库，ID: {asset_id}")
             
             # 3. 获取历史价格数据
             price_data_fetched = self._fetch_and_save_price_history(symbol, asset_def.asset_type)
@@ -247,7 +250,7 @@ class EnhancedAssetManager(IAssetManager):
         for i, symbol in enumerate(symbols):
             asset_type = asset_types[i] if asset_types and i < len(asset_types) else None
             
-            print(f"[批量导入] ({i+1}/{len(symbols)}) {symbol}")
+            _log.info(f"[批量导入] ({i+1}/{len(symbols)}) {symbol}")
             result = self.import_asset(symbol, asset_type)
             results[symbol] = result
             
@@ -300,7 +303,7 @@ class EnhancedAssetManager(IAssetManager):
                 self._invalidate_caches(symbol)
                 
             except Exception as e:
-                print(f"[更新价格失败] {symbol}: {e}")
+                _log.error(f"[更新价格失败] {symbol}: {e}")
                 results[symbol] = False
         
         return {
@@ -318,10 +321,10 @@ class EnhancedAssetManager(IAssetManager):
         try:
             from src.data_core.fetchers.factory import register_fetcher
             register_fetcher(asset_type, fetcher_class)
-            print(f"[EnhancedAssetManager] 已注册新资产类型: {asset_type}")
+            _log.info(f"[EnhancedAssetManager] 已注册新资产类型: {asset_type}")
             return True
         except Exception as e:
-            print(f"[EnhancedAssetManager] 注册资产类型失败: {e}")
+            _log.error(f"[EnhancedAssetManager] 注册资产类型失败: {e}")
             return False
     
     def get_supported_types(self) -> List[str]:
@@ -580,7 +583,7 @@ class EnhancedAssetManager(IAssetManager):
                             latest_date = datetime.strptime(latest_date_str, '%Y-%m-%d')
                             days_since_last = (datetime.now() - latest_date).days
                             if days_since_last <= 3:
-                                print(f"[价格获取] 数据库已有最近价格 ({days_since_last}天前)，跳过下载: {symbol}")
+                                _log.info(f"[价格获取] 数据库已有最近价格 ({days_since_last}天前)，跳过下载: {symbol}")
                                 return 0
                         except:
                             pass
@@ -589,7 +592,7 @@ class EnhancedAssetManager(IAssetManager):
             # 获取fetcher
             fetcher = self.get_fetcher_for_type(asset_type)
             if not fetcher:
-                print(f"[价格获取] 无对应fetcher: {asset_type}")
+                _log.warning(f"[价格获取] 无对应fetcher: {asset_type}")
                 return 0
             
             # 设置日期范围：如果没有数据库数据，下载30天；如果有但比较旧，下载缺失的天数
@@ -603,35 +606,35 @@ class EnhancedAssetManager(IAssetManager):
                     # 如果数据比较旧（超过3天），但还不是特别旧，只下载最近10天
                     if days_since_last > 3 and days_since_last < 30:
                         start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
-                        print(f"[价格获取] 数据库数据较旧 ({days_since_last}天)，下载最近10天价格: {symbol}")
+                        _log.info(f"[价格获取] 数据库数据较旧 ({days_since_last}天)，下载最近10天价格: {symbol}")
                     else:
                         # 数据太旧或者没有数据，下载30天
                         start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-                        print(f"[价格获取] 下载 {symbol} ({asset_type}) 历史价格: {start_date} 至 {end_date}")
+                        _log.info(f"[价格获取] 下载 {symbol} ({asset_type}) 历史价格: {start_date} 至 {end_date}")
                 except:
                     # 解析日期失败，下载30天
                     start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-                    print(f"[价格获取] 下载 {symbol} ({asset_type}) 历史价格: {start_date} 至 {end_date}")
+                    _log.info(f"[价格获取] 下载 {symbol} ({asset_type}) 历史价格: {start_date} 至 {end_date}")
             else:
                 # 没有数据库数据，下载30天
                 start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-                print(f"[价格获取] 下载 {symbol} ({asset_type}) 历史价格: {start_date} 至 {end_date}")
+                _log.info(f"[价格获取] 下载 {symbol} ({asset_type}) 历史价格: {start_date} 至 {end_date}")
             
             # 获取价格数据
             price_df = fetcher.fetch(symbol, start_date=start_date, end_date=end_date)
             
             if price_df is None or price_df.empty:
-                print(f"[价格获取] 无数据: {symbol}")
+                _log.warning(f"[价格获取] 无数据: {symbol}")
                 return 0
             
             # 保存到数据库
             added_count = self.db.add_price_history(symbol, price_df)
-            print(f"[价格获取] 已保存 {added_count} 条价格记录: {symbol}")
+            _log.info(f"[价格获取] 已保存 {added_count} 条价格记录: {symbol}")
             
             return added_count
             
         except Exception as e:
-            print(f"[价格获取失败] {symbol}: {e}")
+            _log.error(f"[价格获取失败] {symbol}: {e}")
             import traceback
             traceback.print_exc()
             return 0
@@ -674,13 +677,13 @@ class EnhancedAssetManager(IAssetManager):
                 # 使用批量添加方法提升性能
                 added_count = self.db.add_price_data_batch(symbol, price_data_list)
             except Exception as e:
-                print(f"[最新价格保存失败] {symbol}: {e}")
+                _log.error(f"[最新价格保存失败] {symbol}: {e}")
                 added_count = 0
             
             return added_count
             
         except Exception as e:
-            print(f"[最新价格获取失败] {symbol}: {e}")
+            _log.error(f"[最新价格获取失败] {symbol}: {e}")
             return 0
     
     def _calculate_initial_metrics(self, symbol: str) -> Dict[str, float]:
@@ -703,10 +706,10 @@ class EnhancedAssetManager(IAssetManager):
             if volatility_90d:
                 metrics['volatility_90d'] = volatility_90d
             
-            print(f"[指标计算] {symbol}: 计算了 {len(metrics)} 个指标")
+            _log.info(f"[指标计算] {symbol}: 计算了 {len(metrics)} 个指标")
             
         except Exception as e:
-            print(f"[指标计算失败] {symbol}: {e}")
+            _log.error(f"[指标计算失败] {symbol}: {e}")
         
         return metrics
     
@@ -743,7 +746,7 @@ class EnhancedAssetManager(IAssetManager):
             }
             
         except Exception as e:
-            print(f"[价格信息获取失败] {symbol}: {e}")
+            _log.error(f"[价格信息获取失败] {symbol}: {e}")
             return None
     
     def _calculate_technical_analysis(self, price_df: pd.DataFrame) -> Dict[str, Any]:
@@ -785,7 +788,7 @@ class EnhancedAssetManager(IAssetManager):
             }
             
         except Exception as e:
-            print(f"[技术分析计算失败]: {e}")
+            _log.error(f"[技术分析计算失败]: {e}")
             return {}
     
     def _calculate_support_resistance(self, price_df: pd.DataFrame) -> Dict[str, Any]:

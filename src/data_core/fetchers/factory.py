@@ -4,9 +4,12 @@ Fetcher工厂类，根据资产类型创建对应的Fetcher实例。
 支持注册自定义的Fetcher类。
 """
 
+import logging
 from typing import Dict, Type, Optional, Union, Tuple
 from src.data_core.interface import BaseFetcher
 import importlib
+
+_log = logging.getLogger(__name__)
 
 FetcherSpec = Union[Type[BaseFetcher], Tuple[str, str]]
 
@@ -69,7 +72,7 @@ class FetcherFactory:
             fetcher_class: 对应的Fetcher类
         """
         self._mappings[asset_type] = fetcher_class
-        print(f"    [Factory] 注册 {asset_type} -> {fetcher_class.__name__}")
+        _log.info("    [Factory] 注册 %s -> %s", asset_type, fetcher_class.__name__)
     
     def register_from_module(self, module_path: str, class_name: str, asset_types: list) -> None:
         """
@@ -86,7 +89,7 @@ class FetcherFactory:
             for asset_type in asset_types:
                 self.register(asset_type, fetcher_class)
         except Exception as e:
-            print(f"    [Factory Error] 无法从 {module_path} 导入 {class_name}: {e}")
+            _log.error("    [Factory Error] 无法从 %s 导入 %s: %s", module_path, class_name, e)
     
     def get_fetcher(self, asset_type: str) -> Optional[BaseFetcher]:
         """
@@ -104,7 +107,7 @@ class FetcherFactory:
         
         # 查找对应的Fetcher类
         if asset_type not in self._mappings:
-            print(f"    [Factory Error] 未注册的资产类型: {asset_type}")
+            _log.error("    [Factory Error] 未注册的资产类型: %s", asset_type)
             return None
         
         fetcher_class = self._resolve_fetcher_class(self._mappings[asset_type])
@@ -117,7 +120,7 @@ class FetcherFactory:
             self._fetcher_cache[asset_type] = fetcher
             return fetcher
         except Exception as e:
-            print(f"    [Factory Error] 无法创建 {fetcher_class.__name__} 实例: {e}")
+            _log.error("    [Factory Error] 无法创建 %s 实例: %s", fetcher_class.__name__, e)
             return None
 
     def _resolve_fetcher_class(self, spec: FetcherSpec) -> Optional[Type[BaseFetcher]]:
@@ -128,7 +131,7 @@ class FetcherFactory:
                 module = importlib.import_module(module_path, package=__package__)
                 return getattr(module, class_name)
             except Exception as e:
-                print(f"    [Factory Error] 无法导入 {class_name}: {e}")
+                _log.error("    [Factory Error] 无法导入 %s: %s", class_name, e)
                 return None
 
         return spec
@@ -145,7 +148,7 @@ class FetcherFactory:
         """
         asset_type = asset_config.get('type')
         if not asset_type:
-            print(f"    [Factory Error] 资产配置缺少'type'字段: {asset_config}")
+            _log.error("    [Factory Error] 资产配置缺少'type'字段: %s", asset_config)
             return None
         
         return self.get_fetcher(asset_type)
@@ -177,7 +180,7 @@ class FetcherFactory:
     def clear_cache(self) -> None:
         """清除Fetcher缓存"""
         self._fetcher_cache.clear()
-        print("    [Factory] 已清除Fetcher缓存")
+        _log.info("    [Factory] 已清除Fetcher缓存")
 
 
 # 全局单例工厂实例

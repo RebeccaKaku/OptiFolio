@@ -3,6 +3,7 @@
 集成现有 AssetImporter 功能，添加缓存和扩展性支持
 """
 
+import logging
 import os
 import re
 from typing import Dict, List, Any, Optional, Union
@@ -13,6 +14,8 @@ import pandas as pd
 from .interfaces import IAssetManager
 from .cache import get_cache, CacheKeys, cached
 from ..asset_importer import AssetImporter, AssetDefinition, AssetRegistry
+
+_log = logging.getLogger(__name__)
 
 
 class AssetManager(IAssetManager):
@@ -82,7 +85,7 @@ class AssetManager(IAssetManager):
         """注册默认资产类型"""
         # 这些类型已在现有的 fetcher 工厂中注册
         default_types = ['cn_stock', 'cn_fund', 'us_equity', 'currency']
-        print(f"[AssetManager] 已注册默认资产类型: {default_types}")
+        _log.info("[AssetManager] 已注册默认资产类型: %s", default_types)
     
     # ==================== IAssetProvider 接口实现 ====================
     
@@ -253,7 +256,7 @@ class AssetManager(IAssetManager):
         for i, symbol in enumerate(symbols):
             asset_type = asset_types[i] if asset_types and i < len(asset_types) else None
             
-            print(f"[批量导入] ({i+1}/{len(symbols)}) {symbol}")
+            _log.info("[批量导入] (%d/%d) %s", i + 1, len(symbols), symbol)
             result = self.import_asset(symbol, asset_type)
             results[symbol] = result
             
@@ -301,7 +304,7 @@ class AssetManager(IAssetManager):
                 self.cache.delete(CacheKeys.asset_info(symbol), "asset")
                 
             except Exception as e:
-                print(f"[更新价格失败] {symbol}: {e}")
+                _log.error("[更新价格失败] %s: %s", symbol, e)
                 results[symbol] = False
         
         return {
@@ -327,11 +330,11 @@ class AssetManager(IAssetManager):
             if asset_type not in self.asset_type_mapping:
                 self.asset_type_mapping[asset_type] = [asset_type]
             
-            print(f"[AssetManager] 已注册新资产类型: {asset_type}")
+            _log.info("[AssetManager] 已注册新资产类型: %s", asset_type)
             return True
-            
+
         except Exception as e:
-            print(f"[AssetManager] 注册资产类型失败: {asset_type} - {e}")
+            _log.error("[AssetManager] 注册资产类型失败: %s - %s", asset_type, e)
             return False
     
     def get_supported_types(self) -> List[str]:
@@ -406,7 +409,7 @@ class AssetManager(IAssetManager):
                 }
                 
         except Exception as e:
-            print(f"[价格获取失败] {symbol}: {e}")
+            _log.error("[价格获取失败] %s: %s", symbol, e)
         
         return None
     

@@ -8,6 +8,7 @@
 4. 提供高效查询接口
 """
 
+import logging
 import sqlite3
 import json
 import shutil
@@ -16,6 +17,8 @@ from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 from pathlib import Path
 from .paths import get_database_path, get_legacy_database_candidates
+
+_log = logging.getLogger(__name__)
 
 class DatabaseManager:
     """
@@ -391,7 +394,7 @@ class DatabaseManager:
             self._commit()
             return len(data_to_upsert)
         except Exception as e:
-            print(f"[Database] 批量添加价格数据失败: {e}")
+            _log.error("[Database] 批量添加价格数据失败: %s", e)
             return 0
 
     def add_price_history(self, symbol: str, df: pd.DataFrame) -> int:
@@ -462,7 +465,7 @@ class DatabaseManager:
             self._commit()
             added_count = len(data_to_insert)
         except Exception as e:
-            print(f"[Database] 批量插入价格数据失败: {e}")
+            _log.error("[Database] 批量插入价格数据失败: %s", e)
             # 回退到分块插入和逐条插入组合机制以提升回退性能
             chunk_size = 100
             for i in range(0, len(data_to_insert), chunk_size):
@@ -593,7 +596,7 @@ class DatabaseManager:
             self._commit()
             return True
         except Exception as e:
-            print(f"[Database] 添加到关注列表失败: {e}")
+            _log.error("[Database] 添加到关注列表失败: %s", e)
             return False
     
     def remove_from_watchlist(self, symbol: str, user_id: str = 'default') -> bool:
@@ -653,7 +656,7 @@ class DatabaseManager:
             self._commit()
             return True
         except Exception as e:
-            print(f"[Database] 保存指标失败: {e}")
+            _log.error("[Database] 保存指标失败: %s", e)
             return False
     
     def get_metric(self, symbol: str, metric_name: str, 
@@ -702,7 +705,7 @@ class DatabaseManager:
             
             return float(volatility)
         except Exception as e:
-            print(f"[Database] 计算波动率失败: {e}")
+            _log.error("[Database] 计算波动率失败: %s", e)
             return None
     
     def get_recent_volatility(self, symbol: str, days: int = 30) -> Optional[float]:
@@ -815,10 +818,10 @@ class DatabaseManager:
                         self.add_or_update_asset(asset_data)
                         migrated_count += 1
             
-            print(f"[Database] 从文件系统迁移了 {migrated_count} 个资产")
-            
+            _log.info("[Database] 从文件系统迁移了 %d 个资产", migrated_count)
+
         except Exception as e:
-            print(f"[Database] 迁移数据失败: {e}")
+            _log.error("[Database] 迁移数据失败: %s", e)
         
         return migrated_count
 

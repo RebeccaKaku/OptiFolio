@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 from typing import Dict, Any
+
+_log = logging.getLogger(__name__)
 
 from src.core.database import DatabaseManager
 from src.core.paths import (
@@ -86,10 +89,10 @@ def bootstrap_local_state() -> Dict[str, Any]:
 
 def main() -> int:
     result = bootstrap_local_state()
-    print("OptiFolio local runtime is ready:")
-    print(f"  local_dir: {result['local_dir']}")
-    print(f"  portfolio: {result['portfolio']['path']} ({result['portfolio']['source']})")
-    print(f"  database: {result['database']['path']} ({result['database']['source']})")
+    _log.info("OptiFolio local runtime is ready:")
+    _log.info(f"  local_dir: {result['local_dir']}")
+    _log.info(f"  portfolio: {result['portfolio']['path']} ({result['portfolio']['source']})")
+    _log.info(f"  database: {result['database']['path']} ({result['database']['source']})")
     return 0
 
 

@@ -7,11 +7,14 @@
 支持缓存优先策略：优先使用缓存数据，只在需要时拉取更新。
 """
 
+import logging
 import os
 import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import yaml
+
+_log = logging.getLogger(__name__)
 
 # --- 依赖库导入 ---
 try:
@@ -19,14 +22,14 @@ try:
     AKSHARE_AVAILABLE = True
 except ImportError:
     AKSHARE_AVAILABLE = False
-    print("[Warning] akshare not available, asset import functionality will be limited")
+    _log.warning("[Warning] akshare not available, asset import functionality will be limited")
 
 try:
     import yfinance as yf
     YFINANCE_AVAILABLE = True
 except ImportError:
     YFINANCE_AVAILABLE = False
-    print("[Warning] yfinance not available, US equity import functionality will be limited")
+    _log.warning("[Warning] yfinance not available, US equity import functionality will be limited")
 
 # --- 核心模块集成：缓存系统 ---
 CACHE_AVAILABLE = None  # 延迟初始化
@@ -44,7 +47,7 @@ def _lazy_import_cache():
             CACHE_AVAILABLE = True
         except ImportError as e:
             CACHE_AVAILABLE = False
-            print(f"[Warning] src.core.cache not available, caching functionality will be disabled: {e}")
+            _log.warning(f"[Warning] src.core.cache not available, caching functionality will be disabled: {e}")
 
 # --- 核心模块集成：基金币种检测器 ---
 try:
@@ -58,7 +61,7 @@ except ImportError:
         FUND_DETECTOR_AVAILABLE = True
     except ImportError:
         FUND_DETECTOR_AVAILABLE = False
-        print("[Warning] src.fund_currency_detector not found. Currency detection will be basic.")
+        _log.warning("[Warning] src.fund_currency_detector not found. Currency detection will be basic.")
 
 
 OFFLINE_ASSET_FALLBACKS: Dict[str, Dict[str, Any]] = {
@@ -239,12 +242,12 @@ class AssetRegistry:
                     config = yaml.safe_load(f)
                 if config is None:
                     # 文件存在但为空或只包含注释
-                    print(f"[AssetRegistry Info] 配置文件为空，创建默认配置")
+                    _log.info(f"[AssetRegistry Info] 配置文件为空，创建默认配置")
                     self._create_default_config()
                 else:
                     self._load_from_config(config)
             except Exception as e:
-                print(f"[AssetRegistry Error] 加载配置文件失败: {e}")
+                _log.error(f"[AssetRegistry Error] 加载配置文件失败: {e}")
                 self._create_default_config()
         else:
             self._create_default_config()
@@ -264,7 +267,7 @@ class AssetRegistry:
                 else:
                     self.assets[asset_def.symbol] = asset_def
             except Exception as e:
-                print(f"[AssetRegistry Warning] 加载资产失败: {asset_data.get('symbol')} - {e}")
+                _log.warning(f"[AssetRegistry Warning] 加载资产失败: {asset_data.get('symbol')} - {e}")
     
     def _create_default_config(self) -> None:
         default_config = {
@@ -393,7 +396,7 @@ class AssetRegistry:
             # 使用专业模块进行检测
             currency, reason = self.detector.detect_currency(name)
             if currency != 'CNY':
-                print(f"    [币种识别] {name} -> {currency} (依据: {reason})")
+                _log.info(f"    [币种识别] {name} -> {currency} (依据: {reason})")
             return currency
         else:
             return default
@@ -545,10 +548,10 @@ class AssetImporter:
             cached_data = _cache_instance.get(cache_key, namespace=self.cache_namespace)
             
             if cached_data:
-                print(f"[Cache] 命中缓存: {symbol} ({asset_type})")
+                _log.info(f"[Cache] 命中缓存: {symbol} ({asset_type})")
                 return cached_data
         except Exception as e:
-            print(f"[Cache Warning] 获取缓存失败: {e}")
+            _log.warning(f"[Cache Warning] 获取缓存失败: {e}")
         
         return None
 
@@ -567,11 +570,11 @@ class AssetImporter:
             success = _cache_instance.set(cache_key, data, ttl=self.cache_ttl, namespace=self.cache_namespace)
             
             if success:
-                print(f"[Cache] 缓存已保存: {symbol} ({asset_type})")
+                _log.info(f"[Cache] 缓存已保存: {symbol} ({asset_type})")
             
             return success
         except Exception as e:
-            print(f"[Cache Warning] 保存缓存失败: {e}")
+            _log.warning(f"[Cache Warning] 保存缓存失败: {e}")
             return False
 
     def import_asset(self, symbol: str, asset_type: Optional[str] = None, 
@@ -581,19 +584,19 @@ class AssetImporter:
         # 如果未提供资产类型，则智能推断
         if asset_type is None:
             asset_type = self._infer_asset_type(symbol)
-            print(f"[AssetImporter] 推断资产类型: {symbol} -> {asset_type}")
+            _log.info(f"[AssetImporter] 推断资产类型: {symbol} -> {asset_type}")
         
         # 检查资产类型是否有效（支持简化类型和兼容类型）
         if asset_type not in self.valid_asset_types and asset_type not in self.compatible_asset_types:
-            print(f"[Error] 无效资产类型: {asset_type}")
+            _log.error(f"[Error] 无效资产类型: {asset_type}")
             return None
         
         # 1. 代码标准化
         normalized_symbol = self._normalize_symbol(symbol, asset_type)
         if normalized_symbol != symbol:
-            print(f"[AssetImporter] 代码标准化: {symbol} -> {normalized_symbol}")
+            _log.info(f"[AssetImporter] 代码标准化: {symbol} -> {normalized_symbol}")
         
-        print(f"[AssetImporter] 正在导入: {normalized_symbol} ({asset_type})")
+        _log.info(f"[AssetImporter] 正在导入: {normalized_symbol} ({asset_type})")
         
         # 2. 检查缓存（除非强制刷新）
         api_data = None
@@ -607,7 +610,7 @@ class AssetImporter:
         # 当未手动提供名称时，需要从API获取
         needs_api_fetch = name is None
         if refresh or (not api_data and needs_api_fetch):
-            print(f"[API] 从API获取信息: {normalized_symbol}")
+            _log.info(f"[API] 从API获取信息: {normalized_symbol}")
             api_data = self._fetch_asset_info_with_priority(normalized_symbol, asset_type)
             if not api_data:
                 api_data = self._get_offline_fallback(normalized_symbol, asset_type)
@@ -642,10 +645,10 @@ class AssetImporter:
         # 7. 注册并保存到配置文件
         if self.registry.register_asset(asset_def, overwrite=True):
             self.registry.save_config()
-            print(f"[Success] 资产导入完成: {asset_def.name} [{asset_def.currency}]")
+            _log.info(f"[Success] 资产导入完成: {asset_def.name} [{asset_def.currency}]")
             return asset_def
         else:
-            print(f"[Error] 注册失败")
+            _log.error(f"[Error] 注册失败")
             return None
 
     def _get_offline_fallback(self, symbol: str, asset_type: str) -> Optional[Dict[str, Any]]:
@@ -653,7 +656,7 @@ class AssetImporter:
         key = f"{asset_type}:{symbol}"
         fallback = OFFLINE_ASSET_FALLBACKS.get(key)
         if fallback:
-            print(f"[Offline] 使用内置资产元数据: {symbol}")
+            _log.info(f"[Offline] 使用内置资产元数据: {symbol}")
             return fallback.copy()
         return None
     
@@ -677,7 +680,7 @@ class AssetImporter:
                     }
                 product = self._icbc_meta_index.get(symbol)
                 if product:
-                    print(f"[Offline] 在工行理财元数据中找到资产: {symbol}")
+                    _log.info(f"[Offline] 在工行理财元数据中找到资产: {symbol}")
                     icbc_found = True
                     return {
                         "name":                 product.get("product_name"),
@@ -693,7 +696,7 @@ class AssetImporter:
                         "source":               "icbc_product_metadata",
                     }
             except Exception as e:
-                print(f"[Warning] 读取工行理财元数据失败: {e}")
+                _log.warning(f"[Warning] 读取工行理财元数据失败: {e}")
 
         # 工商银行旧版回退 (config/icbc_currencies.json)
         if not icbc_found:
@@ -706,14 +709,14 @@ class AssetImporter:
                             item = icbc_data[symbol]
                             raw_currency = item.get("currency", "元")
                             currency_map = {"元": "CNY", "人民币": "CNY", "美元": "USD", "港币": "HKD", "港元": "HKD", "欧元": "EUR"}
-                            print(f"[Offline] 在工行本地映射中找到资产: {symbol}")
+                            _log.info(f"[Offline] 在工行本地映射中找到资产: {symbol}")
                             return {
                                 "name": item.get("name"),
                                 "currency": currency_map.get(raw_currency, "CNY"),
                                 "source": "icbc_currencies_snapshot"
                             }
                 except Exception as e:
-                    print(f"[Warning] 读取工行本地映射失败: {e}")
+                    _log.warning(f"[Warning] 读取工行本地映射失败: {e}")
 
         # B. 上海银行 (BOSC)
         bosc_meta_path = Path("FinData/data/bosc/product_metadata.json")
@@ -730,7 +733,7 @@ class AssetImporter:
                     }
                 product = self._bosc_meta_index.get(symbol)
                 if product:
-                    print(f"[Offline] 在上行理财元数据中找到资产: {symbol}")
+                    _log.info(f"[Offline] 在上行理财元数据中找到资产: {symbol}")
                     bosc_found = True
                     return {
                         "name":                 product.get("product_name"),
@@ -746,7 +749,7 @@ class AssetImporter:
                         "source":               "bosc_product_metadata",
                     }
             except Exception as e:
-                print(f"[Warning] 读取上行理财元数据失败: {e}")
+                _log.warning(f"[Warning] 读取上行理财元数据失败: {e}")
 
         # 上海银行旧版回退 (raw snapshot)
         if not bosc_found:
@@ -760,14 +763,14 @@ class AssetImporter:
                             records = bosc_data.get("data", {}).get("records", [])
                             for r in records:
                                 if r.get("prdCode") == symbol:
-                                    print(f"[Offline] 在上行本地快照中找到资产: {symbol}")
+                                    _log.info(f"[Offline] 在上行本地快照中找到资产: {symbol}")
                                     return {
                                         "name": r.get("prdName"),
                                         "currency": r.get("currType", "CNY"),
                                         "source": "bosc_products_snapshot"
                                     }
                     except Exception as e:
-                        print(f"[Warning] 读取上行本地快照失败: {e}")
+                        _log.warning(f"[Warning] 读取上行本地快照失败: {e}")
 
         # C. 中银理财（BOCWM）— boc_product_metadata.json
         boc_meta_path = Path("FinData/data/boc/product_metadata.json")
@@ -784,7 +787,7 @@ class AssetImporter:
                     }
                 product = self._boc_meta_index.get(symbol)
                 if product:
-                    print(f"[Offline] 在中银理财元数据中找到资产: {symbol}")
+                    _log.info(f"[Offline] 在中银理财元数据中找到资产: {symbol}")
                     return {
                         "name":                 product.get("product_name"),
                         "currency":             product.get("currency", "CNY"),
@@ -802,7 +805,7 @@ class AssetImporter:
                         "source":               "boc_product_metadata",
                     }
             except Exception as e:
-                print(f"[Warning] 读取中银理财元数据失败: {e}")
+                _log.warning(f"[Warning] 读取中银理财元数据失败: {e}")
 
         # 2. 处理标准类型
         if asset_type == 'cn_stock':
@@ -828,7 +831,7 @@ class AssetImporter:
         
         # 尝试雪球接口（优先级1）
         try:
-            print(f"[API] 尝试雪球接口: {symbol}")
+            _log.info(f"[API] 尝试雪球接口: {symbol}")
             info_df = ak.fund_individual_basic_info_xq(symbol=symbol)
             if not info_df.empty:
                 info_dict = {row['item']: row['value'] for _, row in info_df.iterrows()}
@@ -842,11 +845,11 @@ class AssetImporter:
                     'source': 'akshare_fund_xq'
                 }
         except Exception as e:
-            print(f"[API Warning] 雪球接口失败 {symbol}: {e}")
+            _log.warning(f"[API Warning] 雪球接口失败 {symbol}: {e}")
         
         # 尝试东方财富接口（优先级2）
         try:
-            print(f"[API] 尝试东方财富接口: {symbol}")
+            _log.info(f"[API] 尝试东方财富接口: {symbol}")
             all_funds = ak.fund_name_em()
             row = all_funds[all_funds['基金代码'] == symbol]
             if not row.empty:
@@ -858,7 +861,7 @@ class AssetImporter:
                     'source': 'akshare_fund_em'
                 }
         except Exception as e:
-            print(f"[API Warning] 东方财富接口失败 {symbol}: {e}")
+            _log.warning(f"[API Warning] 东方财富接口失败 {symbol}: {e}")
         
         return None
 
@@ -881,7 +884,7 @@ class AssetImporter:
                     'source': 'akshare_stock_info'
                 }
         except Exception as e:
-            print(f"[API Warning] 股票信息接口失败 {symbol}: {e}")
+            _log.warning(f"[API Warning] 股票信息接口失败 {symbol}: {e}")
         
         return None
 
@@ -916,7 +919,7 @@ class AssetImporter:
                 'source': 'yfinance'
             }
         except Exception as e:
-            print(f"[API Warning] yfinance接口失败 {symbol}: {e}")
+            _log.warning(f"[API Warning] yfinance接口失败 {symbol}: {e}")
         return None
 
     def _fetch_currency_info(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -1012,7 +1015,7 @@ class AssetImporter:
             }
             
         except Exception as e:
-            print(f"[Error] 获取货币信息失败 {symbol}: {e}")
+            _log.error(f"[Error] 获取货币信息失败 {symbol}: {e}")
             # 发生错误时返回默认信息
             return {
                 'name': symbol,
@@ -1041,18 +1044,18 @@ def get_asset(symbol: str, registry_path: str = "config/asset_registry.yaml"):
     return registry.get_asset(symbol)
 
 if __name__ == "__main__":
-    print("=== AssetImporter Test (Smart Currency + Prefix + Cache) ===")
+    _log.info("=== AssetImporter Test (Smart Currency + Prefix + Cache) ===")
     importer = AssetImporter()
     
     # 测试缓存优先策略
-    print("\n1. 第一次导入（应从API获取）:")
+    _log.info("1. 第一次导入（应从API获取）:")
     asset1 = importer.import_asset("002892", "cn_fund_qdii", refresh=False)
     
-    print("\n2. 第二次导入（应从缓存获取）:")
+    _log.info("2. 第二次导入（应从缓存获取）:")
     asset2 = importer.import_asset("002892", "cn_fund_qdii", refresh=False)
     
-    print("\n3. 强制刷新（应从API获取）:")
+    _log.info("3. 强制刷新（应从API获取）:")
     asset3 = importer.import_asset("002892", "cn_fund_qdii", refresh=True)
     
-    print("\n4. 测试 A股（应自动加前缀）:")
+    _log.info("4. 测试 A股（应自动加前缀）:")
     asset4 = importer.import_asset("600519", "cn_stock_sh", refresh=False)

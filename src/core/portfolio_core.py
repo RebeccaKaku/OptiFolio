@@ -9,6 +9,7 @@
     See docs/CURRENT_STATE_2026-06-03.md for migration guidance.
 """
 
+import logging
 import os
 import sys
 from typing import Dict, List, Any, Optional, Union, Tuple
@@ -16,6 +17,8 @@ from datetime import datetime, timedelta
 import yaml
 import pandas as pd
 import numpy as np
+
+_log = logging.getLogger(__name__)
 
 from .interfaces import IPortfolioManager
 from .cache import get_cache, CacheKeys, cached
@@ -29,19 +32,19 @@ if project_root not in sys.path:
 try:
     from src.data_core.fetchers.factory import get_factory
 except ImportError as e:
-    print(f"[PortfolioCore] 数据获取器工厂不可用: {e}")
+    _log.warning(f"[PortfolioCore] 数据获取器工厂不可用: {e}")
     get_factory = None
 
 try:
     from FinData.adapters.forex import CurrencyFetcher
 except ImportError as e:
-    print(f"[PortfolioCore] 汇率数据获取器不可用: {e}")
+    _log.warning(f"[PortfolioCore] 汇率数据获取器不可用: {e}")
     CurrencyFetcher = None
 
 try:
     from src.math_engine import MathEngine
 except ImportError as e:
-    print(f"[PortfolioCore] 数学引擎不可用，使用简化实现: {e}")
+    _log.warning(f"[PortfolioCore] 数学引擎不可用，使用简化实现: {e}")
     class MathEngine:
         @staticmethod
         def get_stats(returns):
@@ -96,7 +99,7 @@ class PortfolioCore(IPortfolioManager):
             self.factory = get_factory() if get_factory else None
             self.fx_fetcher = CurrencyFetcher() if CurrencyFetcher else None
         except Exception as e:
-            print(f"[PortfolioCore] 初始化数据获取器失败: {e}")
+            _log.error(f"[PortfolioCore] 初始化数据获取器失败: {e}")
             self.factory = None
             self.fx_fetcher = None
         
@@ -110,7 +113,7 @@ class PortfolioCore(IPortfolioManager):
     def _load_portfolio(self):
         """加载组合配置"""
         if not os.path.exists(self.config_path):
-            print(f"[PortfolioCore] 警告: 找不到组合配置文件 {self.config_path}")
+            _log.warning(f"[PortfolioCore] 警告: 找不到组合配置文件 {self.config_path}")
             self.holdings = {}
             self.cash = {}
             return
@@ -125,10 +128,10 @@ class PortfolioCore(IPortfolioManager):
             # 确保所有持仓是浮点数
             self.holdings = {str(k): float(v) for k, v in self.holdings.items()}
             
-            print(f"[PortfolioCore] 加载组合: {len(self.holdings)} 个持仓, {len(self.cash)} 种货币现金")
+            _log.info(f"[PortfolioCore] 加载组合: {len(self.holdings)} 个持仓, {len(self.cash)} 种货币现金")
             
         except Exception as e:
-            print(f"[PortfolioCore] 加载组合配置失败: {e}")
+            _log.error(f"[PortfolioCore] 加载组合配置失败: {e}")
             self.holdings = {}
             self.cash = {}
     
@@ -159,10 +162,10 @@ class PortfolioCore(IPortfolioManager):
                         self.asset_meta[symbol] = currency
                         self.asset_type_meta[symbol] = asset_type
                 
-                print(f"[PortfolioCore] 从candidates.yaml加载资产元数据: {len(self.asset_type_meta)} 个资产")
+                _log.info(f"[PortfolioCore] 从candidates.yaml加载资产元数据: {len(self.asset_type_meta)} 个资产")
                 
             except Exception as e:
-                print(f"[PortfolioCore] 从candidates.yaml加载资产元数据失败: {e}")
+                _log.error(f"[PortfolioCore] 从candidates.yaml加载资产元数据失败: {e}")
         
         # 如果candidates.yaml不存在或加载失败，尝试settings.yaml
         elif os.path.exists(settings_path):
@@ -186,13 +189,13 @@ class PortfolioCore(IPortfolioManager):
                         self.asset_meta[symbol] = currency
                         self.asset_type_meta[symbol] = asset_type
                 
-                print(f"[PortfolioCore] 从settings.yaml加载资产元数据: {len(self.asset_type_meta)} 个资产")
+                _log.info(f"[PortfolioCore] 从settings.yaml加载资产元数据: {len(self.asset_type_meta)} 个资产")
                 
             except Exception as e:
-                print(f"[PortfolioCore] 从settings.yaml加载资产元数据失败: {e}")
+                _log.error(f"[PortfolioCore] 从settings.yaml加载资产元数据失败: {e}")
         
         else:
-            print(f"[PortfolioCore] 警告: 找不到设置文件 {settings_path} 或 {candidates_path}")
+            _log.warning(f"[PortfolioCore] 警告: 找不到设置文件 {settings_path} 或 {candidates_path}")
         
         # 为所有持仓补充缺失的元数据
         self._supplement_missing_metadata()
@@ -244,7 +247,7 @@ class PortfolioCore(IPortfolioManager):
                 
                 return rate
             except Exception as e:
-                print(f"[PortfolioCore] 获取汇率失败 {from_currency}/{to_currency}: {e}")
+                _log.warning(f"[PortfolioCore] 获取汇率失败 {from_currency}/{to_currency}: {e}")
 
         rate = 1.0
         
@@ -269,13 +272,13 @@ class PortfolioCore(IPortfolioManager):
             return local_price
         
         if not self.factory:
-            print(f"[PortfolioCore] 无法获取价格：数据获取器工厂未初始化")
+            _log.warning(f"[PortfolioCore] 无法获取价格：数据获取器工厂未初始化")
             return None
         
         # 获取对应的 fetcher
         fetcher = self.factory.get_fetcher(asset_type)
         if not fetcher:
-            print(f"[PortfolioCore] 无法获取 {symbol} 的fetcher (类型: {asset_type})")
+            _log.warning(f"[PortfolioCore] 无法获取 {symbol} 的fetcher (类型: {asset_type})")
             return None
         
         try:
@@ -303,11 +306,11 @@ class PortfolioCore(IPortfolioManager):
                 
                 return price
             else:
-                print(f"[PortfolioCore] {symbol} 无有效价格数据")
+                _log.warning(f"[PortfolioCore] {symbol} 无有效价格数据")
                 return None
                 
         except Exception as e:
-            print(f"[PortfolioCore] 获取 {symbol} 价格失败: {e}")
+            _log.error(f"[PortfolioCore] 获取 {symbol} 价格失败: {e}")
             return None
 
     def _get_local_asset_price(self, symbol: str) -> Optional[float]:
@@ -339,7 +342,7 @@ class PortfolioCore(IPortfolioManager):
 
                 return float(series.iloc[-1])
             except Exception as e:
-                print(f"[PortfolioCore] 读取本地价格缓存失败 {symbol}: {e}")
+                _log.error(f"[PortfolioCore] 读取本地价格缓存失败 {symbol}: {e}")
 
         return None
     
@@ -370,13 +373,13 @@ class PortfolioCore(IPortfolioManager):
         try:
             self.asset_meta[symbol] = currency
             self.asset_type_meta[symbol] = asset_type
-            print(f"[PortfolioCore] 修复资产元数据: {symbol} -> {asset_type} ({currency})")
+            _log.info(f"[PortfolioCore] 修复资产元数据: {symbol} -> {asset_type} ({currency})")
             
             # 清理缓存
             self._invalidate_portfolio_caches()
             return True
         except Exception as e:
-            print(f"[PortfolioCore] 修复资产元数据失败: {e}")
+            _log.error(f"[PortfolioCore] 修复资产元数据失败: {e}")
             return False
 
     # ==================== IPortfolioData 接口实现 ====================
@@ -422,7 +425,7 @@ class PortfolioCore(IPortfolioManager):
                             if not col.empty:
                                 batch_prices[sym] = float(col.iloc[-1])
             except Exception as e:
-                print(f"[PortfolioCore] 批量获取价格失败: {e}")
+                _log.error(f"[PortfolioCore] 批量获取价格失败: {e}")
 
         for symbol, shares in self.holdings.items():
             asset_currency = self.asset_meta.get(symbol, "USD")
@@ -430,9 +433,9 @@ class PortfolioCore(IPortfolioManager):
             
             # 检查元数据
             if symbol not in self.asset_meta:
-                print(f"[PortfolioCore] WARNING: 资产 {symbol} 没有货币元数据")
+                _log.warning(f"[PortfolioCore] WARNING: 资产 {symbol} 没有货币元数据")
             if symbol not in self.asset_type_meta:
-                print(f"[PortfolioCore] WARNING: 资产 {symbol} 没有资产类型元数据")
+                _log.warning(f"[PortfolioCore] WARNING: 资产 {symbol} 没有资产类型元数据")
             
             # 优先从批量价格中获取，否则回退到单个获取
             price = batch_prices.get(symbol)
@@ -440,16 +443,16 @@ class PortfolioCore(IPortfolioManager):
                 price = self._get_asset_price(symbol, asset_type)
             
             if price is None:
-                print(f"[PortfolioCore] ERROR: 无法获取 {symbol} 的价格")
+                _log.error(f"[PortfolioCore] ERROR: 无法获取 {symbol} 的价格")
                 
                 # 尝试调试资产映射
                 if hasattr(self, 'debug_asset_mapping'):
                     debug_info = self.debug_asset_mapping(symbol)
-                    print(f"[PortfolioCore] 资产映射调试信息: {debug_info}")
+                    _log.info(f"[PortfolioCore] 资产映射调试信息: {debug_info}")
                 
                 # 尝试使用默认价格作为回退
                 default_price = 1.0
-                print(f"[PortfolioCore] WARNING: 使用默认价格 {default_price} 作为回退")
+                _log.warning(f"[PortfolioCore] WARNING: 使用默认价格 {default_price} 作为回退")
                 price = default_price
             
             # 汇率换算
@@ -644,7 +647,7 @@ class PortfolioCore(IPortfolioManager):
                     "data_points": len(portfolio_returns)
                 })
         except Exception as e:
-            print(f"[PortfolioCore] 计算组合指标失败: {e}")
+            _log.error(f"[PortfolioCore] 计算组合指标失败: {e}")
         
         # 添加组合基本信息
         portfolio_value = self.get_portfolio_value(self.base_currency)
@@ -692,7 +695,7 @@ class PortfolioCore(IPortfolioManager):
                     "data_points": len(portfolio_returns)
                 })
         except Exception as e:
-            print(f"[PortfolioCore] 计算风险指标失败: {e}")
+            _log.error(f"[PortfolioCore] 计算风险指标失败: {e}")
         
         return risk_metrics
     
@@ -739,7 +742,7 @@ class PortfolioCore(IPortfolioManager):
             self._invalidate_portfolio_caches()
             return True
         except Exception as e:
-            print(f"[PortfolioCore] 添加持仓失败: {e}")
+            _log.error(f"[PortfolioCore] 添加持仓失败: {e}")
             return False
     
     def remove_position(self, symbol: str) -> bool:
@@ -759,7 +762,7 @@ class PortfolioCore(IPortfolioManager):
             self._invalidate_portfolio_caches()
             return True
         except Exception as e:
-            print(f"[PortfolioCore] 更新现金失败: {e}")
+            _log.error(f"[PortfolioCore] 更新现金失败: {e}")
             return False
     
     def _save_portfolio(self):
@@ -776,10 +779,10 @@ class PortfolioCore(IPortfolioManager):
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 yaml.dump(portfolio_data, f, allow_unicode=True, default_flow_style=False)
             
-            print(f"[PortfolioCore] 组合配置已保存: {self.config_path}")
+            _log.info(f"[PortfolioCore] 组合配置已保存: {self.config_path}")
             
         except Exception as e:
-            print(f"[PortfolioCore] 保存组合配置失败: {e}")
+            _log.error(f"[PortfolioCore] 保存组合配置失败: {e}")
     
     def _invalidate_portfolio_caches(self):
         """清理组合相关的缓存"""

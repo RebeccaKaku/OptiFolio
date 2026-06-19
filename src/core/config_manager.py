@@ -8,11 +8,14 @@
 4. 简化配置变更管理
 """
 
+import logging
 import os
 import yaml
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
+
+_log = logging.getLogger(__name__)
 
 
 class ConfigManager:
@@ -265,7 +268,7 @@ class ConfigManager:
             
             return True
         except Exception as e:
-            print(f"保存YAML文件失败: {file_path} - {e}")
+            _log.error(f"保存YAML文件失败: {file_path} - {e}")
             return False
     
     def _validate_asset_registry_config(self, config: Dict[str, Any]) -> tuple[bool, str]:
@@ -382,8 +385,8 @@ class ConfigManager:
         """配置变更事件处理"""
         # 这里可以添加配置变更时的处理逻辑
         # 例如：清除相关缓存、发送通知等
-        print(f"[ConfigManager] 配置已变更: {config_type}")
-        
+        _log.info(f"[ConfigManager] 配置已变更: {config_type}")
+
         # 清除相关缓存
         related_caches = {
             "asset_registry": ["asset", "asset_list", "search"],
@@ -394,7 +397,7 @@ class ConfigManager:
         
         if config_type in related_caches:
             # 这里可以集成到缓存系统
-            print(f"[ConfigManager] 相关缓存可能需要清理: {related_caches[config_type]}")
+            _log.info(f"[ConfigManager] 相关缓存可能需要清理: {related_caches[config_type]}")
     
     # ==================== 环境相关方法 ====================
     
