@@ -50,6 +50,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 .pytest_tmp/
+.pytest_tmp*/
+.playwright-mcp/
 cover/
 
 # Translations
@@ -175,6 +177,7 @@ local/*
 *.xlsx
 *.json
 *.parquet
+*.parquet.lock
 *.db
 *.db-journal
 

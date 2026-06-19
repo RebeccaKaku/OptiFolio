@@ -1,6 +1,7 @@
 """Tests for DS-001: PortfolioBookDatabase — SQLite foundation."""
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -343,6 +344,14 @@ class TestAccountCRUD:
                 name="Bad Account",
                 ownership_scope="illegal_scope",
             )
+        with pytest.raises(ValueError, match="account_id"):
+            initialized.create_account(account_id="", name="Missing ID")
+        with pytest.raises(ValueError, match="name"):
+            initialized.create_account(account_id="missing_name", name="")
+        with pytest.raises(ValueError, match="base_currency"):
+            initialized.create_account(
+                account_id="bad_currency", name="Bad Currency", base_currency="US"
+            )
 
     def test_get_account_none_if_missing(self, initialized):
         """get_account returns None for non-existent IDs."""
@@ -372,6 +381,15 @@ class TestAccountCRUD:
 
         with pytest.raises(ValueError, match="status"):
             initialized.update_account("acc_val", status="invalid")
+
+        with pytest.raises(ValueError, match="Unsupported account update fields"):
+            initialized.update_account("acc_val", created_at="replacement")
+
+        with pytest.raises(ValueError, match="base_currency"):
+            initialized.update_account("acc_val", base_currency="US")
+
+        with pytest.raises(PortfolioBookError, match="not found"):
+            initialized.update_account("missing", notes="no such account")
 
     def test_deactivate_account(self, initialized):
         """deactivate_account sets status to 'inactive'."""
@@ -475,9 +493,11 @@ class TestSnapshots:
         acc_id, prod_id = setup_data
         batch_id = "batch_20231027"
         initialized.create_snapshot_batch(batch_id, as_of="2023-10-27", notes="Initial sync")
+        initialized.set_batch_account_coverage(batch_id, acc_id, "complete")
         batch = initialized.get_batch(batch_id)
         assert batch["status"] == "draft"
         assert len(batch["snapshots"]) == 0
+        assert len(batch["account_coverage"]) == 1
         initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=100.0, market_value=1234.56, cost_basis=1000.0)
         batch = initialized.get_batch(batch_id)
         assert len(batch["snapshots"]) == 1
@@ -488,6 +508,7 @@ class TestSnapshots:
     def test_add_to_confirmed_batch_raises(self, initialized, setup_data):
         acc_id, prod_id = setup_data
         initialized.create_snapshot_batch("batch_fixed", as_of="2023-10-27")
+        initialized.set_batch_account_coverage("batch_fixed", acc_id, "complete")
         initialized.confirm_batch("batch_fixed")
         with pytest.raises(PortfolioBookError, match="Cannot add to confirmed batch"):
             initialized.add_snapshot("batch_fixed", acc_id, prod_id, quantity=50.0)
@@ -497,7 +518,9 @@ class TestSnapshots:
             initialized.confirm_batch("no_such_batch")
 
     def test_supersede_batch(self, initialized):
+        initialized.create_account(account_id="acc_super", name="Super Account")
         initialized.create_snapshot_batch("batch_old", as_of="2023-10-27")
+        initialized.set_batch_account_coverage("batch_old", "acc_super", "complete")
         initialized.confirm_batch("batch_old")
         initialized.supersede_batch("batch_old")
         assert initialized.get_batch("batch_old")["status"] == "superseded"
@@ -505,14 +528,18 @@ class TestSnapshots:
     def test_fk_constraints(self, initialized, setup_data):
         acc_id, prod_id = setup_data
         initialized.create_snapshot_batch("batch_fk", as_of="2023-10-27")
-        with pytest.raises(sqlite3.IntegrityError):
+        # unregistered account fails at coverage check, not FK
+        with pytest.raises(PortfolioBookError, match="not registered"):
             initialized.add_snapshot("batch_fk", "invalid_acc", prod_id, quantity=10)
+        # register coverage for the valid account; invalid product still hits FK
+        initialized.set_batch_account_coverage("batch_fk", acc_id, "complete")
         with pytest.raises(sqlite3.IntegrityError):
             initialized.add_snapshot("batch_fk", acc_id, "invalid_prod", quantity=10)
 
     def test_unique_constraint(self, initialized, setup_data):
         acc_id, prod_id = setup_data
         initialized.create_snapshot_batch("batch_uniq", as_of="2023-10-27")
+        initialized.set_batch_account_coverage("batch_uniq", acc_id, "complete")
         initialized.add_snapshot("batch_uniq", acc_id, prod_id, quantity=10)
         with pytest.raises(sqlite3.IntegrityError):
             initialized.add_snapshot("batch_uniq", acc_id, prod_id, quantity=20)
@@ -624,3 +651,372 @@ class TestCashflowCRUD:
         flows = initialized.get_cashflows_for_product(product)
         assert len(flows) == 1
         assert flows[0]["event_id"] == "p1"
+
+
+# ── DS-006A: Schema v5 explicit marker ────────────────────────────────────
+
+class TestV5ExplicitMigration:
+    def test_v5_migration_is_registered_and_runs(self, tmp_path):
+        """Explicit v5 migration exists and can execute without error."""
+        db = PortfolioBookDatabase(path=tmp_path / "v5_test.sqlite")
+
+        # Hand-build a v4 database
+        conn = sqlite3.connect(str(db.path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '4')")
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE products (product_id TEXT PRIMARY KEY, name TEXT, issuer TEXT DEFAULT '', product_type TEXT DEFAULT '', currency TEXT DEFAULT '', liquidity TEXT DEFAULT '', data_source TEXT DEFAULT '', isin TEXT DEFAULT '', notes TEXT DEFAULT '', extra_json TEXT DEFAULT '{}', created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+        conn.execute("CREATE TABLE snapshot_batches (batch_id TEXT PRIMARY KEY, status TEXT DEFAULT 'draft', as_of TEXT, source TEXT, quality TEXT, notes TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+        conn.execute("CREATE TABLE position_snapshots (snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT, account_id TEXT, product_id TEXT, quantity REAL NOT NULL, market_value REAL, cost_basis REAL, currency TEXT DEFAULT 'CNY', source TEXT, quality TEXT, notes TEXT)")
+        conn.execute("CREATE TABLE cashflow_events (event_id TEXT PRIMARY KEY, event_type TEXT, account_id TEXT, product_id TEXT, amount REAL, currency TEXT, counter_amount REAL, counter_currency TEXT, pair_event_id TEXT, effective_date TEXT, source TEXT, notes TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+        conn.commit()
+        conn.close()
+
+        db.initialize()  # should run v5 → v6
+        assert db.schema_version() == 6
+
+
+# ── DS-006A: Schema v6 — fresh init & v5→v6 migration ──────────────────
+
+class TestV6Migration:
+    """Migration to v6: coverage table + nullable quantity."""
+
+    def test_fresh_init_creates_v6(self, tmp_path):
+        """A brand-new database initializes directly to v6."""
+        db = PortfolioBookDatabase(path=tmp_path / "fresh_v6.sqlite")
+        db.initialize()
+        assert db.schema_version() == 6
+
+        conn = db.connect()
+        try:
+            # snapshot_batch_accounts exists
+            tables = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+            table_names = {r["name"] for r in tables}
+            assert "snapshot_batch_accounts" in table_names
+
+            # position_snapshots quantity is nullable
+            pragma = conn.execute("PRAGMA table_info('position_snapshots')").fetchall()
+            quantity_col = [c for c in pragma if c["name"] == "quantity"][0]
+            assert quantity_col["notnull"] == 0  # nullable
+        finally:
+            conn.close()
+
+    def test_v5_to_v6_preserves_old_snapshots(self, tmp_path):
+        """Migrating from v5 to v6 preserves all existing snapshot data."""
+        from src.domain.products import ProductDefinition
+
+        db_path = tmp_path / "v5_legacy.sqlite"
+
+        # Build a v5 database with real data
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '5')")
+        conn.execute(
+            "CREATE TABLE accounts ("
+            "  account_id TEXT PRIMARY KEY, name TEXT NOT NULL,"
+            "  institution TEXT DEFAULT '', account_type TEXT DEFAULT 'brokerage',"
+            "  base_currency TEXT DEFAULT 'CNY', ownership_scope TEXT DEFAULT 'personal',"
+            "  status TEXT DEFAULT 'active', notes TEXT DEFAULT '',"
+            "  created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))"
+            ")"
+        )
+        conn.execute(
+            "CREATE TABLE products ("
+            "  product_id TEXT PRIMARY KEY, name TEXT NOT NULL, issuer TEXT DEFAULT '',"
+            "  product_type TEXT DEFAULT 'bank_wmp', currency TEXT DEFAULT 'CNY',"
+            "  liquidity TEXT DEFAULT 't_plus_1', data_source TEXT DEFAULT 'manual',"
+            "  isin TEXT DEFAULT '', notes TEXT DEFAULT '', extra_json TEXT DEFAULT '{}',"
+            "  created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        conn.execute(
+            "CREATE TABLE snapshot_batches ("
+            "  batch_id TEXT PRIMARY KEY, status TEXT DEFAULT 'draft', as_of TEXT NOT NULL,"
+            "  source TEXT DEFAULT 'manual', quality TEXT DEFAULT 'reported', notes TEXT,"
+            "  created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        conn.execute(
+            "CREATE TABLE position_snapshots ("
+            "  snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL,"
+            "  account_id TEXT NOT NULL, product_id TEXT NOT NULL,"
+            "  quantity REAL NOT NULL, market_value REAL, cost_basis REAL,"
+            "  currency TEXT DEFAULT 'CNY', source TEXT, quality TEXT, notes TEXT,"
+            "  UNIQUE(batch_id, account_id, product_id),"
+            "  FOREIGN KEY (batch_id) REFERENCES snapshot_batches(batch_id),"
+            "  FOREIGN KEY (account_id) REFERENCES accounts(account_id),"
+            "  FOREIGN KEY (product_id) REFERENCES products(product_id)"
+            ")"
+        )
+        conn.execute(
+            "CREATE TABLE cashflow_events ("
+            "  event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL,"
+            "  account_id TEXT NOT NULL, product_id TEXT,"
+            "  amount REAL NOT NULL, currency TEXT NOT NULL,"
+            "  counter_amount REAL, counter_currency TEXT, pair_event_id TEXT,"
+            "  effective_date TEXT NOT NULL, source TEXT DEFAULT 'manual', notes TEXT,"
+            "  created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,"
+            "  FOREIGN KEY (account_id) REFERENCES accounts (account_id)"
+            ")"
+        )
+
+        conn.execute("INSERT INTO accounts (account_id, name) VALUES ('acc_v5', 'Legacy')")
+        conn.execute(
+            "INSERT INTO products (product_id, name, product_type, currency) "
+            "VALUES ('prod_v5', 'Legacy Fund', 'equity_fund', 'CNY')"
+        )
+        conn.execute(
+            "INSERT INTO snapshot_batches (batch_id, as_of) VALUES ('batch_v5', '2025-01-01')"
+        )
+        conn.execute(
+            "INSERT INTO position_snapshots "
+            "(batch_id, account_id, product_id, quantity, market_value, cost_basis) "
+            "VALUES ('batch_v5', 'acc_v5', 'prod_v5', 500.0, 7500.0, 6000.0)"
+        )
+        conn.commit()
+        conn.close()
+
+        # Migrate
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+        assert db.schema_version() == 6
+
+        # Verify old data preserved
+        batch = db.get_batch("batch_v5")
+        assert batch is not None
+        assert len(batch["snapshots"]) == 1
+        snap = batch["snapshots"][0]
+        assert snap["account_id"] == "acc_v5"
+        assert snap["product_id"] == "prod_v5"
+        assert snap["quantity"] == 500.0
+        assert snap["market_value"] == 7500.0
+        assert snap["cost_basis"] == 6000.0
+
+        # Pre-v6 data cannot prove that the account snapshot was complete.
+        assert batch["account_coverage"] == [
+            {
+                "account_id": "acc_v5",
+                "coverage": "partial",
+                "notes": "Backfilled from pre-v6 snapshot; completeness unknown",
+            }
+        ]
+
+        # Verify quantity is now nullable (can insert NULL)
+        conn = db.connect()
+        try:
+            # Add a new snapshot with quantity=NULL — should succeed
+            conn.execute(
+                "INSERT INTO position_snapshots "
+                "(batch_id, account_id, product_id, quantity, market_value) "
+                "VALUES ('batch_v5', 'acc_v5', 'prod_v5', NULL, 8000.0)"
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass  # unique constraint on existing row — expected
+        finally:
+            conn.close()
+
+
+# ── DS-006A: Optional quantity ───────────────────────────────────────────
+
+class TestOptionalQuantity:
+    @pytest.fixture
+    def env(self, initialized):
+        from src.domain.products import ProductDefinition
+        initialized.create_account(account_id="acc_qty", name="Qty Account")
+        p = ProductDefinition(
+            product_id="prod_qty", name="Qty Product",
+            product_type="equity_fund", currency="CNY"
+        )
+        initialized.create_product(p)
+        initialized.create_snapshot_batch("batch_qty", as_of="2025-06-01")
+        initialized.set_batch_account_coverage("batch_qty", "acc_qty", "complete")
+        return "acc_qty", "prod_qty"
+
+    def test_quantity_none_with_market_value_works(self, initialized, env):
+        """market_value-only snapshot (quantity=None) is accepted."""
+        acc_id, prod_id = env
+        initialized.add_snapshot("batch_qty", acc_id, prod_id,
+                                 quantity=None, market_value=5000.0)
+        batch = initialized.get_batch("batch_qty")
+        assert len(batch["snapshots"]) == 1
+        assert batch["snapshots"][0]["quantity"] is None
+        assert batch["snapshots"][0]["market_value"] == 5000.0
+
+    def test_market_value_none_with_quantity_works(self, initialized, env):
+        """quantity-only snapshot (market_value=None) is accepted."""
+        acc_id, prod_id = env
+        initialized.add_snapshot("batch_qty", acc_id, prod_id,
+                                 quantity=250.0, market_value=None)
+        batch = initialized.get_batch("batch_qty")
+        assert batch["snapshots"][0]["quantity"] == 250.0
+        assert batch["snapshots"][0]["market_value"] is None
+
+    def test_both_quantity_and_market_value_none_rejected(self, initialized, env):
+        """Both quantity and market_value None → ValueError."""
+        acc_id, prod_id = env
+        with pytest.raises(ValueError, match="At least one"):
+            initialized.add_snapshot("batch_qty", acc_id, prod_id,
+                                     quantity=None, market_value=None)
+
+    def test_negative_quantity_rejected(self, initialized, env):
+        acc_id, prod_id = env
+        with pytest.raises(ValueError, match="quantity must not be negative"):
+            initialized.add_snapshot("batch_qty", acc_id, prod_id, quantity=-1.0)
+
+    def test_negative_market_value_rejected(self, initialized, env):
+        acc_id, prod_id = env
+        with pytest.raises(ValueError, match="market_value must not be negative"):
+            initialized.add_snapshot("batch_qty", acc_id, prod_id,
+                                     market_value=-100.0)
+
+    def test_negative_cost_basis_rejected(self, initialized, env):
+        acc_id, prod_id = env
+        with pytest.raises(ValueError, match="cost_basis must not be negative"):
+            initialized.add_snapshot("batch_qty", acc_id, prod_id,
+                                     quantity=10, cost_basis=-1.0)
+
+    def test_zero_values_are_legal(self, initialized, env):
+        """Zero quantity and zero market_value are accepted."""
+        acc_id, prod_id = env
+        initialized.add_snapshot("batch_qty", acc_id, prod_id,
+                                 quantity=0.0, market_value=0.0)
+        batch = initialized.get_batch("batch_qty")
+        assert batch["snapshots"][0]["quantity"] == 0.0
+        assert batch["snapshots"][0]["market_value"] == 0.0
+
+
+# ── DS-006A: Batch account coverage ────────────────────────────────────
+
+class TestBatchCoverage:
+    @pytest.fixture
+    def env(self, initialized):
+        from src.domain.products import ProductDefinition
+        initialized.create_account(account_id="acc_cov", name="Cov Account")
+        initialized.create_account(account_id="acc_cov2", name="Cov Account 2")
+        p = ProductDefinition(
+            product_id="prod_cov", name="Cov Product",
+            product_type="equity_fund", currency="CNY"
+        )
+        initialized.create_product(p)
+        return "acc_cov", "acc_cov2", "prod_cov"
+
+    def test_unregistered_account_cannot_add_snapshot(self, initialized, env):
+        """Adding a snapshot without coverage registration is rejected."""
+        acc_id, _, prod_id = env
+        initialized.create_snapshot_batch("batch_noreg", as_of="2025-06-01")
+        with pytest.raises(PortfolioBookError, match="not registered"):
+            initialized.add_snapshot("batch_noreg", acc_id, prod_id, quantity=10)
+
+    def test_empty_account_cannot_add_snapshot(self, initialized, env):
+        """An account marked 'empty' cannot receive position snapshots."""
+        acc_id, _, prod_id = env
+        initialized.create_snapshot_batch("batch_empty", as_of="2025-06-01")
+        initialized.set_batch_account_coverage("batch_empty", acc_id, "empty")
+        with pytest.raises(PortfolioBookError, match="marked as 'empty'"):
+            initialized.add_snapshot("batch_empty", acc_id, prod_id, quantity=10)
+
+    def test_account_with_positions_cannot_be_changed_to_empty(
+        self, initialized, env
+    ):
+        """Changing coverage must not create an empty account with positions."""
+        acc_id, _, prod_id = env
+        initialized.create_snapshot_batch("batch_notempty", as_of="2025-06-01")
+        initialized.set_batch_account_coverage(
+            "batch_notempty", acc_id, "partial"
+        )
+        initialized.add_snapshot(
+            "batch_notempty", acc_id, prod_id, market_value=100.0
+        )
+        with pytest.raises(PortfolioBookError, match="cannot be marked empty"):
+            initialized.set_batch_account_coverage(
+                "batch_notempty", acc_id, "empty"
+            )
+
+    def test_database_constraint_rejects_invalid_coverage(self, initialized, env):
+        """Direct writes cannot bypass the coverage enum."""
+        acc_id, _, _ = env
+        initialized.create_snapshot_batch("batch_check", as_of="2025-06-01")
+        with closing(initialized.connect()) as conn:
+            with pytest.raises(sqlite3.IntegrityError):
+                conn.execute(
+                    "INSERT INTO snapshot_batch_accounts "
+                    "(batch_id, account_id, coverage) VALUES (?, ?, ?)",
+                    ("batch_check", acc_id, "invalid"),
+                )
+
+    def test_confirmed_batch_cannot_modify_coverage(self, initialized, env):
+        """Coverage is frozen once a batch is confirmed."""
+        acc_id, _, _ = env
+        initialized.create_snapshot_batch("batch_cfm", as_of="2025-06-01")
+        initialized.set_batch_account_coverage("batch_cfm", acc_id, "complete")
+        initialized.confirm_batch("batch_cfm")
+        with pytest.raises(PortfolioBookError, match="Cannot modify coverage"):
+            initialized.set_batch_account_coverage("batch_cfm", acc_id, "partial")
+
+    def test_invalid_coverage_value_rejected(self, initialized, env):
+        acc_id, _, _ = env
+        initialized.create_snapshot_batch("batch_inv", as_of="2025-06-01")
+        with pytest.raises(ValueError, match="coverage must be one of"):
+            initialized.set_batch_account_coverage("batch_inv", acc_id, "nonsense")
+
+    def test_set_coverage_for_non_existent_batch(self, initialized, env):
+        acc_id, _, _ = env
+        with pytest.raises(PortfolioBookError, match="not found"):
+            initialized.set_batch_account_coverage("no_batch", acc_id, "complete")
+
+    def test_partial_progress_is_not_complete(self, initialized, env):
+        acc_id, acc_id2, _ = env
+        initialized.create_snapshot_batch("batch_part", as_of="2025-06-01")
+        initialized.set_batch_account_coverage("batch_part", acc_id, "complete")
+        initialized.set_batch_account_coverage("batch_part", acc_id2, "partial")
+
+        progress = initialized.get_batch_progress("batch_part")
+        assert progress["is_complete"] is False
+        assert len(progress["accounts"]) == 2
+
+    def test_complete_and_empty_is_complete(self, initialized, env):
+        """All accounts complete or empty → is_complete=True."""
+        acc_id, acc_id2, _ = env
+        initialized.create_snapshot_batch("batch_allok", as_of="2025-06-01")
+        initialized.set_batch_account_coverage("batch_allok", acc_id, "complete")
+        initialized.set_batch_account_coverage("batch_allok", acc_id2, "empty")
+
+        progress = initialized.get_batch_progress("batch_allok")
+        assert progress["is_complete"] is True
+
+    def test_no_accounts_cannot_confirm(self, initialized):
+        """A batch with zero registered accounts cannot be confirmed."""
+        initialized.create_snapshot_batch("batch_noacc", as_of="2025-06-01")
+        with pytest.raises(PortfolioBookError, match="no accounts registered"):
+            initialized.confirm_batch("batch_noacc")
+
+    def test_get_batch_progress_for_missing_batch(self, initialized):
+        with pytest.raises(PortfolioBookError, match="not found"):
+            initialized.get_batch_progress("no_such_batch")
+
+    def test_get_batch_includes_coverage(self, initialized, env):
+        acc_id, _, _ = env
+        initialized.create_snapshot_batch("batch_incov", as_of="2025-06-01")
+        initialized.set_batch_account_coverage("batch_incov", acc_id, "complete",
+                                                notes="All checked")
+
+        batch = initialized.get_batch("batch_incov")
+        assert "account_coverage" in batch
+        assert len(batch["account_coverage"]) == 1
+        assert batch["account_coverage"][0]["account_id"] == acc_id
+        assert batch["account_coverage"][0]["coverage"] == "complete"
+        assert batch["account_coverage"][0]["notes"] == "All checked"
+
+    def test_coverage_can_be_updated_in_draft(self, initialized, env):
+        """Coverage can be changed while the batch is still draft."""
+        acc_id, _, _ = env
+        initialized.create_snapshot_batch("batch_upd", as_of="2025-06-01")
+        initialized.set_batch_account_coverage("batch_upd", acc_id, "partial")
+        assert initialized.get_batch("batch_upd")["account_coverage"][0]["coverage"] == "partial"
+
+        initialized.set_batch_account_coverage("batch_upd", acc_id, "complete")
+        assert initialized.get_batch("batch_upd")["account_coverage"][0]["coverage"] == "complete"

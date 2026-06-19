@@ -449,26 +449,30 @@ class TestAssetDefinition:
         assert asset2.get_full_id() == '000001_2'
 
 
-def test_import_asset_function():
+def test_import_asset_function(tmp_path):
     """测试便捷函数 import_asset"""
     from src.asset_importer import import_asset
-    
-    asset = import_asset('600519', 'cn_stock_sh')
+
+    registry_path = tmp_path / "asset_registry.yaml"
+    asset = import_asset(
+        '600519', 'cn_stock_sh', registry_path=str(registry_path)
+    )
     assert asset is not None
     assert asset.symbol == '600519'
     assert asset.asset_type == 'cn_stock_sh'
 
 
-def test_get_asset_function():
+def test_get_asset_function(tmp_path):
     """测试便捷函数 get_asset"""
     from src.asset_importer import get_asset
-    
+
+    registry_path = tmp_path / "asset_registry.yaml"
     # 先导入一个资产
     from src.asset_importer import import_asset
-    import_asset('600519', 'cn_stock_sh')
-    
+    import_asset('600519', 'cn_stock_sh', registry_path=str(registry_path))
+
     # 然后获取
-    asset = get_asset('600519')
+    asset = get_asset('600519', registry_path=str(registry_path))
     assert asset is not None
     assert asset.symbol == '600519'
 

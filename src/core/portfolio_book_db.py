@@ -58,7 +58,18 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 5
+    CURRENT_SCHEMA_VERSION: int = 6
+    _ACCOUNT_UPDATE_FIELDS = frozenset(
+        {
+            "name",
+            "institution",
+            "account_type",
+            "base_currency",
+            "ownership_scope",
+            "status",
+            "notes",
+        }
+    )
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
@@ -188,6 +199,8 @@ class PortfolioBookDatabase:
             2: self._migrate_v2,
             3: self._migrate_v3,
             4: self._migrate_v4,
+            5: self._migrate_v5,
+            6: self._migrate_v6,
         }
 
         for v in range(from_v + 1, to_v + 1):
@@ -270,6 +283,74 @@ class PortfolioBookDatabase:
             "    FOREIGN KEY (account_id) REFERENCES accounts(account_id),"
             "    FOREIGN KEY (product_id) REFERENCES products(product_id)"
             ")"
+        )
+
+    def _migrate_v5(self, conn: sqlite3.Connection) -> None:
+        """Merge marker — no structural change.
+
+        v5 was the merge of snapshot (v3) and cashflow (v4) branches.
+        No DDL is executed; this migration exists so the version trail
+        is explicit and future maintainers can see that v5 is intentional.
+        """
+
+    def _migrate_v6(self, conn: sqlite3.Connection) -> None:
+        """Add snapshot_batch_accounts coverage table; make quantity nullable.
+
+        1. Create ``snapshot_batch_accounts`` to record per-account coverage
+           (complete / partial / empty) within each snapshot batch.
+        2. Rebuild ``position_snapshots`` so ``quantity`` is NULL-able,
+           preserving all existing data, unique constraints, and foreign keys.
+        """
+        # 1. Batch–account coverage table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS snapshot_batch_accounts ("
+            "    batch_id   TEXT NOT NULL,"
+            "    account_id TEXT NOT NULL,"
+            "    coverage   TEXT NOT NULL CHECK "
+            "        (coverage IN ('complete', 'partial', 'empty')),"
+            "    notes      TEXT,"
+            "    PRIMARY KEY (batch_id, account_id),"
+            "    FOREIGN KEY (batch_id) REFERENCES snapshot_batches(batch_id),"
+            "    FOREIGN KEY (account_id) REFERENCES accounts(account_id)"
+            ")"
+        )
+
+        # 2. Rebuild position_snapshots with nullable quantity
+        conn.execute(
+            "CREATE TABLE position_snapshots_v6 ("
+            "    snapshot_id   INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "    batch_id      TEXT NOT NULL,"
+            "    account_id    TEXT NOT NULL,"
+            "    product_id    TEXT NOT NULL,"
+            "    quantity      REAL,"
+            "    market_value  REAL,"
+            "    cost_basis    REAL,"
+            "    currency      TEXT DEFAULT 'CNY',"
+            "    source        TEXT,"
+            "    quality       TEXT,"
+            "    notes         TEXT,"
+            "    UNIQUE(batch_id, account_id, product_id),"
+            "    FOREIGN KEY (batch_id) REFERENCES snapshot_batches(batch_id),"
+            "    FOREIGN KEY (account_id) REFERENCES accounts(account_id),"
+            "    FOREIGN KEY (product_id) REFERENCES products(product_id)"
+            ")"
+        )
+        conn.execute(
+            "INSERT INTO position_snapshots_v6 SELECT * FROM position_snapshots"
+        )
+        # Existing v5 snapshots did not record whether an account was fully
+        # captured. Preserve that uncertainty instead of silently treating
+        # historical batches as complete.
+        conn.execute(
+            "INSERT OR IGNORE INTO snapshot_batch_accounts "
+            "(batch_id, account_id, coverage, notes) "
+            "SELECT DISTINCT batch_id, account_id, 'partial', "
+            "'Backfilled from pre-v6 snapshot; completeness unknown' "
+            "FROM position_snapshots"
+        )
+        conn.execute("DROP TABLE position_snapshots")
+        conn.execute(
+            "ALTER TABLE position_snapshots_v6 RENAME TO position_snapshots"
         )
 
     def _migrate_v4(self, conn: sqlite3.Connection) -> None:
@@ -433,6 +514,12 @@ class PortfolioBookDatabase:
         account_type: str = "brokerage", base_currency: str = "CNY",
         ownership_scope: str = "personal", notes: str = "",
     ) -> None:
+        if not account_id or not account_id.strip():
+            raise ValueError("account_id must not be empty")
+        if not name or not name.strip():
+            raise ValueError("name must not be empty")
+        if len(base_currency) != 3 or not base_currency.isalpha():
+            raise ValueError("base_currency must be a 3-letter currency code")
         if ownership_scope not in ("personal", "joint"):
             raise ValueError(
                 f"Invalid ownership_scope: {ownership_scope}. Must be 'personal' or 'joint'."
@@ -454,6 +541,22 @@ class PortfolioBookDatabase:
             ).fetchone()
 
     def update_account(self, account_id: str, **kwargs: Any) -> None:
+        unknown_fields = set(kwargs) - self._ACCOUNT_UPDATE_FIELDS
+        if unknown_fields:
+            names = ", ".join(sorted(unknown_fields))
+            raise ValueError(f"Unsupported account update fields: {names}")
+        if "name" in kwargs and (
+            not isinstance(kwargs["name"], str) or not kwargs["name"].strip()
+        ):
+            raise ValueError("name must not be empty")
+        if "base_currency" in kwargs:
+            currency = kwargs["base_currency"]
+            if (
+                not isinstance(currency, str)
+                or len(currency) != 3
+                or not currency.isalpha()
+            ):
+                raise ValueError("base_currency must be a 3-letter currency code")
         if "ownership_scope" in kwargs:
             if kwargs["ownership_scope"] not in ("personal", "joint"):
                 raise ValueError("Invalid ownership_scope")
@@ -469,7 +572,9 @@ class PortfolioBookDatabase:
         sql = f"UPDATE accounts SET {', '.join(fields)} WHERE account_id = ?"
         with closing(self.connect()) as conn:
             with conn:
-                conn.execute(sql, tuple(values))
+                cursor = conn.execute(sql, tuple(values))
+                if cursor.rowcount == 0:
+                    raise PortfolioBookError(f"Account {account_id} not found")
 
     def deactivate_account(self, account_id: str) -> None:
         self.update_account(account_id, status="inactive")
@@ -490,11 +595,24 @@ class PortfolioBookDatabase:
 
     def add_snapshot(
         self, batch_id: str, account_id: str, product_id: str,
-        quantity: float, market_value: Optional[float] = None,
+        quantity: Optional[float] = None,
+        market_value: Optional[float] = None,
         cost_basis: Optional[float] = None, currency: str = 'CNY',
         source: Optional[str] = None, quality: Optional[str] = None,
         notes: Optional[str] = None
     ) -> None:
+        # --- value validation ---
+        if quantity is None and market_value is None:
+            raise ValueError(
+                "At least one of quantity or market_value must be provided"
+            )
+        if quantity is not None and quantity < 0:
+            raise ValueError("quantity must not be negative")
+        if market_value is not None and market_value < 0:
+            raise ValueError("market_value must not be negative")
+        if cost_basis is not None and cost_basis < 0:
+            raise ValueError("cost_basis must not be negative")
+
         with closing(self.connect()) as conn:
             with conn:
                 batch = conn.execute(
@@ -504,7 +622,27 @@ class PortfolioBookDatabase:
                 if not batch:
                     raise PortfolioBookError(f"Batch {batch_id} not found")
                 if batch["status"] != "draft":
-                    raise PortfolioBookError(f"Cannot add to {batch['status']} batch {batch_id}")
+                    raise PortfolioBookError(
+                        f"Cannot add to {batch['status']} batch {batch_id}"
+                    )
+
+                # --- coverage check ---
+                cov_row = conn.execute(
+                    "SELECT coverage FROM snapshot_batch_accounts "
+                    "WHERE batch_id = ? AND account_id = ?",
+                    (batch_id, account_id),
+                ).fetchone()
+                if cov_row is None:
+                    raise PortfolioBookError(
+                        f"Account {account_id} is not registered in batch "
+                        f"{batch_id} coverage. Call set_batch_account_coverage() first."
+                    )
+                if cov_row["coverage"] == "empty":
+                    raise PortfolioBookError(
+                        f"Account {account_id} is marked as 'empty' in batch "
+                        f"{batch_id} — cannot add positions."
+                    )
+
                 conn.execute(
                     "INSERT INTO position_snapshots (batch_id, account_id, product_id, "
                     "quantity, market_value, cost_basis, currency, source, quality, notes) "
@@ -513,23 +651,87 @@ class PortfolioBookDatabase:
                      cost_basis, currency, source, quality, notes)
                 )
 
+    def set_batch_account_coverage(
+        self, batch_id: str, account_id: str, coverage: str,
+        notes: Optional[str] = None,
+    ) -> None:
+        """Register or update an account's coverage within a snapshot batch.
+
+        *coverage* must be ``"complete"``, ``"partial"``, or ``"empty"``.
+        Only **draft** batches accept coverage changes.
+        """
+        valid = {"complete", "partial", "empty"}
+        if coverage not in valid:
+            raise ValueError(
+                f"coverage must be one of {sorted(valid)}, got {coverage!r}"
+            )
+
+        with closing(self.connect()) as conn:
+            with conn:
+                batch = conn.execute(
+                    "SELECT status FROM snapshot_batches WHERE batch_id = ?",
+                    (batch_id,),
+                ).fetchone()
+                if batch is None:
+                    raise PortfolioBookError(f"Batch {batch_id} not found")
+                if batch["status"] != "draft":
+                    raise PortfolioBookError(
+                        f"Cannot modify coverage for {batch['status']} batch {batch_id}"
+                    )
+
+                if coverage == "empty":
+                    position_count = conn.execute(
+                        "SELECT COUNT(*) FROM position_snapshots "
+                        "WHERE batch_id = ? AND account_id = ?",
+                        (batch_id, account_id),
+                    ).fetchone()[0]
+                    if position_count:
+                        raise PortfolioBookError(
+                            f"Account {account_id} has positions in batch {batch_id} "
+                            "and cannot be marked empty"
+                        )
+
+                conn.execute(
+                    "INSERT INTO snapshot_batch_accounts "
+                    "(batch_id, account_id, coverage, notes) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(batch_id, account_id) DO UPDATE SET "
+                    "coverage = excluded.coverage, notes = excluded.notes",
+                    (batch_id, account_id, coverage, notes),
+                )
+
     def confirm_batch(self, batch_id: str) -> None:
         with closing(self.connect()) as conn:
             with conn:
+                batch = conn.execute(
+                    "SELECT status FROM snapshot_batches WHERE batch_id = ?",
+                    (batch_id,),
+                ).fetchone()
+                if batch is None:
+                    raise PortfolioBookError(f"Batch {batch_id} not found")
+                if batch["status"] != "draft":
+                    raise PortfolioBookError(
+                        f"Batch {batch_id} is already {batch['status']}"
+                    )
+
+                # At least one account must be registered in coverage
+                cov_count = conn.execute(
+                    "SELECT COUNT(*) FROM snapshot_batch_accounts "
+                    "WHERE batch_id = ?",
+                    (batch_id,),
+                ).fetchone()[0]
+                if cov_count == 0:
+                    raise PortfolioBookError(
+                        f"Batch {batch_id} has no accounts registered in "
+                        f"coverage. Call set_batch_account_coverage() first."
+                    )
+
                 cursor = conn.execute(
                     "UPDATE snapshot_batches SET status = 'confirmed', "
                     "updated_at = CURRENT_TIMESTAMP WHERE batch_id = ? AND status = 'draft'",
                     (batch_id,)
                 )
                 if cursor.rowcount == 0:
-                    batch = conn.execute(
-                        "SELECT status FROM snapshot_batches WHERE batch_id = ?",
-                        (batch_id,)
-                    ).fetchone()
-                    if not batch:
-                        raise PortfolioBookError(f"Batch {batch_id} not found")
-                    else:
-                        raise PortfolioBookError(f"Batch {batch_id} is already {batch['status']}")
+                    raise PortfolioBookError(f"Batch {batch_id} not found")
 
     def supersede_batch(self, batch_id: str) -> None:
         with closing(self.connect()) as conn:
@@ -554,7 +756,37 @@ class PortfolioBookDatabase:
                 "SELECT * FROM position_snapshots WHERE batch_id = ?", (batch_id,)
             ).fetchall()
             batch["snapshots"] = [dict(row) for row in snapshot_rows]
+            # Include account coverage
+            coverage_rows = conn.execute(
+                "SELECT account_id, coverage, notes "
+                "FROM snapshot_batch_accounts WHERE batch_id = ?",
+                (batch_id,),
+            ).fetchall()
+            batch["account_coverage"] = [dict(row) for row in coverage_rows]
             return batch
+
+    def get_batch_progress(self, batch_id: str) -> Dict[str, Any]:
+        """Return batch progress including per-account coverage and completeness.
+
+        ``is_complete`` is True only when **every** registered account has
+        coverage ``"complete"`` or ``"empty"``.
+        """
+        batch = self.get_batch(batch_id)
+        if batch is None:
+            raise PortfolioBookError(f"Batch {batch_id} not found")
+
+        coverages = batch.get("account_coverage", [])
+        is_complete = (
+            len(coverages) > 0
+            and all(c["coverage"] in ("complete", "empty") for c in coverages)
+        )
+        return {
+            "batch_id": batch["batch_id"],
+            "status": batch["status"],
+            "as_of": batch["as_of"],
+            "accounts": coverages,
+            "is_complete": is_complete,
+        }
 
     # ── Cashflow CRUD ───────────────────────────────────────────────────
 

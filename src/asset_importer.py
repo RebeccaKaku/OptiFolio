@@ -1024,13 +1024,20 @@ class AssetImporter:
             }
 
 # 便捷入口
-def import_asset(symbol: str, asset_type: str, **kwargs):
-    return AssetImporter().import_asset(symbol, asset_type, **kwargs)
+def import_asset(
+    symbol: str,
+    asset_type: str,
+    registry_path: str = "config/asset_registry.yaml",
+    **kwargs,
+):
+    return AssetImporter(registry_path=registry_path).import_asset(
+        symbol, asset_type, **kwargs
+    )
 
 
-def get_asset(symbol: str):
+def get_asset(symbol: str, registry_path: str = "config/asset_registry.yaml"):
     """获取已注册的资产。"""
-    registry = AssetRegistry()
+    registry = AssetRegistry(registry_path)
     return registry.get_asset(symbol)
 
 if __name__ == "__main__":
