@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptiFolio - 最小手工建账</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.5; }
+        #app { max-width: 800px; margin: 40px auto; background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; display: flex; flex-direction: column; min-height: 600px; }
+        header { padding: 24px; border-bottom: 1px solid #334155; background: #1e293b; }
+        h1 { font-size: 1.5rem; color: #60a5fa; margin-bottom: 16px; }
+        #wizard-steps { display: flex; gap: 8px; }
+        .step { flex: 1; padding: 8px; text-align: center; background: #334155; color: #94a3b8; border-radius: 6px; font-size: 0.85rem; font-weight: 600; }
+        .step.active { background: #2563eb; color: #fff; }
+        .step.done { background: #1e3a8a; color: #60a5fa; }
+
+        main { flex: 1; padding: 24px; overflow-y: auto; }
+        .wizard-panel h2 { font-size: 1.2rem; color: #93c5fd; margin-bottom: 20px; }
+        h3 { font-size: 1rem; color: #cbd5e1; margin-bottom: 12px; margin-top: 24px; }
+
+        form { background: #0f172a; padding: 20px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 24px; }
+        label { display: block; margin-bottom: 12px; color: #94a3b8; font-size: 0.9rem; }
+        input, select, textarea { width: 100%; padding: 8px 12px; background: #1e293b; border: 1px solid #475569; border-radius: 6px; color: #f1f5f9; margin-top: 4px; }
+        input:focus { outline: 2px solid #3b82f6; border-color: transparent; }
+
+        button { cursor: pointer; padding: 10px 20px; border-radius: 6px; font-weight: 600; border: none; transition: background 0.2s; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button[type="submit"], #next-btn, #create-batch-btn, #confirm-batch-btn { background: #2563eb; color: #fff; }
+        button[type="submit"]:hover, #next-btn:hover { background: #1d4ed8; }
+        #prev-btn { background: #475569; color: #fff; margin-right: 12px; }
+
+        .list-item { background: #0f172a; padding: 12px 16px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .list-item .info { font-size: 0.9rem; }
+        .list-item .id { font-family: monospace; color: #60a5fa; font-weight: 600; }
+        .list-item .meta { font-size: 0.8rem; color: #64748b; }
+
+        .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px; font-weight: 600; }
+        .badge-blue { background: #1e3a8a; color: #60a5fa; }
+        .badge-green { background: #064e3b; color: #34d399; }
+        .badge-yellow { background: #78350f; color: #fbbf24; }
+        .badge-gray { background: #334155; color: #94a3b8; }
+
+        footer { padding: 24px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; background: #1e293b; }
+
+        .error-msg { color: #f87171; font-size: 0.85rem; margin-top: 4px; }
+        .success-msg { color: #4ade80; font-size: 0.85rem; margin-top: 4px; }
+
+        /* Snapshot specific */
+        .account-row { border: 1px solid #334155; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+        .account-header { background: #334155; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .account-body { padding: 16px; background: #0f172a; }
+        .position-form { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; align-items: end; margin-top: 12px; }
+        .position-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 12px; }
+        .position-table th { text-align: left; color: #94a3b8; padding: 8px; border-bottom: 1px solid #334155; }
+        .position-table td { padding: 8px; border-bottom: 1px solid #1e293b; }
+
+        .progress-indicator { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-complete { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+        .dot-partial { background: #fbbf24; }
+        .dot-empty { background: #64748b; }
+
+        .alert { padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; }
+        .alert-error { background: #450a0a; color: #f87171; border: 1px solid #7f1d1d; }
+        .alert-warning { background: #451a03; color: #fbbf24; border: 1px solid #78350f; }
+        .alert-info { background: #1e3a8a; color: #60a5fa; border: 1px solid #1e40af; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>OptiFolio 建账向导</h1>
+            <nav id="wizard-steps">
+                <span class="step active" data-step="1">1. 账户</span>
+                <span class="step" data-step="2">2. 产品</span>
+                <span class="step" data-step="3">3. 快照</span>
+                <span class="step" data-step="4">4. 确认</span>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Step 1: Accounts -->
+            <section id="step-1" class="wizard-panel">
+                <h2>第一步：管理账户</h2>
+                <div id="account-list"></div>
+                <hr>
+                <form id="account-form">
+                    <h3>新建账户</h3>
+                    <label>账户 ID: <input type="text" name="account_id" required></label><br>
+                    <label>名称: <input type="text" name="name" required></label><br>
+                    <label>金融机构: <input type="text" name="institution"></label><br>
+                    <label>类型:
+                        <select name="account_type">
+                            <option value="brokerage">证券账户</option>
+                            <option value="bank">银行卡</option>
+                            <option value="wallet">电子钱包</option>
+                        </select>
+                    </label><br>
+                    <label>本币: <input type="text" name="base_currency" value="CNY" required></label><br>
+                    <label>归属:
+                        <select name="ownership_scope">
+                            <option value="personal">个人 (Personal)</option>
+                            <option value="joint">共同 (Joint)</option>
+                        </select>
+                    </label><br>
+                    <button type="submit">创建账户</button>
+                </form>
+            </section>
+
+            <!-- Step 2: Products -->
+            <section id="step-2" class="wizard-panel" style="display:none">
+                <h2>第二步：管理产品</h2>
+                <div id="product-list"></div>
+                <hr>
+                <form id="product-form">
+                    <h3>新建产品</h3>
+                    <label>产品 ID: <input type="text" name="product_id" required></label><br>
+                    <label>名称: <input type="text" name="name" required></label><br>
+                    <label>类型:
+                        <select name="product_type">
+                            <option value="bank_wmp">银行理财</option>
+                            <option value="fund">公募基金</option>
+                            <option value="stock">股票/股权</option>
+                            <option value="deposit">定期存款</option>
+                        </select>
+                    </label><br>
+                    <label>币种: <input type="text" name="currency" value="CNY" required></label><br>
+                    <label>发行方: <input type="text" name="issuer"></label><br>
+                    <button type="submit">创建产品</button>
+                </form>
+            </section>
+
+            <!-- Step 3: Snapshots -->
+            <section id="step-3" class="wizard-panel" style="display:none">
+                <h2>第三步：录入快照</h2>
+                <div id="batch-init">
+                    <label>快照日期 (as_of): <input type="date" id="batch-as-of" required></label>
+                    <button id="create-batch-btn">开始录入</button>
+                </div>
+                <div id="batch-editor" style="display:none">
+                    <h3>当前批次: <span id="current-batch-id"></span></h3>
+                    <div id="batch-accounts-progress"></div>
+                </div>
+            </section>
+
+            <!-- Step 4: Confirmation -->
+            <section id="step-4" class="wizard-panel" style="display:none">
+                <h2>第四步：核对并确认</h2>
+                <div id="validation-results"></div>
+                <button id="confirm-batch-btn">确认提交 (不可逆)</button>
+            </section>
+        </main>
+
+        <footer>
+            <button id="prev-btn" disabled>上一步</button>
+            <button id="next-btn">下一步</button>
+        </footer>
+    </div>
+
+    <script>
+        const state = {
+            currentStep: 1,
+            accounts: [],
+            products: [],
+            currentBatchId: null,
+            batchData: null,
+            validation: null
+        };
+
+        const API_BASE = '/api/book';
+
+        // --- Utils ---
+        async function api(path, options = {}) {
+            try {
+                const res = await fetch(`${API_BASE}${path}`, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'API Error');
+                return data;
+            } catch (err) {
+                console.error(err);
+                alert(`错误: ${err.message}`);
+                throw err;
+            }
+        }
+
+        function renderAccountList() {
+            const list = document.getElementById('account-list');
+            list.innerHTML = state.accounts.map(acc => `
+                <div class="list-item">
+                    <div class="info">
+                        <div class="id">${acc.account_id}</div>
+                        <div>${acc.name} <span class="badge badge-gray">${acc.account_type}</span></div>
+                        <div class="meta">${acc.institution || ''} | ${acc.base_currency} | ${acc.ownership_scope}</div>
+                    </div>
+                    <span class="badge ${acc.status === 'active' ? 'badge-green' : 'badge-gray'}">${acc.status}</span>
+                </div>
+            `).join('') || '<p class="meta">暂无账户</p>';
+        }
+
+        function renderProductList() {
+            const list = document.getElementById('product-list');
+            list.innerHTML = state.products.map(p => `
+                <div class="list-item">
+                    <div class="info">
+                        <div class="id">${p.product_id}</div>
+                        <div>${p.name} <span class="badge badge-blue">${p.product_type}</span></div>
+                        <div class="meta">${p.issuer || ''} | ${p.currency}</div>
+                    </div>
+                </div>
+            `).join('') || '<p class="meta">暂无产品</p>';
+        }
+
+        async function loadStepData() {
+            if (state.currentStep === 1) {
+                const res = await api('/accounts?status=all');
+                state.accounts = res.data;
+                renderAccountList();
+            } else if (state.currentStep === 2) {
+                const res = await api('/products');
+                state.products = res.data;
+                renderProductList();
+            } else if (state.currentStep === 3) {
+                const resA = await api('/accounts');
+                state.accounts = resA.data;
+                const resP = await api('/products');
+                state.products = resP.data;
+                if (state.currentBatchId) {
+                    await refreshBatch();
+                }
+            } else if (state.currentStep === 4) {
+                if (state.currentBatchId) {
+                    const res = await api(`/snapshot-batches/${state.currentBatchId}/validate`, { method: 'POST' });
+                    state.validation = res.data;
+                    renderValidation();
+                }
+            }
+        }
+
+        async function refreshBatch() {
+            const res = await api(`/snapshot-batches/${state.currentBatchId}`);
+            state.batchData = res.data;
+            renderBatchEditor();
+        }
+
+        function renderBatchEditor() {
+            document.getElementById('batch-init').style.display = 'none';
+            document.getElementById('batch-editor').style.display = 'block';
+            document.getElementById('current-batch-id').textContent = state.currentBatchId;
+
+            const container = document.getElementById('batch-accounts-progress');
+            container.innerHTML = state.accounts.map(acc => {
+                const cov = state.batchData.account_coverage.find(c => c.account_id === acc.account_id);
+                const positions = state.batchData.snapshots.filter(s => s.account_id === acc.account_id);
+
+                return `
+                    <div class="account-row" id="acc-row-${acc.account_id}">
+                        <div class="account-header" onclick="toggleAccountRow('${acc.account_id}')">
+                            <div>
+                                <strong>${acc.name}</strong> (${acc.account_id})
+                            </div>
+                            <div class="progress-indicator">
+                                <span class="dot dot-${cov ? cov.coverage : 'none'}"></span>
+                                ${cov ? cov.coverage : '未录入'}
+                            </div>
+                        </div>
+                        <div class="account-body" style="display:none" id="acc-body-${acc.account_id}">
+                            <label>覆盖进度:
+                                <select onchange="updateCoverage('${acc.account_id}', this.value)">
+                                    <option value="" ${!cov ? 'selected' : ''}>-- 请选择 --</option>
+                                    <option value="complete" ${cov?.coverage === 'complete' ? 'selected' : ''}>完整录入 (Complete)</option>
+                                    <option value="partial" ${cov?.coverage === 'partial' ? 'selected' : ''}>部分录入 (Partial)</option>
+                                    <option value="empty" ${cov?.coverage === 'empty' ? 'selected' : ''}>确认无余额 (Empty)</option>
+                                </select>
+                            </label>
+
+                            ${cov && cov.coverage !== 'empty' ? `
+                                <h4>持仓位置</h4>
+                                <table class="position-table">
+                                    <thead>
+                                        <tr><th>产品</th><th>数量</th><th>市值</th><th>操作</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        ${positions.map(pos => `
+                                            <tr>
+                                                <td>${pos.product_id}</td>
+                                                <td>${pos.quantity || '-'}</td>
+                                                <td>${pos.market_value || '-'} ${pos.currency}</td>
+                                                <td><button disabled>删除</button></td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                                <form class="position-form" onsubmit="addPosition(event, '${acc.account_id}')">
+                                    <label>产品:
+                                        <select name="product_id" required>
+                                            ${state.products.map(p => `<option value="${p.product_id}">${p.name} (${p.product_id})</option>`).join('')}
+                                        </select>
+                                    </label>
+                                    <label>数量: <input type="number" name="quantity" step="any"></label>
+                                    <label>市值: <input type="number" name="market_value" step="any"></label>
+                                    <button type="submit">添加</button>
+                                </form>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleAccountRow(id) {
+            const body = document.getElementById(`acc-body-${id}`);
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+            } else {
+                body.style.display = 'none';
+            }
+        }
+
+        async function updateCoverage(accountId, coverage) {
+            if (!coverage) return;
+            await api(`/snapshot-batches/${state.currentBatchId}/accounts/${accountId}/coverage`, {
+                method: 'PUT',
+                body: JSON.stringify({ coverage })
+            });
+            await refreshBatch();
+        }
+
+        async function addPosition(event, accountId) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const product_id = formData.get('product_id');
+            const product = state.products.find(p => p.product_id === product_id);
+
+            const payload = {
+                account_id: accountId,
+                product_id: product_id,
+                quantity: formData.get('quantity') ? parseFloat(formData.get('quantity')) : null,
+                market_value: formData.get('market_value') ? parseFloat(formData.get('market_value')) : null,
+                currency: product.currency
+            };
+
+            await api(`/snapshot-batches/${state.currentBatchId}/positions`, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            await refreshBatch();
+        }
+
+        function renderValidation() {
+            const v = state.validation;
+            const container = document.getElementById('validation-results');
+
+            let html = '';
+            if (v.errors.length > 0) {
+                html += `<div class="alert alert-error"><strong>阻止确认的错误:</strong><ul>${v.errors.map(e => `<li>${e}</li>`).join('')}</ul></div>`;
+            }
+            if (v.warnings.length > 0) {
+                html += `<div class="alert alert-warning"><strong>建议检查的警告:</strong><ul>${v.warnings.map(w => `<li>${w}</li>`).join('')}</ul></div>`;
+            }
+            if (v.errors.length === 0 && v.warnings.length === 0) {
+                html += `<div class="alert alert-info">一切就绪，可以确认。</div>`;
+            }
+
+            html += `<h3>覆盖进度统计</h3>`;
+            html += v.account_progress.map(p => `
+                <div class="list-item">
+                    <span>${p.account_id}</span>
+                    <span class="badge ${p.coverage === 'complete' ? 'badge-green' : (p.coverage === 'partial' ? 'badge-yellow' : 'badge-gray')}">${p.coverage}</span>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+            document.getElementById('confirm-batch-btn').disabled = !v.is_confirmable;
+        }
+
+        // --- Event Listeners ---
+        document.getElementById('account-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+            await api('/accounts', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            e.target.reset();
+            await loadStepData();
+        };
+
+        document.getElementById('product-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const payload = Object.fromEntries(formData.entries());
+            await api('/products', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            e.target.reset();
+            await loadStepData();
+        };
+
+        document.getElementById('create-batch-btn').onclick = async () => {
+            const as_of = document.getElementById('batch-as-of').value;
+            if (!as_of) return alert('请选择日期');
+            const batch_id = `manual-${as_of}-${Date.now()}`;
+            await api('/snapshot-batches', {
+                method: 'POST',
+                body: JSON.stringify({ batch_id, as_of })
+            });
+            state.currentBatchId = batch_id;
+            await refreshBatch();
+        };
+
+        document.getElementById('confirm-batch-btn').onclick = async () => {
+            if (!confirm('确认提交后，该批次快照将不可修改。是否继续？')) return;
+            await api(`/snapshot-batches/${state.currentBatchId}/confirm`, { method: 'POST' });
+            alert('确认成功！');
+            window.location.href = '/';
+        };
+
+        document.getElementById('next-btn').onclick = () => {
+            if (state.currentStep < 4) {
+                state.currentStep++;
+                updateUI();
+            }
+        };
+
+        document.getElementById('prev-btn').onclick = () => {
+            if (state.currentStep > 1) {
+                state.currentStep--;
+                updateUI();
+            }
+        };
+
+        function updateUI() {
+            document.querySelectorAll('.wizard-panel').forEach(p => p.style.display = 'none');
+            document.getElementById(`step-${state.currentStep}`).style.display = 'block';
+
+            document.querySelectorAll('.step').forEach(s => {
+                const sNum = parseInt(s.dataset.step);
+                s.className = 'step' + (sNum === state.currentStep ? ' active' : (sNum < state.currentStep ? ' done' : ''));
+            });
+
+            document.getElementById('prev-btn').disabled = state.currentStep === 1;
+            document.getElementById('next-btn').style.display = state.currentStep === 4 ? 'none' : 'inline-block';
+
+            loadStepData();
+        }
+
+        // Init
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('batch-as-of').value = today;
+        updateUI();
+    </script>
+</body>
+</html>
