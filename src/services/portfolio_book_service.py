@@ -9,6 +9,7 @@ never see raw SQLite errors or internal stack traces.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
 
 from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
@@ -606,6 +607,175 @@ class PortfolioBookService:
             return failure(str(exc), error_code="DATABASE_ERROR")
         except Exception:
             _log.exception("Unexpected error confirming exposure batch %r", batch_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    # ── Purpose Buckets ──────────────────────────────────────────
+
+    def list_buckets(self, status: str = "active") -> Dict[str, Any]:
+        """List buckets, optionally filtered by status."""
+        try:
+            rows = self._db.list_buckets(status)
+            return success([_row_to_dict(r) for r in rows])
+        except (ValueError, PortfolioBookError) as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error listing buckets")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def get_bucket(self, bucket_id: str) -> Dict[str, Any]:
+        """Get a single bucket by ID."""
+        try:
+            row = self._db.get_bucket(bucket_id)
+            if row is None:
+                return failure(f"Bucket {bucket_id!r} not found", error_code="NOT_FOUND")
+            return success(_row_to_dict(row))
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error getting bucket %r", bucket_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def create_bucket(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new purpose bucket."""
+        try:
+            pii_field = _scan_pii(data)
+            if pii_field:
+                return failure(
+                    f"Field {pii_field!r} looks like PII and is not accepted",
+                    error_code="PII_REJECTED"
+                )
+
+            bucket_id = data["bucket_id"]
+            self._db.create_bucket(
+                bucket_id=bucket_id,
+                name=data["name"],
+                bucket_type=data["bucket_type"],
+                base_currency=data.get("base_currency", "CNY").upper(),
+                benchmark_id=data.get("benchmark_id"),
+                liquidity_horizon_days=data.get("liquidity_horizon_days"),
+                risk_notes=data.get("risk_notes", ""),
+            )
+            created = self._db.get_bucket(bucket_id)
+            return success(_row_to_dict(created), "Bucket created")
+        except KeyError as exc:
+            return failure(f"Missing required field: {exc.args[0]}", error_code="VALIDATION_ERROR")
+        except (ValueError, TypeError) as exc:
+            return failure(str(exc), error_code="VALIDATION_ERROR")
+        except sqlite3_err as exc:
+            return _handle_sqlite_error(exc)
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error creating bucket")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def update_bucket(self, bucket_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update fields of a purpose bucket."""
+        try:
+            pii_field = _scan_pii(data)
+            if pii_field:
+                return failure(
+                    f"Field {pii_field!r} looks like PII and is not accepted",
+                    error_code="PII_REJECTED"
+                )
+
+            changes = dict(data)
+            if "base_currency" in changes:
+                changes["base_currency"] = changes["base_currency"].upper()
+
+            self._db.update_bucket(bucket_id, **changes)
+            updated = self._db.get_bucket(bucket_id)
+            return success(_row_to_dict(updated), "Bucket updated")
+        except (ValueError, TypeError) as exc:
+            return failure(str(exc), error_code="VALIDATION_ERROR")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except sqlite3_err as exc:
+            return _handle_sqlite_error(exc)
+        except Exception:
+            _log.exception("Unexpected error updating bucket %r", bucket_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def deactivate_bucket(self, bucket_id: str) -> Dict[str, Any]:
+        """Deactivate a bucket."""
+        try:
+            self._db.deactivate_bucket(bucket_id)
+            updated = self._db.get_bucket(bucket_id)
+            return success(_row_to_dict(updated), "Bucket deactivated")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error deactivating bucket %r", bucket_id)
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    # ── Allocations ──────────────────────────────────────────────
+
+    def set_position_bucket_allocation(
+        self, batch_id: str, account_id: str, product_id: str, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Set allocation for a position to a bucket."""
+        try:
+            pii_field = _scan_pii(data)
+            if pii_field:
+                return failure(
+                    f"Field {pii_field!r} looks like PII and is not accepted",
+                    error_code="PII_REJECTED"
+                )
+
+            allocation_id = data.get("allocation_id", str(uuid.uuid4()))
+
+            self._db.set_position_bucket_allocation(
+                allocation_id=allocation_id,
+                batch_id=batch_id,
+                account_id=account_id,
+                product_id=product_id,
+                bucket_id=data["bucket_id"],
+                allocation_ppm=data["allocation_ppm"],
+                notes=data.get("notes", "")
+            )
+            return success(None, "Allocation set")
+        except KeyError as exc:
+            return failure(f"Missing required field: {exc.args[0]}", error_code="VALIDATION_ERROR")
+        except (ValueError, TypeError) as exc:
+            return failure(str(exc), error_code="VALIDATION_ERROR")
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except sqlite3_err as exc:
+            return _handle_sqlite_error(exc)
+        except Exception:
+            _log.exception("Unexpected error setting allocation")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def get_position_bucket_allocations(
+        self, batch_id: str, account_id: str, product_id: str
+    ) -> Dict[str, Any]:
+        """Get all allocations and residual for a position."""
+        try:
+            rows = self._db.get_position_bucket_allocations(batch_id, account_id, product_id)
+            allocations = [_row_to_dict(r) for r in rows]
+            total_ppm = sum(a["allocation_ppm"] for a in allocations)
+            residual_ppm = 1000000 - total_ppm
+
+            return success({
+                "allocations": allocations,
+                "total_ppm": total_ppm,
+                "unassigned_ppm": residual_ppm
+            })
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error getting allocations")
+            return failure("Internal server error", error_code="INTERNAL_ERROR")
+
+    def get_batch_bucket_allocations(self, batch_id: str) -> Dict[str, Any]:
+        """Get all allocations for a whole batch."""
+        try:
+            rows = self._db.get_batch_bucket_allocations(batch_id)
+            return success([_row_to_dict(r) for r in rows])
+        except PortfolioBookError as exc:
+            return failure(str(exc), error_code="DATABASE_ERROR")
+        except Exception:
+            _log.exception("Unexpected error getting batch allocations")
             return failure("Internal server error", error_code="INTERNAL_ERROR")
 
 

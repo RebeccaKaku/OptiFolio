@@ -159,6 +159,36 @@ class PositionSnapshotCreateRequest(StrictRequestModel):
     notes: Optional[str] = Field(default=None)
 
 
+class PurposeBucketCreateRequest(StrictRequestModel):
+    bucket_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    bucket_type: str = Field(pattern="^(core|purpose_reserve|learning)$")
+    base_currency: str = Field(default="CNY", min_length=3, max_length=3)
+    benchmark_id: Optional[str] = Field(default=None)
+    liquidity_horizon_days: Optional[int] = Field(default=None)
+    risk_notes: str = Field(default="")
+
+
+class PurposeBucketUpdateRequest(StrictRequestModel):
+    name: Optional[str] = Field(default=None, min_length=1)
+    bucket_type: Optional[str] = Field(default=None, pattern="^(core|purpose_reserve|learning)$")
+    base_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
+    benchmark_id: Optional[str] = Field(default=None)
+    liquidity_horizon_days: Optional[int] = Field(default=None)
+    risk_notes: Optional[str] = Field(default=None)
+    status: Optional[str] = Field(default=None, pattern="^(active|inactive)$")
+
+    def update_dict(self) -> Dict[str, Any]:
+        return _model_dump(self, exclude_unset=True, exclude_none=False) # allow none for optional fields
+
+
+class PositionBucketAllocationRequest(StrictRequestModel):
+    bucket_id: str = Field(min_length=1)
+    allocation_ppm: int = Field(ge=0, le=1000000)
+    notes: str = Field(default="")
+    allocation_id: Optional[str] = Field(default=None)
+
+
 # ── Status code mapping ─────────────────────────────────────────────────────
 
 _ERROR_CODE_STATUS = {
@@ -220,6 +250,82 @@ def get_account(account_id: str, svc=Depends(_get_service)):
     if not result.get("success") and result.get("error_code") == "NOT_FOUND":
         status_code = 404
     return _json_response(result, status_override=status_code)
+
+
+# ── Purpose Bucket routes ───────────────────────────────────────────────────
+
+
+@router.get("/buckets")
+def list_buckets(status: str = "active", svc=Depends(_get_service)):
+    """List purpose buckets."""
+    result = svc.list_buckets(status)
+    return _json_response(result)
+
+
+@router.post("/buckets")
+def create_bucket(payload: PurposeBucketCreateRequest, svc=Depends(_get_service)):
+    """Create a new purpose bucket."""
+    result = svc.create_bucket(_model_dump(payload))
+    status_code = 201 if result.get("success") else None
+    return _json_response(result, status_override=status_code)
+
+
+@router.get("/buckets/{bucket_id}")
+def get_bucket(bucket_id: str, svc=Depends(_get_service)):
+    """Get bucket details."""
+    result = svc.get_bucket(bucket_id)
+    return _json_response(result)
+
+
+@router.patch("/buckets/{bucket_id}")
+def update_bucket(bucket_id: str, payload: PurposeBucketUpdateRequest, svc=Depends(_get_service)):
+    """Update fields on an existing bucket."""
+    result = svc.update_bucket(bucket_id, payload.update_dict())
+    return _json_response(result)
+
+
+@router.post("/buckets/{bucket_id}/deactivate")
+def deactivate_bucket(bucket_id: str, svc=Depends(_get_service)):
+    """Deactivate a bucket."""
+    result = svc.deactivate_bucket(bucket_id)
+    return _json_response(result)
+
+
+# ── Allocation routes ───────────────────────────────────────────────────────
+
+
+@router.put("/snapshot-batches/{batch_id}/accounts/{account_id}/products/{product_id}/allocations")
+def set_position_bucket_allocation(
+    batch_id: str,
+    account_id: str,
+    product_id: str,
+    payload: PositionBucketAllocationRequest,
+    svc=Depends(_get_service)
+):
+    """Set allocation for a confirmed position to a bucket."""
+    result = svc.set_position_bucket_allocation(
+        batch_id, account_id, product_id, _model_dump(payload)
+    )
+    return _json_response(result)
+
+
+@router.get("/snapshot-batches/{batch_id}/accounts/{account_id}/products/{product_id}/allocations")
+def get_position_bucket_allocations(
+    batch_id: str,
+    account_id: str,
+    product_id: str,
+    svc=Depends(_get_service)
+):
+    """Get all bucket allocations for a position."""
+    result = svc.get_position_bucket_allocations(batch_id, account_id, product_id)
+    return _json_response(result)
+
+
+@router.get("/snapshot-batches/{batch_id}/allocations")
+def get_batch_bucket_allocations(batch_id: str, svc=Depends(_get_service)):
+    """Get all bucket allocations for a whole batch."""
+    result = svc.get_batch_bucket_allocations(batch_id)
+    return _json_response(result)
 
 
 # ── Snapshot routes ─────────────────────────────────────────────────────────
