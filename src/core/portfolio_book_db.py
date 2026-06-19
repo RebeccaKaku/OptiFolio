@@ -73,7 +73,12 @@ class PortfolioBookDatabase:
 
     def __init__(self, path: Optional[str | Path] = None) -> None:
         if path is None:
-            path = PROJECT_ROOT / "local" / "portfolio_book.sqlite"
+            import os
+            env_path = os.environ.get("OPTIFOLIO_DB_PATH")
+            if env_path:
+                path = Path(env_path)
+            else:
+                path = PROJECT_ROOT / "local" / "portfolio_book.sqlite"
         self._path: Path = Path(path)
 
     # ── Public API ──────────────────────────────────────────────────────

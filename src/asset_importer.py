@@ -61,9 +61,8 @@ class AssetRegistry:
     def config_path(self, v):
         if v != self._config_path: self._config_path, self._db_instance = v, None; self._init_db(); self.load_config()
     def _init_db(self):
-        import tempfile
         base = os.path.basename(self._config_path).replace(".yaml", ".sqlite")
-        p = os.path.join(tempfile.gettempdir(), f"optifolio_{base}")
+        p = os.path.join(os.path.dirname(self._config_path) or ".", base)
         from src.core.portfolio_book_db import PortfolioBookDatabase
         self._db_instance = PortfolioBookDatabase(p); self._db_instance.initialize()
     def _sync(self):
@@ -79,7 +78,7 @@ class AssetRegistry:
         self._sync()
         if os.path.exists(self.config_path):
             try:
-                with open(self.config_path, 'r') as f:
+                with open(self.config_path, 'r', encoding='utf-8') as f:
                     cfg = yaml.safe_load(f)
                     if cfg and 'assets' in cfg:
                         for d in cfg['assets']: self._db_save(AssetDefinition.from_dict(d))
@@ -139,7 +138,7 @@ class AssetRegistry:
         except: r = self.detect_currency_from_name(n); return r if r != 'CNY' else d
     def save_config(self):
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-        with open(self.config_path, 'w') as f: yaml.dump({'version': '2.0', 'assets': [a.to_dict() for a in self.list_all_assets()]}, f, allow_unicode=True)
+        with open(self.config_path, 'w', encoding='utf-8') as f: yaml.dump({'version': '2.0', 'assets': [a.to_dict() for a in self.list_all_assets()]}, f, allow_unicode=True)
 
 class AssetImporter:
     def __init__(self, registry_path="config/asset_registry.yaml", candidates_path="config/candidates.yaml", **kwargs):

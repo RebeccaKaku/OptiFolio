@@ -189,3 +189,4 @@ config/portfolio.yaml
 scratch/
 .pytest_tmp*/
 .pytest_tmp*/
+config/*.sqlite
