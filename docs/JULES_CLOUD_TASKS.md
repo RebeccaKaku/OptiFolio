@@ -22,7 +22,7 @@ overlap between them, each is one PR.
 
 ---
 
-## Task 6: Wire AlertEngine Into Application Services
+## Task 6 (DONE): Wire AlertEngine Into Application Services
 
 **Zone**: A — Alerts
 **Files**: `src/services/application.py`, `src/api/fastapi_app.py`
@@ -55,7 +55,7 @@ Acceptance:
 
 ---
 
-## Task 7: FinData Store Cleanup — Dead Code And Re-Export Layer
+## Task 7 (DONE): FinData Store Cleanup — Dead Code And Re-Export Layer
 
 **Zone**: B — Data Foundation
 **Files**: `FinData/adapters/interfaces.py` (DELETE), `FinData/store/schemas.py` (EDIT)
@@ -87,7 +87,7 @@ Acceptance:
 
 ---
 
-## Task 8: Fix Dashboard Hardcoded Date And Approximate Position Values
+## Task 8 (DONE): Fix Dashboard Hardcoded Date And Approximate Position Values
 
 **Zone**: C — API / Dashboard
 **Files**: `src/api/static_dashboard.py`
@@ -120,7 +120,7 @@ Acceptance:
 
 ---
 
-## Task 9: Fix Pandas FutureWarning In Ingestion Log
+## Task 9 (DONE): Fix Pandas FutureWarning In Ingestion Log
 
 **Zone**: B — Data Foundation
 **Files**: `FinData/store/ingestion_log.py`
@@ -149,7 +149,7 @@ Acceptance:
 
 ---
 
-## Task 10: Unify Exposure Pct Convention
+## Task 10 (DONE): Unify Exposure Pct Convention
 
 **Zone**: D — Financial Core
 **Files**: `src/analytics/exposure.py`
@@ -179,7 +179,7 @@ Acceptance:
 
 ---
 
-## Task 11: Wire Scheduler Daily Alert Check
+## Task 11 (DONE): Wire Scheduler Daily Alert Check
 
 **Zone**: A — Alerts
 **Files**: `tools/scheduler.py`
@@ -214,14 +214,24 @@ Acceptance:
 ## Dependency Graph
 
 ```
-Task 6 (AlertEngine wiring)  ──→  Task 11 (scheduler alerts)
-Task 7 (store cleanup)            ← independent
-Task 8 (dashboard fixes)          ← independent
-Task 9 (pandas FutureWarning)     ← independent
-Task 10 (pct convention)          ← independent
+Task 6 (AlertEngine wiring) — DONE ──→  Task 11 (scheduler alerts) — DONE
+Task 7 (store cleanup) — DONE            ← independent
+Task 8 (dashboard fixes) — DONE          ← independent
+Task 9 (pandas FutureWarning) — DONE     ← independent
+Task 10 (pct convention) — DONE          ← independent
 ```
 
 Only Task 11 depends on Task 6. All other tasks can run in parallel.
+
+---
+
+## DS Task Status
+
+| Task | Status | Description |
+| :--- | :--- | :--- |
+| DS-001~014 | Complete | Personal Book Foundation + API + M2 analytics |
+| DS-015 | In progress | My Money Summary |
+| DS-016~027 | Pending | Risk + Decisions + Lab |
 
 ## Quick Start For Jules
 
