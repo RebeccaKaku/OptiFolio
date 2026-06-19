@@ -106,7 +106,7 @@ assets:
   last_updated: '2026-05-22T03:43:51.811457'
   name: 平安银行
   source: akshare_stock_info
-  symbol: sh000001
+  symbol: '000001'
 - asset_type: cn_stock
   attributes:
     exchange: SH
@@ -114,15 +114,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.637710'
   name: 中国石化
   source: akshare_stock_info
-  symbol: sh600028
-- asset_type: cn_stock
-  attributes:
-    exchange: SH
-  currency: CNY
-  last_updated: '2026-02-13T21:11:15.725891'
-  name: 贵州茅台
-  source: akshare_stock_info
-  symbol: sh600519
+  symbol: '600028'
 - asset_type: cn_stock
   attributes:
     exchange: SH
@@ -130,7 +122,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.601514'
   name: 工商银行
   source: akshare_stock_info
-  symbol: sh601398
+  symbol: '601398'
 - asset_type: cn_stock
   attributes:
     exchange: SH
@@ -138,7 +130,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.619995'
   name: 紫金矿业
   source: akshare_stock_info
-  symbol: sh601899
+  symbol: '601899'
 description: 资产注册表 (自动前缀+智能币种)
 last_updated: '2026-06-18T17:22:53.247114'
 version: '2.0'
