@@ -21,19 +21,11 @@ from src.asset_importer import AssetRegistry, AssetDefinition
 class TestAssetRegistryAdvanced:
     """测试资产注册表高级功能"""
 
-    def setup_method(self):
-        """每个测试前的设置"""
-        self.registry = AssetRegistry()
-        self.test_config_path = "config/test_registry_advanced.yaml"
-        self.registry.config_path = self.test_config_path
-        self.registry.assets.clear()
-        if os.path.exists(self.test_config_path):
-            os.remove(self.test_config_path)
-
-    def teardown_method(self):
-        """每个测试后的清理"""
-        if os.path.exists(self.test_config_path):
-            os.remove(self.test_config_path)
+    @pytest.fixture(autouse=True)
+    def _tmp_registry(self, tmp_path):
+        """每个测试使用独立临时目录"""
+        self.test_config_path = str(tmp_path / "test_registry.yaml")
+        self.registry = AssetRegistry(self.test_config_path)
 
     def test_conflict_resolution_scenarios(self):
         """测试冲突解决的各种场景"""
@@ -333,19 +325,13 @@ class TestAssetRegistryAdvanced:
         assert any('is_conflict' in asset for asset in conflict_assets)
 
 
-def test_registry_singleton_behavior():
+def test_registry_singleton_behavior(tmp_path):
     """测试注册表实例独立性 (已适配当前实现)"""
-    registry1 = AssetRegistry("config/test_singleton1.yaml")
-    registry2 = AssetRegistry("config/test_singleton2.yaml")
-
+    p1, p2 = str(tmp_path / "s1.yaml"), str(tmp_path / "s2.yaml")
+    registry1 = AssetRegistry(p1)
+    registry2 = AssetRegistry(p2)
     assert registry1 is not registry2
     assert registry1.config_path != registry2.config_path
-
-    import os
-    if os.path.exists("config/test_singleton1.yaml"):
-        os.remove("config/test_singleton1.yaml")
-    if os.path.exists("config/test_singleton2.yaml"):
-        os.remove("config/test_singleton2.yaml")
 
 
 if __name__ == '__main__':

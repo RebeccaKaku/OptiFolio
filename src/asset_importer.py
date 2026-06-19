@@ -61,8 +61,9 @@ class AssetRegistry:
     def config_path(self, v):
         if v != self._config_path: self._config_path, self._db_instance = v, None; self._init_db(); self.load_config()
     def _init_db(self):
-        p = self._config_path.replace(".yaml", ".sqlite") if ".yaml" in self._config_path else self._config_path + ".sqlite"
-        if "test" in self._config_path and not os.path.exists(self._config_path) and os.path.exists(p): os.remove(p)
+        import tempfile
+        base = os.path.basename(self._config_path).replace(".yaml", ".sqlite")
+        p = os.path.join(tempfile.gettempdir(), f"optifolio_{base}")
         from src.core.portfolio_book_db import PortfolioBookDatabase
         self._db_instance = PortfolioBookDatabase(p); self._db_instance.initialize()
     def _sync(self):

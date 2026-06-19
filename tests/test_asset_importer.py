@@ -15,20 +15,10 @@ from src.asset_importer import AssetImporter, AssetDefinition, AssetRegistry
 class TestAssetImporter:
     """测试资产导入器"""
     
-    def setup_method(self):
-        """每个测试前的设置"""
-        self.importer = AssetImporter()
-        # 使用测试配置文件，避免污染正式配置
-        self.test_registry_path = "config/test_asset_registry.yaml"
-        self.importer.registry.config_path = self.test_registry_path
-        if os.path.exists(self.test_registry_path):
-            os.remove(self.test_registry_path)
-    
-    def teardown_method(self):
-        """每个测试后的清理"""
-        # 清理测试配置文件
-        if os.path.exists(self.test_registry_path):
-            os.remove(self.test_registry_path)
+    @pytest.fixture(autouse=True)
+    def _tmp_importer(self, tmp_path):
+        self.test_registry_path = str(tmp_path / "test_asset_registry.yaml")
+        self.importer = AssetImporter(registry_path=self.test_registry_path)
     
     def test_import_cn_stock_sh(self):
         """测试导入上海A股"""
@@ -179,18 +169,10 @@ class TestAssetImporter:
 class TestAssetRegistry:
     """测试资产注册表"""
     
-    def setup_method(self):
-        """每个测试前的设置"""
-        self.test_config_path = "config/test_registry.yaml"
-        if os.path.exists(self.test_config_path):
-            os.remove(self.test_config_path)
-        # 使用测试配置文件创建新的注册表实例
+    @pytest.fixture(autouse=True)
+    def _tmp_registry(self, tmp_path):
+        self.test_config_path = str(tmp_path / "test_registry.yaml")
         self.registry = AssetRegistry(self.test_config_path)
-    
-    def teardown_method(self):
-        """每个测试后的清理"""
-        if os.path.exists(self.test_config_path):
-            os.remove(self.test_config_path)
     
     def test_register_and_get_asset(self):
         """测试注册和获取资产"""

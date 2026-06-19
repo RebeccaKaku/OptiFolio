@@ -188,3 +188,4 @@ config/portfolio.yaml
 # Scratch / temp files
 scratch/
 .pytest_tmp*/
+.pytest_tmp*/
