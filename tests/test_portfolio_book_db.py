@@ -559,14 +559,14 @@ class TestCashflowCRUD:
         return "prod_cash"
 
     def test_create_basic_cashflows(self, initialized, account, product):
-        """Test creation of subscription, redemption, interest, fee, and dividend."""
-        # Subscription
+        """Test creation of purchase, sale, interest, fee, and dividend."""
+        # Purchase (negative)
         initialized.create_cashflow(
-            "ev_001", "subscription", account, 1000.0, "CNY", "2023-01-01", product_id=product
+            "ev_001", "purchase", account, -1000.0, "CNY", "2023-01-01", product_id=product
         )
-        # Redemption (negative)
+        # Sale (positive)
         initialized.create_cashflow(
-            "ev_002", "redemption", account, -500.0, "CNY", "2023-01-02", product_id=product
+            "ev_002", "sale", account, 500.0, "CNY", "2023-01-02", product_id=product
         )
         # Interest
         initialized.create_cashflow(
@@ -618,24 +618,31 @@ class TestCashflowCRUD:
         assert flow["counter_amount"] == 700.0
         assert flow["counter_currency"] == "CNY"
 
-    def test_validation_negative_amounts(self, initialized, account):
-        """Negative amounts only allowed for redemption, fee, transfer_out."""
-        # Disallowed
-        for etype in ("subscription", "interest", "dividend", "transfer_in", "other"):
-            with pytest.raises(ValueError, match="Negative amount not allowed"):
+    def test_validation_sign_semantics(self, initialized, account):
+        """Test sign conventions for various types."""
+        # Must be positive
+        for etype in ("interest", "dividend", "transfer_in", "sale", "external_contribution"):
+            with pytest.raises(ValueError, match="must have a positive amount"):
                 initialized.create_cashflow(f"err_{etype}", etype, account, -1.0, "CNY", "2023-01-01")
 
-        # Allowed
-        for etype in ("redemption", "fee", "transfer_out"):
-            initialized.create_cashflow(f"ok_{etype}", etype, account, -1.0, "CNY", "2023-01-01")
+        # Must be negative
+        for etype in ("fee", "transfer_out", "purchase", "external_withdrawal"):
+            with pytest.raises(ValueError, match="must have a negative amount"):
+                initialized.create_cashflow(f"err_{etype}", etype, account, 1.0, "CNY", "2023-01-01")
 
-    def test_validation_fx_currencies(self, initialized, account):
-        """FX conversion must have both currencies and counter_amount."""
-        with pytest.raises(ValueError, match="must have both currency and counter_currency"):
-            initialized.create_cashflow("fx_err1", "fx_conversion", account, 100.0, "USD", "2023-01-01")
+    def test_validation_fx_requirements(self, initialized, account):
+        """FX conversion must have negative primary, positive counter, and different currencies."""
+        with pytest.raises(ValueError, match="primary amount must be negative"):
+            initialized.create_cashflow("fx_err1", "fx_conversion", account, 100.0, "USD", "2023-01-01",
+                                     counter_amount=700.0, counter_currency="CNY")
 
-        with pytest.raises(ValueError, match="must have counter_amount"):
-            initialized.create_cashflow("fx_err2", "fx_conversion", account, 100.0, "USD", "2023-01-01", counter_currency="CNY")
+        with pytest.raises(ValueError, match="positive counter_amount"):
+            initialized.create_cashflow("fx_err2", "fx_conversion", account, -100.0, "USD", "2023-01-01",
+                                     counter_amount=-700.0, counter_currency="CNY")
+
+        with pytest.raises(ValueError, match="currencies must be different"):
+            initialized.create_cashflow("fx_err3", "fx_conversion", account, -100.0, "USD", "2023-01-01",
+                                     counter_amount=100.0, counter_currency="USD")
 
     def test_duplicate_event_id_rejected(self, initialized, account):
         """Reject duplicate event_ids with PortfolioBookError."""
@@ -645,7 +652,7 @@ class TestCashflowCRUD:
 
     def test_get_cashflows_for_product(self, initialized, account, product):
         """Test retrieval filter by product_id."""
-        initialized.create_cashflow("p1", "subscription", account, 100.0, "CNY", "2023-01-01", product_id=product)
+        initialized.create_cashflow("p1", "purchase", account, -100.0, "CNY", "2023-01-01", product_id=product)
         initialized.create_cashflow("p2", "interest", account, 10.0, "CNY", "2023-01-02") # no product_id
 
         flows = initialized.get_cashflows_for_product(product)
@@ -672,8 +679,8 @@ class TestV5ExplicitMigration:
         conn.commit()
         conn.close()
 
-        db.initialize()  # should run v5 → v6
-        assert db.schema_version() == 6
+        db.initialize()  # should run v5 → v7
+        assert db.schema_version() == 7
 
 
 # ── DS-006A: Schema v6 — fresh init & v5→v6 migration ──────────────────
@@ -681,11 +688,11 @@ class TestV5ExplicitMigration:
 class TestV6Migration:
     """Migration to v6: coverage table + nullable quantity."""
 
-    def test_fresh_init_creates_v6(self, tmp_path):
-        """A brand-new database initializes directly to v6."""
-        db = PortfolioBookDatabase(path=tmp_path / "fresh_v6.sqlite")
+    def test_fresh_init_creates_v7(self, tmp_path):
+        """A brand-new database initializes directly to v7."""
+        db = PortfolioBookDatabase(path=tmp_path / "fresh_v7.sqlite")
         db.initialize()
-        assert db.schema_version() == 6
+        assert db.schema_version() == 7
 
         conn = db.connect()
         try:
@@ -782,7 +789,7 @@ class TestV6Migration:
         # Migrate
         db = PortfolioBookDatabase(path=db_path)
         db.initialize()
-        assert db.schema_version() == 6
+        assert db.schema_version() == 7
 
         # Verify old data preserved
         batch = db.get_batch("batch_v5")
@@ -1020,3 +1027,172 @@ class TestBatchCoverage:
 
         initialized.set_batch_account_coverage("batch_upd", acc_id, "complete")
         assert initialized.get_batch("batch_upd")["account_coverage"][0]["coverage"] == "complete"
+
+# ── DS-006B: Schema v7 — Migration & Semantics ──────────────────────────
+
+class TestV7Migration:
+    """Migration to v7: rebuilding cashflow_events with financial semantics."""
+
+    def test_v6_to_v7_preserves_and_maps_data(self, tmp_path):
+        db_path = tmp_path / "v6_legacy.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '6')")
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE products (product_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute(
+            "CREATE TABLE cashflow_events ("
+            "  event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL,"
+            "  account_id TEXT NOT NULL, product_id TEXT, amount REAL NOT NULL,"
+            "  currency TEXT NOT NULL, counter_amount REAL, counter_currency TEXT,"
+            "  pair_event_id TEXT, effective_date TEXT NOT NULL,"
+            "  source TEXT DEFAULT 'manual', notes TEXT,"
+            "  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
+            ")"
+        )
+        # Legacy data
+        conn.execute("INSERT INTO accounts (account_id, name) VALUES ('acc1', 'Account 1')")
+        conn.execute("INSERT INTO products (product_id, name) VALUES ('prod1', 'Product 1')")
+        # subscription (pos) -> purchase (neg)
+        conn.execute(
+            "INSERT INTO cashflow_events (event_id, event_type, account_id, product_id, amount, currency, effective_date) "
+            "VALUES ('ev1', 'subscription', 'acc1', 'prod1', 1000.0, 'CNY', '2025-01-01')"
+        )
+        # redemption (neg) -> sale (pos)
+        conn.execute(
+            "INSERT INTO cashflow_events (event_id, event_type, account_id, product_id, amount, currency, effective_date) "
+            "VALUES ('ev2', 'redemption', 'acc1', 'prod1', -1000.0, 'CNY', '2025-01-02')"
+        )
+        # other without notes
+        conn.execute(
+            "INSERT INTO cashflow_events (event_id, event_type, account_id, amount, currency, effective_date) "
+            "VALUES ('ev3', 'other', 'acc1', 100.0, 'CNY', '2025-01-03')"
+        )
+        # fx_conversion (v6 valid)
+        conn.execute(
+            "INSERT INTO cashflow_events (event_id, event_type, account_id, amount, currency, counter_amount, counter_currency, effective_date) "
+            "VALUES ('ev4', 'fx_conversion', 'acc1', -100.0, 'USD', 700.0, 'CNY', '2025-01-04')"
+        )
+        conn.commit()
+        conn.close()
+
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+        assert db.schema_version() == 7
+
+        flows = {f["event_id"]: f for f in db.get_cashflows_for_account("acc1")}
+        assert flows["ev1"]["event_type"] == "purchase"
+        assert flows["ev1"]["amount"] == -1000.0
+        assert flows["ev2"]["event_type"] == "sale"
+        assert flows["ev2"]["amount"] == 1000.0
+        assert flows["ev3"]["event_type"] == "other"
+        assert flows["ev3"]["notes"] == "Migrated from v6"
+        assert flows["ev4"]["event_type"] == "fx_conversion"
+        assert flows["ev4"]["amount"] == -100.0
+        assert flows["ev4"]["counter_amount"] == 700.0
+
+
+class TestCashflowSemantics:
+    @pytest.fixture
+    def env(self, initialized):
+        from src.domain.products import ProductDefinition
+        initialized.create_account("acc", "Account")
+        initialized.create_product(ProductDefinition("prod", "Product", "equity_fund"))
+        return "acc", "prod"
+
+    def test_zero_amount_rejected(self, initialized, env):
+        acc, _ = env
+        with pytest.raises(ValueError, match="cannot be zero"):
+            initialized.create_cashflow("ev0", "interest", acc, 0.0, "CNY", "2025-01-01")
+
+    def test_other_requires_notes(self, initialized, env):
+        acc, _ = env
+        with pytest.raises(ValueError, match="Notes are required"):
+            initialized.create_cashflow("ev1", "other", acc, 100.0, "CNY", "2025-01-01", notes="")
+
+    def test_product_fk_enforced(self, initialized, env):
+        acc, _ = env
+        with pytest.raises(sqlite3.IntegrityError):
+            initialized.create_cashflow("ev1", "purchase", acc, -100.0, "CNY", "2025-01-01", product_id="invalid")
+
+    @pytest.mark.parametrize("etype, amount", [
+        ("external_contribution", 100.0),
+        ("external_withdrawal", -100.0),
+        ("purchase", -100.0),
+        ("sale", 100.0),
+        ("interest", 100.0),
+        ("dividend", 100.0),
+        ("fee", -100.0),
+        ("tax", -100.0),
+        ("transfer_in", 100.0),
+        ("transfer_out", -100.0),
+        ("maturity", 100.0),
+    ])
+    def test_all_types_sign_validation(self, initialized, env, etype, amount):
+        acc, prod = env
+        # Valid
+        initialized.create_cashflow(f"ok_{etype}", etype, acc, amount, "CNY", "2025-01-01", product_id=prod if etype in ("purchase", "sale") else None)
+        # Invalid (flip sign)
+        with pytest.raises(ValueError):
+            initialized.create_cashflow(f"err_{etype}", etype, acc, -amount, "CNY", "2025-01-01")
+
+
+class TestLinkTransferHardened:
+    @pytest.fixture
+    def env(self, initialized):
+        initialized.create_account("acc1", "Acc 1")
+        initialized.create_account("acc2", "Acc 2")
+        initialized.create_cashflow("in_100", "transfer_in", "acc1", 100.0, "USD", "2025-01-01")
+        initialized.create_cashflow("out_100", "transfer_out", "acc2", -100.0, "USD", "2025-01-01")
+        initialized.create_cashflow("in_200", "transfer_in", "acc1", 200.0, "USD", "2025-01-01")
+        initialized.create_cashflow("out_100_hkd", "transfer_out", "acc2", -100.0, "HKD", "2025-01-01")
+        return "acc1", "acc2"
+
+    def test_valid_link(self, initialized, env):
+        initialized.link_transfer("in_100", "out_100")
+        flows1 = {f["event_id"]: f for f in initialized.get_cashflows_for_account("acc1")}
+        flows2 = {f["event_id"]: f for f in initialized.get_cashflows_for_account("acc2")}
+        assert flows1["in_100"]["pair_event_id"] == "out_100"
+        assert flows2["out_100"]["pair_event_id"] == "in_100"
+
+    def test_link_mismatched_amount_rejected(self, initialized, env):
+        with pytest.raises(ValueError, match="same absolute amount"):
+            initialized.link_transfer("in_200", "out_100")
+
+    def test_link_mismatched_currency_rejected(self, initialized, env):
+        with pytest.raises(ValueError, match="same currency"):
+            initialized.link_transfer("in_100", "out_100_hkd")
+
+    def test_link_same_type_rejected(self, initialized, env):
+        initialized.create_cashflow("in_100_2", "transfer_in", "acc2", 100.0, "USD", "2025-01-01")
+        with pytest.raises(ValueError, match="one 'transfer_in' and one 'transfer_out'"):
+            initialized.link_transfer("in_100", "in_100_2")
+
+    def test_link_already_paired_rejected(self, initialized, env):
+        initialized.link_transfer("in_100", "out_100")
+        initialized.create_cashflow("out_100_v2", "transfer_out", "acc2", -100.0, "USD", "2025-01-01")
+        with pytest.raises(PortfolioBookError, match="already paired"):
+            initialized.link_transfer("in_100", "out_100_v2")
+
+    def test_link_self_rejected(self, initialized, env):
+        with pytest.raises(ValueError, match="to itself"):
+            initialized.link_transfer("in_100", "in_100")
+
+
+class TestWealthClassification:
+    def test_all_classifications(self, initialized):
+        assert initialized.classify_wealth_flow("external_contribution") == "external_flow"
+        assert initialized.classify_wealth_flow("external_withdrawal") == "external_flow"
+        assert initialized.classify_wealth_flow("interest") == "investment_pnl"
+        assert initialized.classify_wealth_flow("dividend") == "investment_pnl"
+        assert initialized.classify_wealth_flow("fee") == "investment_pnl"
+        assert initialized.classify_wealth_flow("tax") == "investment_pnl"
+        assert initialized.classify_wealth_flow("purchase") == "internal"
+        assert initialized.classify_wealth_flow("sale") == "internal"
+        assert initialized.classify_wealth_flow("transfer_in") == "internal"
+        assert initialized.classify_wealth_flow("transfer_out") == "internal"
+        assert initialized.classify_wealth_flow("fx_conversion") == "internal"
+        assert initialized.classify_wealth_flow("maturity") == "internal"
+        assert initialized.classify_wealth_flow("other") == "unclassified"
+        assert initialized.classify_wealth_flow("unknown") == "unclassified"
