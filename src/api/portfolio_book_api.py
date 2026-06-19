@@ -189,6 +189,31 @@ class PositionBucketAllocationRequest(StrictRequestModel):
     allocation_id: Optional[str] = Field(default=None)
 
 
+class DecisionRevisionCreateRequest(StrictRequestModel):
+    thesis: str = Field(min_length=1)
+    baseline: str = Field(min_length=1)
+    invalidation_conditions: str = Field(min_length=1)
+    review_at: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    priced_in: Optional[str] = Field(default=None)
+    evidence: List[Dict[str, Any]] = Field(default_factory=list)
+    scenarios: List[Dict[str, Any]] = Field(default_factory=list)
+    position_reason: Optional[str] = Field(default=None)
+    author_type: str = Field(default="human", pattern="^(human|ai)$")
+
+
+class DecisionCreateRequest(DecisionRevisionCreateRequest):
+    title: str = Field(min_length=1)
+    decision_type: str = Field(min_length=1)
+    as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    account_id: Optional[str] = Field(default=None)
+    product_id: Optional[str] = Field(default=None)
+    snapshot_batch_id: Optional[str] = Field(default=None)
+
+
+class DecisionStatusUpdateRequest(StrictRequestModel):
+    status: str = Field(pattern="^(open|review_due|closed|invalidated)$")
+
+
 # ── Status code mapping ─────────────────────────────────────────────────────
 
 _ERROR_CODE_STATUS = {
@@ -223,6 +248,12 @@ def _get_service():
     return get_application_services().portfolio_book
 
 
+def _get_decision_service():
+    """Lazy-import the decision journal service."""
+    from src.services.application import get_application_services
+    return get_application_services().decision_journal
+
+
 # ── Account routes ──────────────────────────────────────────────────────────
 
 
@@ -250,6 +281,65 @@ def get_account(account_id: str, svc=Depends(_get_service)):
     if not result.get("success") and result.get("error_code") == "NOT_FOUND":
         status_code = 404
     return _json_response(result, status_override=status_code)
+
+
+# ── Decision Journal routes ──────────────────────────────────────────────────
+
+
+@router.post("/decisions")
+def create_decision(payload: DecisionCreateRequest, svc=Depends(_get_decision_service)):
+    """Create a new investment decision entry."""
+    result = svc.create_decision(_model_dump(payload))
+    status_code = 201 if result.get("success") else None
+    return _json_response(result, status_override=status_code)
+
+
+@router.get("/decisions")
+def list_decisions(
+    status: Optional[str] = None,
+    decision_type: Optional[str] = None,
+    svc=Depends(_get_decision_service)
+):
+    """List and filter decisions."""
+    result = svc.list_decisions(status=status, decision_type=decision_type)
+    return _json_response(result)
+
+
+@router.get("/decisions/reviews-due")
+def list_reviews_due(as_of: Optional[str] = None, svc=Depends(_get_decision_service)):
+    """List decisions with upcoming or overdue reviews."""
+    result = svc.list_reviews_due(as_of=as_of)
+    return _json_response(result)
+
+
+@router.get("/decisions/{decision_id}")
+def get_decision(decision_id: str, svc=Depends(_get_decision_service)):
+    """Get decision details and timeline."""
+    result = svc.get_decision(decision_id)
+    return _json_response(result)
+
+
+@router.post("/decisions/{decision_id}/revisions")
+def append_revision(
+    decision_id: str,
+    payload: DecisionRevisionCreateRequest,
+    svc=Depends(_get_decision_service)
+):
+    """Append a new revision to an existing decision."""
+    result = svc.append_revision(decision_id, _model_dump(payload))
+    status_code = 201 if result.get("success") else None
+    return _json_response(result, status_override=status_code)
+
+
+@router.patch("/decisions/{decision_id}/status")
+def update_decision_status(
+    decision_id: str,
+    payload: DecisionStatusUpdateRequest,
+    svc=Depends(_get_decision_service)
+):
+    """Update decision status."""
+    result = svc.mark_status(decision_id, payload.status)
+    return _json_response(result)
 
 
 # ── Purpose Bucket routes ───────────────────────────────────────────────────

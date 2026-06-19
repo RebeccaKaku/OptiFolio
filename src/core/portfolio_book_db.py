@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 10
+    CURRENT_SCHEMA_VERSION: int = 11
     _ACCOUNT_UPDATE_FIELDS = frozenset(
         {
             "name",
@@ -210,6 +210,7 @@ class PortfolioBookDatabase:
             8: self._migrate_v8,
             9: self._migrate_v9,
             10: self._migrate_v10,
+            11: self._migrate_v11,
         }
 
         for v in range(from_v + 1, to_v + 1):
@@ -300,6 +301,51 @@ class PortfolioBookDatabase:
         )
         conn.execute("CREATE INDEX idx_allocations_batch ON position_bucket_allocations (batch_id)")
         conn.execute("CREATE INDEX idx_allocations_bucket ON position_bucket_allocations (bucket_id)")
+
+    def _migrate_v11(self, conn: sqlite3.Connection) -> None:
+        """Create decisions and decision_revisions tables."""
+        conn.execute(
+            """
+            CREATE TABLE decisions (
+                decision_id       TEXT PRIMARY KEY,
+                title             TEXT NOT NULL,
+                decision_type     TEXT NOT NULL,
+                as_of             TEXT NOT NULL,
+                status            TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'review_due', 'closed', 'invalidated')),
+                account_id        TEXT,
+                product_id        TEXT,
+                snapshot_batch_id TEXT,
+                created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts (account_id),
+                FOREIGN KEY (product_id) REFERENCES products (product_id),
+                FOREIGN KEY (snapshot_batch_id) REFERENCES snapshot_batches (batch_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE decision_revisions (
+                revision_id             TEXT PRIMARY KEY,
+                decision_id             TEXT NOT NULL,
+                revision_no             INTEGER NOT NULL,
+                thesis                  TEXT NOT NULL,
+                baseline                TEXT NOT NULL,
+                priced_in               TEXT,
+                evidence_json           TEXT NOT NULL DEFAULT '[]',
+                scenarios_json          TEXT NOT NULL DEFAULT '[]',
+                position_reason         TEXT,
+                invalidation_conditions TEXT NOT NULL,
+                review_at               TEXT NOT NULL,
+                author_type             TEXT NOT NULL DEFAULT 'human' CHECK (author_type IN ('human', 'ai')),
+                created_at              TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(decision_id, revision_no),
+                FOREIGN KEY (decision_id) REFERENCES decisions (decision_id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute("CREATE INDEX idx_decisions_status ON decisions (status)")
+        conn.execute("CREATE INDEX idx_decisions_as_of ON decisions (as_of)")
+        conn.execute("CREATE INDEX idx_revisions_decision_id ON decision_revisions (decision_id)")
 
     def _migrate_v9(self, conn: sqlite3.Connection) -> None:
         """Create exposure_batches and product_exposures tables."""
@@ -1631,6 +1677,7 @@ class PortfolioBookDatabase:
             if version >= 8: required.extend(["import_drafts", "import_candidates"])
             if version >= 9: required.extend(["exposure_batches", "product_exposures"])
             if version >= 10: required.extend(["purpose_buckets", "position_bucket_allocations"])
+            if version >= 11: required.extend(["decisions", "decision_revisions"])
 
             for table in required:
                 if table not in actual_tables:
