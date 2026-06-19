@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 6
+    CURRENT_SCHEMA_VERSION: int = 7
     _ACCOUNT_UPDATE_FIELDS = frozenset(
         {
             "name",
@@ -201,6 +201,7 @@ class PortfolioBookDatabase:
             4: self._migrate_v4,
             5: self._migrate_v5,
             6: self._migrate_v6,
+            7: self._migrate_v7,
         }
 
         for v in range(from_v + 1, to_v + 1):
@@ -250,6 +251,87 @@ class PortfolioBookDatabase:
             )
             """
         )
+
+    def _migrate_v7(self, conn: sqlite3.Connection) -> None:
+        """Rebuild cashflow_events with financial semantics and FKs."""
+        # 1. Create new table with strict constraints
+        conn.execute(
+            """
+            CREATE TABLE cashflow_events_v7 (
+                event_id        TEXT PRIMARY KEY,
+                event_type      TEXT NOT NULL,
+                account_id      TEXT NOT NULL,
+                product_id      TEXT,
+                amount          REAL NOT NULL,
+                currency        TEXT NOT NULL,
+                counter_amount  REAL,
+                counter_currency TEXT,
+                pair_event_id   TEXT,
+                effective_date  TEXT NOT NULL,
+                source          TEXT DEFAULT 'manual',
+                notes           TEXT,
+                created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (account_id) REFERENCES accounts (account_id),
+                FOREIGN KEY (product_id) REFERENCES products (product_id),
+                CHECK (amount <> 0),
+                CHECK (
+                    (event_type IN ('external_contribution', 'sale', 'interest', 'dividend', 'transfer_in', 'maturity') AND amount > 0) OR
+                    (event_type IN ('external_withdrawal', 'purchase', 'fee', 'tax', 'transfer_out') AND amount < 0) OR
+                    (event_type = 'fx_conversion' AND amount < 0 AND counter_amount IS NOT NULL AND counter_amount > 0 AND counter_currency IS NOT NULL AND currency <> counter_currency) OR
+                    (event_type = 'other' AND notes IS NOT NULL AND notes <> '')
+                )
+            )
+            """
+        )
+
+        # 2. Migrate data with semantic remapping and sign correction
+        conn.execute(
+            """
+            INSERT INTO cashflow_events_v7 (
+                event_id, event_type, account_id, product_id, amount, currency,
+                counter_amount, counter_currency, pair_event_id, effective_date,
+                source, notes, created_at, updated_at
+            )
+            SELECT
+                event_id,
+                CASE
+                    WHEN event_type = 'subscription' THEN 'purchase'
+                    WHEN event_type = 'redemption' THEN 'sale'
+                    ELSE event_type
+                END as event_type,
+                account_id,
+                product_id,
+                CASE
+                    WHEN event_type = 'subscription' THEN -abs(amount)
+                    WHEN event_type = 'redemption' THEN abs(amount)
+                    ELSE amount
+                END as amount,
+                currency,
+                counter_amount,
+                counter_currency,
+                pair_event_id,
+                effective_date,
+                source,
+                CASE
+                    WHEN event_type = 'other' AND (notes IS NULL OR notes = '') THEN 'Migrated from v6'
+                    ELSE notes
+                END as notes,
+                created_at,
+                updated_at
+            FROM cashflow_events
+            WHERE (
+                (event_type IN ('interest', 'dividend', 'transfer_in') AND amount > 0) OR
+                (event_type IN ('fee', 'transfer_out') AND amount < 0) OR
+                (event_type = 'fx_conversion' AND amount < 0 AND counter_amount > 0 AND counter_currency IS NOT NULL AND currency <> counter_currency) OR
+                (event_type IN ('subscription', 'redemption', 'other'))
+            )
+            """
+        )
+
+        # 3. Swap tables
+        conn.execute("DROP TABLE cashflow_events")
+        conn.execute("ALTER TABLE cashflow_events_v7 RENAME TO cashflow_events")
 
     def _migrate_v3(self, conn: sqlite3.Connection) -> None:
         """Create snapshot_batches and position_snapshots tables."""
@@ -805,24 +887,36 @@ class PortfolioBookDatabase:
         source: str = "manual",
         notes: Optional[str] = None,
     ) -> None:
-        """Record a new cashflow event."""
+        """Record a new cashflow event with strict financial semantics."""
         valid_types = {
-            "subscription", "redemption", "interest", "fee",
-            "transfer_in", "transfer_out", "fx_conversion", "dividend", "other"
+            "external_contribution", "external_withdrawal", "purchase", "sale",
+            "interest", "dividend", "fee", "tax", "transfer_in", "transfer_out",
+            "fx_conversion", "maturity", "other"
         }
         if event_type not in valid_types:
             raise ValueError(f"Invalid event_type: {event_type}")
 
-        # Validation: Negative amounts allowed only for certain types
-        if amount < 0 and event_type not in ("redemption", "fee", "transfer_out", "fx_conversion"):
-            raise ValueError(f"Negative amount not allowed for {event_type}")
+        if amount == 0:
+            raise ValueError("Cashflow amount cannot be zero")
 
-        # Validation: FX conversions must have both currencies
+        positive_types = {"external_contribution", "sale", "interest", "dividend", "transfer_in", "maturity"}
+        negative_types = {"external_withdrawal", "purchase", "fee", "tax", "transfer_out"}
+
+        if event_type in positive_types and amount < 0:
+            raise ValueError(f"{event_type} must have a positive amount")
+        if event_type in negative_types and amount > 0:
+            raise ValueError(f"{event_type} must have a negative amount")
+
         if event_type == "fx_conversion":
-            if not currency or not counter_currency:
-                raise ValueError("FX conversion must have both currency and counter_currency")
-            if counter_amount is None:
-                raise ValueError("FX conversion must have counter_amount")
+            if amount >= 0:
+                raise ValueError("FX conversion primary amount must be negative")
+            if not counter_currency or counter_amount is None or counter_amount <= 0:
+                raise ValueError("FX conversion must have positive counter_amount and counter_currency")
+            if currency == counter_currency:
+                raise ValueError("FX conversion currencies must be different")
+
+        if event_type == "other" and not (notes and notes.strip()):
+            raise ValueError("Notes are required for 'other' event type")
 
         sql = """
             INSERT INTO cashflow_events (
@@ -862,19 +956,78 @@ class PortfolioBookDatabase:
             ).fetchall()
 
     def link_transfer(self, event_a_id: str, event_b_id: str) -> None:
-        """Link two transfer events (e.g., transfer_in and transfer_out)."""
+        """Link two transfer events (e.g., transfer_in and transfer_out).
+
+        Hardened validation:
+        - Both events must exist.
+        - One must be 'transfer_in', the other 'transfer_out'.
+        - Must have the same currency and same absolute amount.
+        - Cannot link an event to itself.
+        - Cannot link events that are already paired.
+        - Atomic update in a single transaction.
+        """
+        if event_a_id == event_b_id:
+            raise ValueError("Cannot link an event to itself")
+
         with closing(self.connect()) as conn:
             with conn:
-                # Update event A
+                # Fetch both events
+                row_a = conn.execute("SELECT * FROM cashflow_events WHERE event_id = ?", (event_a_id,)).fetchone()
+                row_b = conn.execute("SELECT * FROM cashflow_events WHERE event_id = ?", (event_b_id,)).fetchone()
+
+                if not row_a or not row_b:
+                    raise PortfolioBookError("One or both transfer events not found")
+
+                # Type validation
+                types = {row_a["event_type"], row_b["event_type"]}
+                if types != {"transfer_in", "transfer_out"}:
+                    raise ValueError("Pair must consist of one 'transfer_in' and one 'transfer_out'")
+
+                # Currency and Amount validation
+                if row_a["currency"] != row_b["currency"]:
+                    raise ValueError("Transfer pair must have the same currency")
+                if abs(row_a["amount"]) != abs(row_b["amount"]):
+                    raise ValueError("Transfer pair must have the same absolute amount")
+
+                # Already paired check
+                if row_a["pair_event_id"] or row_b["pair_event_id"]:
+                    raise PortfolioBookError("One or both events are already paired")
+
+                # Update both in the same transaction
                 conn.execute(
                     "UPDATE cashflow_events SET pair_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
                     (event_b_id, event_a_id)
                 )
-                # Update event B
                 conn.execute(
                     "UPDATE cashflow_events SET pair_event_id = ?, updated_at = CURRENT_TIMESTAMP WHERE event_id = ?",
                     (event_a_id, event_b_id)
                 )
+
+    def classify_wealth_flow(self, event_type: str) -> str:
+        """Classify a cashflow event type into a wealth flow category.
+
+        Returns one of:
+        - 'external_flow': Capital entering or leaving the portfolio.
+        - 'investment_pnl': Direct gains or losses from investments.
+        - 'internal': Asset allocation changes (buy/sell/fx/transfer).
+        - 'unclassified': For 'other' or unknown types.
+        """
+        mapping = {
+            "external_contribution": "external_flow",
+            "external_withdrawal": "external_flow",
+            "interest": "investment_pnl",
+            "dividend": "investment_pnl",
+            "fee": "investment_pnl",
+            "tax": "investment_pnl",
+            "purchase": "internal",
+            "sale": "internal",
+            "transfer_in": "internal",
+            "transfer_out": "internal",
+            "fx_conversion": "internal",
+            "maturity": "internal",
+            "other": "unclassified",
+        }
+        return mapping.get(event_type, "unclassified")
 
     # ── Backup & Restore ────────────────────────────────────────────────
 
