@@ -52,7 +52,7 @@ def ensure_local_portfolio() -> Dict[str, Any]:
 
 
 def ensure_local_database() -> Dict[str, Any]:
-    local_db = get_local_dir() / "optifolio.db"
+    local_db = get_local_dir() / "optifolio_db.db"
     configured_db = get_database_path()
 
     if local_db.exists():
