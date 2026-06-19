@@ -957,7 +957,7 @@ class TestV6Migration:
 
         db = PortfolioBookDatabase(path=db_path)
         db.initialize()
-        assert db.schema_version() == 10
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
         conn = db.connect()
         # Should have exposure_batches and product_exposures
@@ -990,11 +990,43 @@ class TestV6Migration:
 
         db = PortfolioBookDatabase(path=db_path)
         db.initialize()
-        assert db.schema_version() == 10
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
         conn = db.connect()
         conn.execute("SELECT * FROM purpose_buckets").fetchall()
         conn.execute("SELECT * FROM position_bucket_allocations").fetchall()
+        conn.close()
+
+    def test_v10_to_v11_migration(self, tmp_path):
+        """Migrating from v10 to v11 creates the new decision tables."""
+        db_path = tmp_path / "v10_legacy_mig.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '10')")
+        # Add minimal v10 structure
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE products (product_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE snapshot_batches (batch_id TEXT PRIMARY KEY, as_of TEXT)")
+        conn.execute("CREATE TABLE position_snapshots (snapshot_id INTEGER PRIMARY KEY, batch_id TEXT, account_id TEXT, product_id TEXT)")
+        conn.execute("CREATE TABLE cashflow_events (event_id TEXT PRIMARY KEY, event_type TEXT, account_id TEXT, amount REAL, currency TEXT, effective_date TEXT)")
+        conn.execute("CREATE TABLE snapshot_batch_accounts (batch_id TEXT, account_id TEXT, coverage TEXT, PRIMARY KEY(batch_id, account_id))")
+        conn.execute("CREATE TABLE import_drafts (import_id TEXT PRIMARY KEY, contract_version INTEGER, target_kind TEXT, source_type TEXT, source_ref TEXT)")
+        conn.execute("CREATE TABLE import_candidates (candidate_id TEXT PRIMARY KEY, import_id TEXT, field_name TEXT, review_status TEXT)")
+        conn.execute("CREATE TABLE exposure_batches (exposure_batch_id TEXT PRIMARY KEY, product_id TEXT, as_of TEXT, known_at TEXT)")
+        conn.execute("CREATE TABLE product_exposures (exposure_batch_id TEXT, dimension TEXT, bucket TEXT, weight_ppm INTEGER)")
+        conn.execute("CREATE TABLE purpose_buckets (bucket_id TEXT PRIMARY KEY, name TEXT, bucket_type TEXT)")
+        conn.execute("CREATE TABLE position_bucket_allocations (allocation_id TEXT PRIMARY KEY, batch_id TEXT, account_id TEXT, product_id TEXT, bucket_id TEXT, allocation_ppm INTEGER)")
+        conn.commit()
+        conn.close()
+
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
+
+        conn = db.connect()
+        # Should have decisions and decision_revisions
+        conn.execute("SELECT * FROM decisions").fetchall()
+        conn.execute("SELECT * FROM decision_revisions").fetchall()
         conn.close()
 
     def test_v5_to_v6_preserves_old_snapshots(self, tmp_path):
