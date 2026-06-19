@@ -457,6 +457,67 @@ class TestBackupRestore:
 
 # ── Cashflow CRUD ───────────────────────────────────────────────────────────
 
+# ── Snapshots ──────────────────────────────────────────────────────────────
+
+class TestSnapshots:
+    @pytest.fixture
+    def setup_data(self, initialized):
+        from src.domain.products import ProductDefinition
+        initialized.create_account(account_id="acc_1", name="Test Account")
+        p = ProductDefinition(
+            product_id="prod_1", name="Test Product",
+            product_type="equity_fund", currency="CNY"
+        )
+        initialized.create_product(p)
+        return "acc_1", "prod_1"
+
+    def test_full_batch_workflow(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        batch_id = "batch_20231027"
+        initialized.create_snapshot_batch(batch_id, as_of="2023-10-27", notes="Initial sync")
+        batch = initialized.get_batch(batch_id)
+        assert batch["status"] == "draft"
+        assert len(batch["snapshots"]) == 0
+        initialized.add_snapshot(batch_id, acc_id, prod_id, quantity=100.0, market_value=1234.56, cost_basis=1000.0)
+        batch = initialized.get_batch(batch_id)
+        assert len(batch["snapshots"]) == 1
+        assert batch["snapshots"][0]["account_id"] == acc_id
+        initialized.confirm_batch(batch_id)
+        assert initialized.get_batch(batch_id)["status"] == "confirmed"
+
+    def test_add_to_confirmed_batch_raises(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        initialized.create_snapshot_batch("batch_fixed", as_of="2023-10-27")
+        initialized.confirm_batch("batch_fixed")
+        with pytest.raises(PortfolioBookError, match="Cannot add to confirmed batch"):
+            initialized.add_snapshot("batch_fixed", acc_id, prod_id, quantity=50.0)
+
+    def test_confirm_non_existent_batch_raises(self, initialized):
+        with pytest.raises(PortfolioBookError, match="not found"):
+            initialized.confirm_batch("no_such_batch")
+
+    def test_supersede_batch(self, initialized):
+        initialized.create_snapshot_batch("batch_old", as_of="2023-10-27")
+        initialized.confirm_batch("batch_old")
+        initialized.supersede_batch("batch_old")
+        assert initialized.get_batch("batch_old")["status"] == "superseded"
+
+    def test_fk_constraints(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        initialized.create_snapshot_batch("batch_fk", as_of="2023-10-27")
+        with pytest.raises(sqlite3.IntegrityError):
+            initialized.add_snapshot("batch_fk", "invalid_acc", prod_id, quantity=10)
+        with pytest.raises(sqlite3.IntegrityError):
+            initialized.add_snapshot("batch_fk", acc_id, "invalid_prod", quantity=10)
+
+    def test_unique_constraint(self, initialized, setup_data):
+        acc_id, prod_id = setup_data
+        initialized.create_snapshot_batch("batch_uniq", as_of="2023-10-27")
+        initialized.add_snapshot("batch_uniq", acc_id, prod_id, quantity=10)
+        with pytest.raises(sqlite3.IntegrityError):
+            initialized.add_snapshot("batch_uniq", acc_id, prod_id, quantity=20)
+
+
 class TestCashflowCRUD:
     @pytest.fixture
     def account(self, initialized):
