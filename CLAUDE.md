@@ -8,16 +8,15 @@ Test counts change frequently; use `docs/AI_CONTEXT.md` and a fresh test run. Fi
 ## Critical Rules
 
 1. **FinData is the ONLY data path.** `from FinData import fd` — never import fetchers directly.
-2. **app.py is FROZEN.** 1550-line Streamlit monolith. Do NOT edit it. All new work → `src/api/`, `src/services/`, `src/analytics/`.
-3. **Private data stays out of git.** `local/`, `config/secrets.yaml`, `.parquet`, `.db`, `.csv` are all git-ignored.
-4. **Use `logging`**, not `print()`. `import logging; _log = logging.getLogger(__name__)`.
-5. **Services use `success()` / `failure()`** from `src/services/response.py`. API uses `_json_response()`.
-6. **Every adapter returns `FetchResult`** — never an empty DataFrame without metadata.
-7. **QualityGate runs 8 checks** on every write — empty data NEVER overwrites good data.
-8. **Do not import private names across packages** — use re-export layers (e.g. `FinData/store/schemas.py`).
-9. **Prefer simplicity over compatibility.** This is pre-1.0. Delete dead code; remove unnecessary abstractions; don't keep "just in case" inheritance. Duck typing is sufficient when no `isinstance` checks exist. A deleted file is better than a kept compatibility shim.
-10. **Method signatures: optional > required.** Use `context=None, **kwargs` instead of `context: Dict`. Let callers omit what they don't need. Use `Body(None)` for optional JSON bodies in FastAPI.
-11. **Don't nest adapters.** Put fetcher logic directly in the `FetcherProtocol` implementation. No "thin wrapper → real fetcher" two-level delegation. No `BaseFetcher → FetcherAdapter` inheritance chains when a single class suffices.
+2. **Private data stays out of git.** `local/`, `config/secrets.yaml`, `.parquet`, `.db`, `.csv` are all git-ignored.
+3. **Use `logging`**, not `print()`. `import logging; _log = logging.getLogger(__name__)`.
+4. **Services use `success()` / `failure()`** from `src/services/response.py`. API uses `_json_response()`.
+5. **Every adapter returns `FetchResult`** — never an empty DataFrame without metadata.
+6. **QualityGate runs 9 checks** on every write — empty data NEVER overwrites good data.
+7. **Do not import private names across packages** — use re-export layers (e.g. `FinData/store/schemas.py`).
+8. **Prefer simplicity over compatibility.** This is pre-1.0. Delete dead code; remove unnecessary abstractions; don't keep "just in case" inheritance. Duck typing is sufficient when no `isinstance` checks exist. A deleted file is better than a kept compatibility shim.
+9. **Method signatures: optional > required.** Use `context=None, **kwargs` instead of `context: Dict`. Let callers omit what they don't need. Use `Body(None)` for optional JSON bodies in FastAPI.
+10. **Don't nest adapters.** Put fetcher logic directly in the `FetcherProtocol` implementation. No "thin wrapper → real fetcher" two-level delegation. No `BaseFetcher → FetcherAdapter` inheritance chains when a single class suffices.
 
 ## Reliable Test Command
 
