@@ -149,9 +149,18 @@ class TestScreenedProduct:
         assert d["rank"] == 1
         assert d["metrics"] == {"annualized_7d": 2.8, "per_10k_yield": 0.62}
 
-    def test_rank_is_tied_when_score_identical(self):
-        """Rank-tie behaviour is exercised in the screener classes below."""
-        pass
+    def test_stable_tie_breaking_with_product_id(self):
+        screener = _DummyScreener()
+        products = [
+            {"product_id": "B", "value": 10.0},
+            {"product_id": "A", "value": 10.0},
+        ]
+        result = screener.screen(products, [_make_criteria(field="value")])
+        # Both score 50.0. Sorted by (score DESC, product_id ASC)
+        assert result[0].product_id == "A"
+        assert result[1].product_id == "B"
+        assert result[0].rank == 1
+        assert result[1].rank == 1
 
 
 # ── ProductScreener: normalisation ───────────────────────────────────────
@@ -234,37 +243,58 @@ class TestProductScreenerNormalisation:
         assert sorted_result[1].product_id == "expensive"
         assert sorted_result[1].score == 0.0
 
-    def test_missing_field_treated_as_zero(self):
-        """A product missing a field gets the raw value 0.0."""
+    def test_missing_field_incomparable_if_critical(self):
+        """A product missing a critical field becomes incomparable."""
         screener = _DummyScreener()
         products = [
-            {"product_id": "has_val", "name": "Has", "product_type": "fund", "yield": 5.0},
-            {"product_id": "no_val", "name": "None", "product_type": "fund"},
+            {"product_id": "has_val", "name": "Has", "yield": 5.0},
+            {"product_id": "no_val", "name": "None"},
         ]
-        result = screener.screen(
-            products,
-            [_make_criteria(name="yield", weight=1.0, higher_is_better=True, field="yield")],
-        )
-        sorted_result = sorted(result, key=lambda r: r.score, reverse=True)
-        assert sorted_result[0].product_id == "has_val"
-        assert sorted_result[0].score == 100.0
-        assert sorted_result[1].product_id == "no_val"
-        assert sorted_result[1].score == 0.0
+        criteria = [
+            ScreeningCriteria(name="yield", weight=1.0, higher_is_better=True, field="yield", is_critical=True)
+        ]
+        result = screener.screen(products, criteria)
+        by_id = {r.product_id: r for r in result}
 
-    def test_none_value_treated_as_zero(self):
+        assert by_id["has_val"].incomparable is False
+        assert by_id["no_val"].incomparable is True
+        assert "Missing critical field: yield" in by_id["no_val"].incomparable_reasons
+
+    def test_missing_field_renormalizes_weights_if_not_critical(self):
+        """A product missing a non-critical field has weights renormalized."""
         screener = _DummyScreener()
         products = [
-            {"product_id": "has_val", "name": "Has", "product_type": "fund", "yield": 5.0},
-            {"product_id": "none_val", "name": "None", "product_type": "fund", "yield": None},
+            {"product_id": "A", "yield": 5.0, "fee": 0.1},
+            {"product_id": "B", "yield": 5.0}, # missing fee
         ]
-        result = screener.screen(
-            products,
-            [_make_criteria(name="yield", weight=1.0, higher_is_better=True, field="yield")],
-        )
-        sorted_result = sorted(result, key=lambda r: r.score, reverse=True)
-        assert sorted_result[0].product_id == "has_val"
-        assert sorted_result[0].score == 100.0
-        assert sorted_result[1].score == 0.0
+        criteria = [
+            ScreeningCriteria(name="yield", weight=0.8, higher_is_better=True, field="yield"),
+            ScreeningCriteria(name="fee", weight=0.2, higher_is_better=False, field="fee"),
+        ]
+        # B's score should be based 100% on yield since fee is missing
+        # Both have same yield, so both should get same yield norm (0.5 if tied or 1.0 if we only have one value)
+        # Actually with only one value for 'fee', A gets norm 0.5.
+        # For yield, both have 5.0, so both get norm 0.5.
+        result = screener.screen(products, criteria)
+        by_id = {r.product_id: r for r in result}
+
+        # A: (yield_norm 0.5 * 0.8 + fee_norm 0.5 * 0.2) / 1.0 = 0.5 -> 50.0
+        # B: (yield_norm 0.5 * 0.8) / 0.8 = 0.5 -> 50.0
+        assert by_id["A"].score == 50.0
+        assert by_id["B"].score == 50.0
+        assert by_id["B"].coverage == 0.8
+
+    def test_low_coverage_makes_incomparable(self):
+        screener = _DummyScreener()
+        products = [{"product_id": "low", "yield": 5.0}]
+        criteria = [
+            ScreeningCriteria(name="yield", weight=0.1, higher_is_better=True, field="yield"),
+            ScreeningCriteria(name="other", weight=0.9, higher_is_better=True, field="other"),
+        ]
+        # Coverage is 0.1 / 1.0 = 0.1 < 0.8
+        result = screener.screen(products, criteria, min_coverage=0.8)
+        assert result[0].incomparable is True
+        assert "Coverage 0.10 below threshold 0.8" in result[0].incomparable_reasons
 
     def test_product_id_defaults_to_index(self):
         screener = _DummyScreener()
