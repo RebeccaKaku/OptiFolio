@@ -4,10 +4,12 @@ Generates multiple allocation proposals for new cash based on rules and constrai
 """
 
 from __future__ import annotations
+import dataclasses
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Dict, List, Optional, Literal, Any
 from src.analytics.allocation_targets import AllocationGapReport
+from src.analytics.trade_friction import AllocationFrictionInput, TradeFrictionRequest, calculate_trade_friction
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,8 @@ class CandidateProduct:
     liquidity_level: str  # low, medium, high, unknown
     min_trade_amount: Decimal = Decimal("0")
     max_trade_amount: Optional[Decimal] = None
+    friction_input: Optional[AllocationFrictionInput] = None
+    monetized_benefit_annual_rate: Optional[Decimal] = None
     # metadata for explanation
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -33,6 +37,8 @@ class NewMoneyConstraints:
     single_product_max_pct: Decimal = Decimal("1.0")
     single_issuer_max_pct: Decimal = Decimal("1.0")
     max_cash_retention_pct: Decimal = Decimal("1.0")  # Max % of NEW cash that can remain as residual
+    expected_holding_period_years: Decimal = Decimal("1.0")
+    no_trade_band_pct: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -154,6 +160,37 @@ class NewMoneyEngine:
             alloc_rep = self._calculate_max_allocation(candidate, residual_cash_orig, request, post_trade_weights, post_trade_total_val_rep)
 
             if alloc_rep > 0:
+                # 3.1 Friction analysis
+                if candidate.friction_input:
+                    fi = candidate.friction_input
+                    # Apply fallbacks
+                    if fi.no_trade_band_pct is None:
+                        fi = dataclasses.replace(fi, no_trade_band_pct=request.constraints.no_trade_band_pct)
+                    if fi.min_trade_amount is None and candidate.min_trade_amount > 0:
+                        min_trade_rep = self._to_reporting(candidate.min_trade_amount, candidate.currency, request.fx_rates)
+                        fi = dataclasses.replace(fi, min_trade_amount=min_trade_rep)
+
+                    fx_rate = request.fx_rates.get(candidate.currency, Decimal("1.0"))
+                    friction_req = TradeFrictionRequest(
+                        amount_reporting=alloc_rep,
+                        total_portfolio_value_reporting=post_trade_total_val_rep,
+                        expected_holding_period_years=request.constraints.expected_holding_period_years,
+                        reporting_currency=request.reporting_currency,
+                        friction_input=fi,
+                        monetized_benefit_annual_rate=candidate.monetized_benefit_annual_rate,
+                        fx_rate_to_reporting=fx_rate
+                    )
+                    friction_res = calculate_trade_friction(friction_req)
+                    if friction_res.no_trade:
+                        rejected_candidates.append({
+                            "asset_id": candidate.asset_id,
+                            "reason": f"No-trade recommendation: {'; '.join(friction_res.reasons)}"
+                        })
+                        continue
+                    # Adjust allocation if friction limited it
+                    if friction_res.eligible_allocations < alloc_rep:
+                        alloc_rep = friction_res.eligible_allocations
+
                 # Check min trade amount
                 alloc_orig = self._from_reporting(alloc_rep, candidate.currency, request.fx_rates)
                 if alloc_orig < candidate.min_trade_amount:
