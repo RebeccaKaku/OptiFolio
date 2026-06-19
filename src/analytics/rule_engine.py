@@ -180,11 +180,11 @@ class RuleEngine:
         # ── ConcentrationReport → dict ────────────────────────────────
         if concentration_report is not None:
             currency_dist = {
-                item.key: item.pct / 100.0
+                item.key: item.pct
                 for item in concentration_report.by_currency
             }
             issuer_dist = {
-                item.key: item.pct / 100.0
+                item.key: item.pct
                 for item in concentration_report.by_issuer
             }
             conc_dict = {

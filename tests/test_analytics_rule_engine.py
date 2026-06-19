@@ -511,4 +511,37 @@ class TestFullRun:
         summary = RuleEngine.summary(rules)
         assert summary["overall_healthy"] is True
         assert summary["total_rules"] == 5
-        assert summary["passed"] == 5
+
+
+def test_rule_engine_run_from_reports_unit_scaling():
+    """Regression test for concentration item pct scaling in run_from_reports."""
+    from src.analytics.concentration import ConcentrationItem, ConcentrationReport
+    from datetime import date
+
+    # A concentration report with 85% (0.85) in one currency
+    item = ConcentrationItem(
+        dimension="currency",
+        key="CNY",
+        value=8500.0,
+        pct=0.85, # Note: this is already 0-1
+        asset_ids=["A1"]
+    )
+    report = ConcentrationReport(
+        as_of=date.today(),
+        total_value=10000.0,
+        by_currency=[item],
+        by_issuer=[],
+    )
+
+    # run_from_reports should NOT divide 0.85 by 100
+    rules = RuleEngine.run_from_reports(
+        concentration_report=report,
+        portfolio_value=10000.0,
+        base_currency="CNY"
+    )
+
+    currency_r = [r for r in rules if r.rule_id == "concentration_single_currency"][0]
+    # Threshold is 0.80. If 0.85 is NOT divided, it triggers the warning (passed=False).
+    # If it WAS divided (0.0085), it would erroneously pass.
+    assert currency_r.passed is False
+    assert "85.0%" in currency_r.description

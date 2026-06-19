@@ -26,6 +26,7 @@ BUCKET_ORDER = [
     "3个月内",
     "1年内",
     "锁仓",
+    "未知",
 ]
 
 _AVAILABLE_7D_BUCKETS = {"T+0", "T+1", "T+2~T+4", "7天内"}
@@ -137,7 +138,7 @@ class LiquidityAnalyzer:
             product = product_registry.get(asset_id)
             bucket = self._classify(asset_id, product, as_of)
             if bucket not in bucket_values:
-                bucket = "7天内"
+                bucket = "未知"
             bucket_values[bucket] += pos.value_base
             bucket_asset_ids[bucket].append(asset_id)
 
@@ -187,10 +188,15 @@ class LiquidityAnalyzer:
         Priority (first match wins):
         1. Product registry (product_type and metadata).
         2. Symbol pattern heuristics (A-share / US stock).
-        3. Default fallback (7天内).
+        3. Default fallback (未知).
         """
         # Cash pseudo-positions
-        if asset_id.upper() in ("CASH", "CNY_CASH", "USD_CASH", "CASH_BALANCE"):
+        aid_upper = asset_id.upper()
+        if (
+            aid_upper in ("CASH", "CNY_CASH", "USD_CASH", "CASH_BALANCE")
+            or aid_upper.startswith("CASH_")
+            or aid_upper.endswith("_CASH")
+        ):
             return "T+0"
 
         if product is not None:
@@ -211,6 +217,7 @@ class LiquidityAnalyzer:
                 "etf_fund",
                 "balanced_fund",
                 "qdii_fund",
+                "bond",
             ):
                 return "T+2~T+4"
 
@@ -220,6 +227,9 @@ class LiquidityAnalyzer:
 
             # Deposit → distinguish demand vs time by maturity/term
             if ptype == "deposit":
+                # Explicit check for demand deposit in name
+                if "活期" in pname or "demand" in pname.lower():
+                    return "T+0"
                 return self._classify_deposit(product, as_of)
 
             # Structured deposit → check liquidity_type, fallback 1 month
@@ -227,7 +237,11 @@ class LiquidityAnalyzer:
                 return self._classify_bank_wmp(product, as_of)
 
         # ── Symbol pattern heuristics ─────────────────────────────────────
-        return self._classify_by_symbol(asset_id)
+        bucket = self._classify_by_symbol(asset_id)
+        if bucket != "未知":
+            return bucket
+
+        return "未知"
 
     def _classify_by_symbol(self, asset_id: str) -> str:
         """Classify by symbol pattern when no product metadata is available."""
@@ -239,12 +253,14 @@ class LiquidityAnalyzer:
         if re.match(r"^\d{6}$", sym):
             return "T+1"
 
-        # US / global stock: letters, optional dot (e.g. BRK.B), optional dash
-        if re.match(r"^[A-Za-z]+(\.[A-Za-z]+)?$", sym):
+        # US / global stock: letters, optional dot (e.g. BRK.B), optional dash or underscore
+        # We want to exclude things that look like placeholders or generic names.
+        # But for now, let's just make it a bit more specific so it doesn't match UNKNOWN_ASSET.
+        if re.match(r"^[A-Za-z]{1,5}(\.[A-Za-z]{1,2})?$", sym): # US stocks: 1-5 letters
             return "T+1"
 
         # Fallback
-        return "7天内"
+        return "未知"
 
     @staticmethod
     def _classify_bank_wmp(product: ProductDefinition, as_of: date) -> str:
@@ -335,8 +351,8 @@ class LiquidityAnalyzer:
                 return "1年内"
             return "锁仓"
 
-        # Unable to determine if demand or time — assume T+0 and warn
+        # Unable to determine if demand or time — assume Unknown and warn
         self._warnings.append(
-            f"Deposit {product.product_id}: unable to determine if demand/time, assuming T+0"
+            f"Deposit {product.product_id}: unable to determine if demand/time, assuming 未知"
         )
-        return "T+0"
+        return "未知"
