@@ -29,6 +29,7 @@ class ApplicationServices:
     book_valuation: "BookValuationService"  # DS-012
     my_money: "MyMoneyService"              # DS-015
     portfolio_v2: "PortfolioServiceV2"      # NEW — date-aware valuation
+    case_study: "CaseStudyService"          # DS-025
 
 
 @lru_cache(maxsize=1)
@@ -38,6 +39,7 @@ def get_application_services() -> ApplicationServices:
     from src.services.book_valuation_service import BookValuationService
     from src.services.my_money_service import MyMoneyService
     from src.services.portfolio_service_v2 import PortfolioServiceV2
+    from src.services.case_study_service import CaseStudyService
     from src.core.enhanced_asset_manager import get_enhanced_asset_manager
     from FinData.serving.provider import DataProvider
 
@@ -58,4 +60,5 @@ def get_application_services() -> ApplicationServices:
         book_valuation=book_val_svc,
         my_money=MyMoneyService(portfolio_book_db, book_val_svc, data_provider),
         portfolio_v2=PortfolioServiceV2(),
+        case_study=CaseStudyService(),
     )

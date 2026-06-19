@@ -576,6 +576,9 @@ def create_app() -> FastAPI:
     from .my_money_api import router as my_money_router
     app.include_router(my_money_router)
 
+    from .case_study_api import router as case_study_router
+    app.include_router(case_study_router)
+
     app.mount("/static", StaticFiles(directory="src/api/static"), name="static")
 
     return app
