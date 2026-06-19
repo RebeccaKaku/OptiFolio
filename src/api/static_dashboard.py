@@ -1,7 +1,8 @@
 """Minimal HTML dashboard — renders live data from OptiFolio API."""
 
+import os
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 
 router = APIRouter()
 
@@ -209,3 +210,10 @@ loadAll();
 @router.get("/", response_class=HTMLResponse)
 def dashboard():
     return HTML
+
+
+@router.get("/book", response_class=FileResponse)
+def onboarding_ui():
+    """Serve the manual onboarding wizard."""
+    path = os.path.join(os.path.dirname(__file__), "static", "book.html")
+    return FileResponse(path)

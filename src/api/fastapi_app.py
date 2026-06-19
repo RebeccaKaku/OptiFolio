@@ -7,6 +7,7 @@ from fastapi import Body, FastAPI, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.services import get_application_services
@@ -606,6 +607,8 @@ def create_app() -> FastAPI:
     app.include_router(ghostfolio_router)
     app.include_router(dashboard_router)
     app.include_router(book_router)
+
+    app.mount("/static", StaticFiles(directory="src/api/static"), name="static")
 
     return app
 
