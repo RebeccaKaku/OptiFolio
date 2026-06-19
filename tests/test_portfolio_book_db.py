@@ -488,6 +488,48 @@ class TestBackupRestore:
         db = PortfolioBookDatabase()
         assert db.verify_backup(fake_db) is False
 
+    def test_v8_backup_restore_roundtrip(self, initialized, tmp_path):
+        """v8 backup includes import_drafts and import_candidates."""
+        conn = initialized.connect()
+        conn.execute(
+            "INSERT INTO import_drafts (import_id, contract_version, target_kind, source_type, source_ref) "
+            "VALUES ('draft1', 1, 'account', 'screenshot', 'ref1')"
+        )
+        conn.execute(
+            "INSERT INTO import_candidates (candidate_id, import_id, field_name, review_status) "
+            "VALUES ('cand1', 'draft1', 'name', 'unreviewed')"
+        )
+        conn.commit()
+        conn.close()
+
+        backup_path = tmp_path / "v8_backup.sqlite"
+        initialized.backup(backup_path)
+        assert initialized.verify_backup(backup_path) is True
+
+        # Restore into a new DB
+        db2 = PortfolioBookDatabase(path=tmp_path / "restored_v8.sqlite")
+        db2.restore_from(backup_path)
+
+        conn2 = db2.connect()
+        row = conn2.execute("SELECT * FROM import_drafts WHERE import_id = 'draft1'").fetchone()
+        assert row["source_ref"] == "ref1"
+        row_cand = conn2.execute("SELECT * FROM import_candidates WHERE candidate_id = 'cand1'").fetchone()
+        assert row_cand["field_name"] == "name"
+        conn2.close()
+
+    def test_v8_verify_backup_fails_if_import_table_missing(self, tmp_path):
+        """verify_backup returns False if a v8 DB is missing import tables."""
+        db_path = tmp_path / "missing_v8.sqlite"
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP TABLE import_candidates")
+        conn.commit()
+        conn.close()
+
+        assert db.verify_backup(db_path) is False
+
     def test_restore_refuses_overwrite_without_flag(self, initialized, tmp_path):
         """restore_from() raises FileExistsError if target exists and overwrite=False."""
         backup_path = initialized.backup(tmp_path / "backup.sqlite")
@@ -788,8 +830,8 @@ class TestV5ExplicitMigration:
         conn.commit()
         conn.close()
 
-        db.initialize()  # should run v5 → v7
-        assert db.schema_version() == 7
+        db.initialize()  # should run v5 → current
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
 
 # ── DS-006A: Schema v6 — fresh init & v5→v6 migration ──────────────────
@@ -797,11 +839,11 @@ class TestV5ExplicitMigration:
 class TestV6Migration:
     """Migration to v6: coverage table + nullable quantity."""
 
-    def test_fresh_init_creates_v7(self, tmp_path):
-        """A brand-new database initializes directly to v7."""
-        db = PortfolioBookDatabase(path=tmp_path / "fresh_v7.sqlite")
+    def test_fresh_init_creates_current_version(self, tmp_path):
+        """A brand-new database initializes directly to current version."""
+        db = PortfolioBookDatabase(path=tmp_path / "fresh_init.sqlite")
         db.initialize()
-        assert db.schema_version() == 7
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
         conn = db.connect()
         try:
@@ -898,7 +940,7 @@ class TestV6Migration:
         # Migrate
         db = PortfolioBookDatabase(path=db_path)
         db.initialize()
-        assert db.schema_version() == 7
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
         # Verify old data preserved
         batch = db.get_batch("batch_v5")
@@ -1188,7 +1230,7 @@ class TestV7Migration:
 
         db = PortfolioBookDatabase(path=db_path)
         db.initialize()
-        assert db.schema_version() == 7
+        assert db.schema_version() == PortfolioBookDatabase.CURRENT_SCHEMA_VERSION
 
         flows = {f["event_id"]: f for f in db.get_cashflows_for_account("acc1")}
         assert flows["ev1"]["event_type"] == "purchase"

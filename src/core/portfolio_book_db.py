@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 7
+    CURRENT_SCHEMA_VERSION: int = 8
     _ACCOUNT_UPDATE_FIELDS = frozenset(
         {
             "name",
@@ -202,6 +202,7 @@ class PortfolioBookDatabase:
             5: self._migrate_v5,
             6: self._migrate_v6,
             7: self._migrate_v7,
+            8: self._migrate_v8,
         }
 
         for v in range(from_v + 1, to_v + 1):
@@ -251,6 +252,42 @@ class PortfolioBookDatabase:
             )
             """
         )
+
+    def _migrate_v8(self, conn: sqlite3.Connection) -> None:
+        """Create import_drafts and import_candidates tables."""
+        conn.execute(
+            """
+            CREATE TABLE import_drafts (
+                import_id        TEXT PRIMARY KEY,
+                contract_version INTEGER NOT NULL,
+                target_kind      TEXT NOT NULL CHECK (target_kind IN ('account', 'product', 'position')),
+                source_type      TEXT NOT NULL,
+                source_ref       TEXT NOT NULL,
+                status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'applied', 'rejected')),
+                created_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute("CREATE INDEX idx_import_drafts_status ON import_drafts (status)")
+
+        conn.execute(
+            """
+            CREATE TABLE import_candidates (
+                candidate_id         TEXT PRIMARY KEY,
+                import_id            TEXT NOT NULL,
+                field_name           TEXT NOT NULL,
+                raw_text             TEXT,
+                proposed_value_json  TEXT,
+                confidence           REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+                review_status        TEXT NOT NULL DEFAULT 'unreviewed' CHECK (review_status IN ('unreviewed', 'accepted', 'corrected', 'rejected')),
+                corrected_value_json TEXT,
+                notes                TEXT,
+                FOREIGN KEY (import_id) REFERENCES import_drafts (import_id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute("CREATE INDEX idx_import_candidates_import_id ON import_candidates (import_id)")
 
     def _migrate_v7(self, conn: sqlite3.Connection) -> None:
         """Rebuild cashflow_events with financial semantics and FKs."""
@@ -1177,6 +1214,7 @@ class PortfolioBookDatabase:
             if version >= 3: required.extend(["snapshot_batches", "position_snapshots"])
             if version >= 4: required.append("cashflow_events")
             if version >= 6: required.append("snapshot_batch_accounts")
+            if version >= 8: required.extend(["import_drafts", "import_candidates"])
 
             for table in required:
                 if table not in actual_tables:
