@@ -9,7 +9,6 @@ from typing import Dict, Any
 
 _log = logging.getLogger(__name__)
 
-from src.core.database import DatabaseManager
 from src.core.paths import (
     PROJECT_ROOT,
     get_database_path,
@@ -56,12 +55,10 @@ def ensure_local_database() -> Dict[str, Any]:
     configured_db = get_database_path()
 
     if local_db.exists():
-        DatabaseManager(str(local_db)).close()
         return {"path": str(local_db), "created": False, "source": "existing"}
 
     if configured_db.exists() and configured_db != local_db:
         copied = _copy_if_missing(configured_db, local_db)
-        DatabaseManager(str(local_db)).close()
         return {
             "path": str(local_db),
             "created": copied,
@@ -70,11 +67,9 @@ def ensure_local_database() -> Dict[str, Any]:
 
     for legacy_path in get_legacy_database_candidates():
         if _copy_if_missing(legacy_path, local_db):
-            DatabaseManager(str(local_db)).close()
             return {"path": str(local_db), "created": True, "source": str(legacy_path)}
 
     local_db.parent.mkdir(parents=True, exist_ok=True)
-    DatabaseManager(str(local_db)).close()
     return {"path": str(local_db), "created": True, "source": "initialized"}
 
 

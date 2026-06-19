@@ -15,20 +15,20 @@ def test_health_endpoint_does_not_require_services():
     assert response.json()["data"]["status"] == "ok"
 
 
-def test_portfolio_value_route_uses_service_layer(monkeypatch):
+def test_portfolio_v2_value_route_uses_service_layer(monkeypatch):
     class FakePortfolioService:
-        def get_value(self, base_currency=None):
+        def get_value(self, as_of=None, base_currency=None):
             return {
                 "success": True,
                 "data": {"base_currency": base_currency, "total_value": 123.45},
                 "message": "fake portfolio",
             }
 
-    fake_services = SimpleNamespace(portfolio=FakePortfolioService())
+    fake_services = SimpleNamespace(portfolio_v2=FakePortfolioService())
     monkeypatch.setattr(fastapi_app, "get_application_services", lambda: fake_services)
     client = TestClient(fastapi_app.create_app())
 
-    response = client.get("/api/portfolio/value?base_currency=USD")
+    response = client.get("/api/portfolio/v2/value?base_currency=USD")
 
     assert response.status_code == 200
     payload = response.json()

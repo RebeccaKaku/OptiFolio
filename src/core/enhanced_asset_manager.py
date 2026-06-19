@@ -227,6 +227,22 @@ class EnhancedAssetManager(IAssetManager):
             _log.warning("get_asset_metrics_dashboard for %s failed: %s", symbol, e)
             return {"symbol": symbol, "error": str(e)}
 
+    def get_asset_overview_data(self) -> Dict[str, Any]:
+        """获取资产概览数据。"""
+        try:
+            from FinData import fd
+            assets = fd.list_assets()
+            return {
+                "asset_count": len(assets),
+                "recent_assets": [{"symbol": a} for a in assets[:20]],
+                "by_type": {},
+                "total_types": 0,
+                "last_updated": pd.Timestamp.now().isoformat()
+            }
+        except Exception as e:
+            _log.warning("get_asset_overview_data failed: %s", e)
+            return {"asset_count": 0, "recent_assets": []}
+
 
 # ── Singleton ──────────────────────────────────────────────────────────────
 

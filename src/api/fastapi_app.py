@@ -90,34 +90,6 @@ def create_app() -> FastAPI:
     def system_status() -> JSONResponse:
         return _json_response(get_application_services().system.get_status())
 
-    @app.get("/api/dashboard/summary", tags=["dashboard"])
-    def dashboard_summary(
-        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3)
-    ) -> JSONResponse:
-        return _json_response(
-            get_application_services().dashboard.get_summary(base_currency)
-        )
-
-    @app.get("/api/dashboard/asset-type-distribution", tags=["dashboard"])
-    def asset_type_distribution() -> JSONResponse:
-        return _json_response(
-            get_application_services().dashboard.get_asset_type_distribution()
-        )
-
-    @app.get("/api/portfolio/value", tags=["portfolio"])
-    def portfolio_value(
-        base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3)
-    ) -> JSONResponse:
-        return _json_response(get_application_services().portfolio.get_value(base_currency))
-
-    @app.get("/api/portfolio/cash", tags=["portfolio"])
-    def portfolio_cash() -> JSONResponse:
-        return _json_response(get_application_services().portfolio.get_cash())
-
-    @app.get("/api/portfolio/holdings", tags=["portfolio"])
-    def portfolio_holdings() -> JSONResponse:
-        return _json_response(get_application_services().portfolio.get_holdings())
-
     @app.get("/api/portfolio/v2/performance/fx-decomposition", tags=["portfolio"])
     def fx_decomposition(
         start: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
@@ -136,14 +108,6 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             return _json_response({"success": False, "message": str(exc), "error_code": "INVALID_DATE_FORMAT"})
 
-    @app.get("/api/portfolio/v2/ledger", tags=["portfolio"])
-    def portfolio_ledger(
-        start: Optional[str] = Query(default=None),
-        end: Optional[str] = Query(default=None),
-    ) -> JSONResponse:
-        return _json_response(
-            get_application_services().portfolio.get_ledger(start, end)
-        )
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
         return _json_response(get_application_services().assets.get_overview())

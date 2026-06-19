@@ -2,19 +2,18 @@
 
 from typing import Any, Dict, Optional
 
-from src.api.enhanced_api_service import EnhancedAPIService
-
+from src.core.enhanced_asset_manager import EnhancedAssetManager
 from .response import failure, normalize_response
 
 
 class AssetService:
-    def __init__(self, api_service: EnhancedAPIService):
-        self.api_service = api_service
+    def __init__(self, asset_manager: EnhancedAssetManager):
+        self.asset_manager = asset_manager
 
     def get_overview(self) -> Dict[str, Any]:
         try:
             return normalize_response(
-                self.api_service.get_asset_overview(),
+                {"success": True, "data": self.asset_manager.get_asset_overview_data()},
                 default_message="Asset overview loaded",
             )
         except Exception as exc:
@@ -27,8 +26,23 @@ class AssetService:
         page_size: int = 50,
     ) -> Dict[str, Any]:
         try:
+            all_assets = self.asset_manager.list_assets(filter_type)
+
+            # Pagination logic
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            paginated_assets = all_assets[start_idx:end_idx]
+
+            data = {
+                "assets": paginated_assets,
+                "total": len(all_assets),
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (len(all_assets) + page_size - 1) // page_size
+            }
+
             return normalize_response(
-                self.api_service.list_assets(filter_type, page, page_size),
+                {"success": True, "data": data},
                 default_message="Assets loaded",
             )
         except Exception as exc:
@@ -40,8 +54,14 @@ class AssetService:
 
     def search_assets(self, query: str, limit: int = 50) -> Dict[str, Any]:
         try:
+            results = self.asset_manager.search_assets(query, limit)
+            data = {
+                "assets": results,
+                "query": query,
+                "count": len(results)
+            }
             return normalize_response(
-                self.api_service.search_assets(query, limit),
+                {"success": True, "data": data},
                 default_message="Asset search completed",
             )
         except Exception as exc:
@@ -49,8 +69,9 @@ class AssetService:
 
     def get_asset_info(self, symbol: str) -> Dict[str, Any]:
         try:
+            asset_info = self.asset_manager.get_asset_info(symbol)
             return normalize_response(
-                self.api_service.get_asset_info(symbol),
+                {"success": True, "data": asset_info},
                 default_message="Asset info loaded",
             )
         except Exception as exc:

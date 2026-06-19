@@ -135,7 +135,7 @@ async def ghostfolio_portfolio_details():
     try:
         services = get_application_services()
         value_res = await asyncio.to_thread(
-            services.portfolio.get_value, base_currency="CNY"
+            services.portfolio_v2.get_value, base_currency="CNY"
         )
     except Exception as exc:
         logger.warning("Ghostfolio details failed: %s", exc)
@@ -205,10 +205,13 @@ async def ghostfolio_portfolio_performance():
     try:
         services = get_application_services()
         value_res = await asyncio.to_thread(
-            services.portfolio.get_value, base_currency="CNY"
+            services.portfolio_v2.get_value, base_currency="CNY"
         )
         chart_res = await asyncio.to_thread(
-            services.dashboard.get_performance_chart_data, days=365
+            services.portfolio_v2.get_value_history,
+            start=(__import__("datetime").date.today() - __import__("datetime").timedelta(days=365)),
+            end=__import__("datetime").date.today(),
+            base_currency="CNY"
         )
     except Exception as exc:
         logger.warning("Ghostfolio performance failed: %s", exc)
@@ -219,25 +222,26 @@ async def ghostfolio_portfolio_performance():
         return {"chart": [], "performance": {}}
 
     value_data = value_res.get("data") or {}
-    chart_data = chart_res.get("data") or {}
+    history_records = chart_res.get("data", {}).get("records", [])
 
     total_value = value_data.get("total_value", 0.0)
 
     ghost_chart = []
-    dates = chart_data.get("dates", [])
-    cumulative_returns = chart_data.get("cumulative_returns", [])
-
-    for i, date_str in enumerate(dates):
-        ret = cumulative_returns[i] if i < len(cumulative_returns) else 0
-        ghost_chart.append(
-            {
-                "date": date_str,
-                "netWorth": total_value * (1 + ret),
-                "netPerformanceInPercentage": ret,
-                "totalInvestment": total_value,
-                "value": total_value * (1 + ret),
-            }
-        )
+    # Simplified performance calculation from history for Ghostfolio
+    if history_records:
+        start_val = history_records[0].get("total_value", 0.0)
+        for record in history_records:
+            curr_val = record.get("total_value", 0.0)
+            ret = (curr_val / start_val - 1) if start_val > 0 else 0.0
+            ghost_chart.append(
+                {
+                    "date": record.get("as_of") or record.get("date"),
+                    "netWorth": curr_val,
+                    "netPerformanceInPercentage": ret,
+                    "totalInvestment": start_val,
+                    "value": curr_val,
+                }
+            )
 
     return {
         "chart": ghost_chart,
@@ -263,7 +267,7 @@ async def ghostfolio_portfolio_holdings(
     try:
         services = get_application_services()
         value_res = await asyncio.to_thread(
-            services.portfolio.get_value, base_currency="CNY"
+            services.portfolio_v2.get_value, base_currency="CNY"
         )
     except Exception as exc:
         logger.warning("Ghostfolio holdings failed: %s", exc)
