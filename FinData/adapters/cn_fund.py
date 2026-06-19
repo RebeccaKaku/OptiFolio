@@ -185,24 +185,47 @@ class CnFundFetcher:
     # ---------------------------------------------------------
     
     def _fetch_etf(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """抓取场内ETF数据"""
+        """抓取场内ETF数据 (EastMoney → Sina fallback for corp firewall)."""
         start_str = start_date.replace("-", "")
         end_str = end_date.replace("-", "")
-        
-        df = ak.fund_etf_hist_em(
-            symbol=symbol, period="daily", start_date=start_str, end_date=end_str, adjust="qfq"
-        )
-        if df.empty:
-            return pd.DataFrame()
-        
-        df = df.rename(columns={
-            '日期': 'Date', '开盘': 'Open', '收盘': 'Close',
-            '最高': 'High', '最低': 'Low', '成交量': 'Volume'
-        })
-        df['Date'] = pd.to_datetime(df['Date'])
-        df.set_index('Date', inplace=True)
-        
-        return df.loc[start_date:end_date][['Open', 'High', 'Low', 'Close', 'Volume']]
+
+        # 1. EastMoney (may be blocked by corp firewall DPI)
+        try:
+            df = ak.fund_etf_hist_em(
+                symbol=symbol, period="daily", start_date=start_str, end_date=end_str, adjust="qfq"
+            )
+            if not df.empty:
+                df = df.rename(columns={
+                    '日期': 'Date', '开盘': 'Open', '收盘': 'Close',
+                    '最高': 'High', '最低': 'Low', '成交量': 'Volume'
+                })
+                df['Date'] = pd.to_datetime(df['Date'])
+                df.set_index('Date', inplace=True)
+                return df.loc[start_date:end_date][['Open', 'High', 'Low', 'Close', 'Volume']]
+        except Exception:
+            pass  # Fall through to Sina
+
+        # 2. Sina ETF (survives corp firewalls that DPI-block EastMoney)
+        try:
+            # Determine exchange prefix for Sina
+            if symbol.startswith(('5', '6', '9')):
+                sina_sym = f'sh{symbol}'
+            else:
+                sina_sym = f'sz{symbol}'
+            df = ak.fund_etf_hist_sina(symbol=sina_sym)
+            if not df.empty:
+                df = df.rename(columns={
+                    'date': 'Date', 'open': 'Open', 'close': 'Close',
+                    'high': 'High', 'low': 'Low', 'volume': 'Volume'
+                })
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    df.set_index('Date', inplace=True)
+                return df.loc[start_date:end_date][['Open', 'High', 'Low', 'Close', 'Volume']]
+        except Exception:
+            pass
+
+        return pd.DataFrame()
 
     def _fetch_open_fund(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """抓取场外公募基金数据"""

@@ -355,6 +355,17 @@ class MarketDataRepository:
                 summary[column] = pd.NA
         return summary[columns].sort_values("series_id").reset_index(drop=True)
 
+    @staticmethod
+    def _expand_asset_forms(asset_id: str) -> list[str]:
+        """Return candidate forms for *asset_id* (bare + prefixed CN stock).
+
+        CN stock symbols may be stored bare (600519) or prefixed (sh600519).
+        Query both so lookups don't fail on format mismatches.
+        """
+        from src.core.symbols import normalize_cn_symbol
+
+        return normalize_cn_symbol(asset_id)
+
     def get_prices(
         self,
         assets: Sequence[str],
@@ -369,8 +380,18 @@ class MarketDataRepository:
             if f not in CANONICAL_MARKET_COLUMNS:
                 raise ValueError(f"Unknown market data field: {f}")
 
+        # Build expanded asset list with normalized forms (bare + prefixed)
+        expanded_assets: list[str] = []
+        form_to_original: dict[str, str] = {}  # alternate form → original asset_id
+        for a in assets:
+            forms = self._expand_asset_forms(a)
+            expanded_assets.extend(forms)
+            for frm in forms:
+                if frm != a:
+                    form_to_original[frm] = a
+
         where_parts = ["asset_id IN $assets"]
-        params: dict[str, object] = {"assets": list(assets), "path": str(self.price_path)}
+        params: dict[str, object] = {"assets": expanded_assets, "path": str(self.price_path)}
         if start:
             where_parts.append("date >= $start")
             params["start"] = pd.Timestamp(start).to_pydatetime()
@@ -389,13 +410,23 @@ class MarketDataRepository:
         if rows.empty:
             return pd.DataFrame()
 
+        # Deduplicate: expanded forms may return same (date, normalized_id) twice
+        rows["asset_id"] = rows["asset_id"].replace(form_to_original)
+        rows = rows.drop_duplicates(subset=["date", "asset_id"])
+
         if len(fields) == 1:
             # Single field: return pivoted date × asset_id matrix (backwards compatible)
             matrix = rows.pivot(index="date", columns="asset_id", values=fields[0])
             matrix.index = pd.to_datetime(matrix.index)
+            # Rename alternate forms back to original asset_ids
+            rename = {k: v for k, v in form_to_original.items() if k in matrix.columns}
+            if rename:
+                matrix = matrix.rename(columns=rename)
             return matrix.reindex(columns=list(assets)).sort_index()
         else:
             # Multiple fields: return flat (date, asset_id, field1, field2, ...) DataFrame
+            # Map alternate forms back to originals
+            rows["asset_id"] = rows["asset_id"].replace(form_to_original)
             rows["date"] = pd.to_datetime(rows["date"])
             return rows.set_index("date").sort_index()
 

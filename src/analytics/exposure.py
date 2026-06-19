@@ -45,8 +45,10 @@ class ExposureAnalyzer:
         """
         pt = str(product_type).lower()
 
-        # Metadata-based refinements
+        # Metadata-based refinements (checked FIRST — fund_type_raw is authoritative)
         if metadata:
+            fund_type = (metadata.get("fund_type_raw") or metadata.get("type") or "")
+
             # bank_wmp -> fixed_income if metadata says so
             if pt == "bank_wmp" and (
                 metadata.get("fixed_income")
@@ -54,33 +56,33 @@ class ExposureAnalyzer:
             ):
                 return "fixed_income"
 
-            # cn_fund_open refinements
-            if pt == "cn_fund_open":
-                fund_type = metadata.get("fund_type_raw", "") or metadata.get("type", "")
+            # cn_fund (generic) — use fund_type_raw to disambiguate
+            if pt in ("cn_fund", "cn_fund_open"):
                 if any(k in fund_type for k in ["债", "债券", "bond"]):
                     return "fixed_income"
-                if any(k in fund_type for k in ["混合", "股票", "指数", "mixed", "equity", "index"]):
-                    return "equity"
+                if any(k in fund_type for k in ["货币", "money"]):
+                    return "cash"
+                # Most CN funds are equity/mixed
+                return "equity"
 
         # Basic mapping
         equity_types = [
             "us_equity",
             "cn_stock",
-            "hk_equity",
             "cn_stock_sh",
             "cn_stock_sz",
+            "hk_equity",
             "hk_stock",
             "us_stock",
             "cn_fund_etf",
             "cn_fund_lof",
             "cn_fund_index",
             "cn_fund_qdii",
+            "cn_fund",       # generic CN fund (equity by default)
+            "cn_fund_open",  # open-end fund (equity by default)
         ]
         if pt in equity_types:
             return "equity"
-
-        if pt == "cn_fund_open":
-            return "equity"  # Default for open-end funds
 
         if pt == "cn_fund_bond":
             return "fixed_income"

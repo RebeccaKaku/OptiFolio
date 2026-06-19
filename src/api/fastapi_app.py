@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, Query, Request
@@ -66,10 +67,27 @@ def _json_response(payload: dict) -> JSONResponse:
 
 
 def create_app() -> FastAPI:
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        """Pre-warm the portfolio price cache on server startup.
+
+        Calls PortfolioServiceV2.warmup() to trigger background price
+        refreshes for all holdings. Does NOT block startup if it fails.
+        """
+        try:
+            _log.info("Startup warmup: pre-fetching portfolio prices...")
+            get_application_services().portfolio_v2.warmup()
+            _log.info("Startup warmup: complete")
+        except Exception as exc:
+            _log.warning("Startup warmup failed (non-blocking): %s", exc)
+        yield
+
     app = FastAPI(
         title="OptiFolio API",
         version="0.1.0",
         description="HTTP API for OptiFolio portfolio and asset services.",
+        lifespan=_lifespan,
     )
 
     cors_origins_str = os.environ.get("CORS_ORIGINS", "")

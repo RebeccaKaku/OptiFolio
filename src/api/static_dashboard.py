@@ -211,20 +211,26 @@ async function loadWMP() {
   document.getElementById('wmp-count').textContent = '(' + wmps.length + ' shown / ' + all.length + ' total)';
   if (wmps.length === 0) { el.innerHTML = '<tr><td colspan="4">No WMP assets found</td></tr>'; return; }
 
-  // Fetch prices for each
-  const rows = await Promise.all(wmps.map(async code => {
-    try {
-      const pr = await get('/api/market/prices?assets=' + encodeURIComponent(code) + '&start=2024-01-01&end=2026-06-05');
-      if (pr.success && pr.data && pr.data.records && pr.data.records.length > 0) {
-        const recs = pr.data.records;
+  // Fetch prices in a single batch call
+  const params = new URLSearchParams();
+  wmps.forEach(code => params.append('assets', code));
+  params.append('start', '2024-01-01');
+  params.append('end', '2026-06-05');
+  const pr = await get('/api/market/prices?' + params.toString());
+
+  const rows = wmps.map(code => {
+    if (pr.success && pr.data && pr.data.records && pr.data.records.length > 0) {
+      // Find records that have data for this code (non-null value in the pivot)
+      const recs = pr.data.records.filter(r => r[code] != null);
+      if (recs.length > 0) {
         const last = recs[recs.length - 1];
         const first = recs[0];
-        const price = last[code] || last.adj_close || last.close || '-';
+        const price = last[code] || '-';
         return '<tr><td>' + code + '</td><td>' + fmt(price, 4) + '</td><td>' + recs.length + '</td><td class="small">' + first.date + ' ~ ' + last.date + '</td></tr>';
       }
-    } catch(e) {}
+    }
     return '<tr><td>' + code + '</td><td>-</td><td>-</td><td>-</td></tr>';
-  }));
+  });
   el.innerHTML = rows.join('');
 }
 

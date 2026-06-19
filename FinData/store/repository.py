@@ -80,6 +80,17 @@ class CanonicalStore:
 
     # ── Delegates to MarketDataRepository ───────────────────────────
 
+    @staticmethod
+    def _normalize_asset(asset_id: str) -> list[str]:
+        """Return candidate forms for *asset_id* (bare + prefixed).
+
+        CN stock symbols may be stored bare (600519) or prefixed (sh600519).
+        Try both so lookups don't fail on format mismatches.
+        """
+        from src.core.symbols import normalize_cn_symbol
+
+        return normalize_cn_symbol(asset_id)
+
     def get_prices(
         self,
         assets: Sequence[str],
@@ -87,12 +98,25 @@ class CanonicalStore:
         end: str | None = None,
         fields: Sequence[str] = ("adj_close",),
     ) -> pd.DataFrame:
-        """Return price matrix from canonical storage.
-
-        Single field (default): pivoted date × asset_id matrix.
-        Multiple fields: flat DataFrame with date index + field columns.
-        """
-        return self.repo.get_prices(assets, start=start, end=end, fields=fields)
+        """Return price matrix with symbol-normalized lookup."""
+        # First try with original symbols
+        result = self.repo.get_prices(assets, start=start, end=end, fields=fields)
+        # For any missing columns, try normalized forms
+        existing = set(result.columns)
+        missing = [a for a in assets if a not in existing]
+        if missing:
+            # Build mapping: normalized form → original asset_id
+            norm_map: dict[str, str] = {}
+            for a in missing:
+                for candidate in self._normalize_asset(a):
+                    if candidate != a:
+                        norm_map[candidate] = a
+            if norm_map:
+                extra = self.repo.get_prices(list(norm_map.keys()), start=start, end=end, fields=fields)
+                for col in extra.columns:
+                    if col in norm_map and norm_map[col] not in result.columns:
+                        result[norm_map[col]] = extra[col]
+        return result
 
     def get_returns(
         self,
@@ -100,8 +124,22 @@ class CanonicalStore:
         start: str | None = None,
         end: str | None = None,
     ) -> pd.DataFrame:
-        """Return daily return matrix from canonical storage."""
-        return self.repo.get_returns(assets, start=start, end=end)
+        """Return daily return matrix with symbol-normalized lookup."""
+        result = self.repo.get_returns(assets, start=start, end=end)
+        existing = set(result.columns)
+        missing = [a for a in assets if a not in existing]
+        if missing:
+            norm_map: dict[str, str] = {}
+            for a in missing:
+                for candidate in self._normalize_asset(a):
+                    if candidate != a:
+                        norm_map[candidate] = a
+            if norm_map:
+                extra = self.repo.get_returns(list(norm_map.keys()), start=start, end=end)
+                for col in extra.columns:
+                    if col in norm_map and norm_map[col] not in result.columns:
+                        result[norm_map[col]] = extra[col]
+        return result
 
     def list_assets(self) -> list[str]:
         """Return all asset IDs currently stored."""

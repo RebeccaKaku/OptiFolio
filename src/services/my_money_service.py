@@ -98,22 +98,31 @@ class MyMoneyService:
             prev_batch = self._db.get_previous_confirmed_batch(latest_batch["as_of"])
             recon_data = None
             return_status = "unavailable"
-            return_reason = "No previous confirmed snapshot for comparison."
+            return_reason = "No previous snapshot to compare against."
 
             if prev_batch:
-                prev_val_res = self._valuation_svc.value_batch(prev_batch["batch_id"])
-                if prev_val_res["success"]:
-                    prev_vals = prev_val_res["data"]["valuations"]
-
-                    # For reconciliation, we must use a single base currency.
-                    # We'll use reporting_currency for reconciliation.
-                    # But wait, reconcile_snapshots expects a single currency in the inputs.
-                    # We should probably convert both batches to reporting_currency first.
-
-                    recon_data, return_status, return_reason = self._perform_reconciliation(
-                        prev_batch, prev_vals, latest_batch, valuations,
-                        reporting_currency, fx_quotes
+                if prev_batch.get("status") != "confirmed":
+                    return_reason = (
+                        "Previous snapshot is not confirmed — comparison is not meaningful."
                     )
+                    _log.warning(
+                        "Skipping reconciliation: prev_batch %s has status=%s (not confirmed)",
+                        prev_batch.get("batch_id"), prev_batch.get("status"),
+                    )
+                else:
+                    prev_val_res = self._valuation_svc.value_batch(prev_batch["batch_id"])
+                    if prev_val_res["success"]:
+                        prev_vals = prev_val_res["data"]["valuations"]
+
+                        # For reconciliation, we must use a single base currency.
+                        # We'll use reporting_currency for reconciliation.
+                        # But wait, reconcile_snapshots expects a single currency in the inputs.
+                        # We should probably convert both batches to reporting_currency first.
+
+                        recon_data, return_status, return_reason = self._perform_reconciliation(
+                            prev_batch, prev_vals, latest_batch, valuations,
+                            reporting_currency, fx_quotes
+                        )
 
             # 5. Build final response
             summary = {
@@ -262,11 +271,18 @@ class MyMoneyService:
 
             return_status = "available" if res.is_return_eligible else "estimated"
             if not res.is_return_eligible:
-                return_reason = "Coverage incomplete or data quality issues."
+                return_reason = "Insufficient coverage for return calculation."
             else:
                 return_reason = "Success"
 
             return res.to_dict(), return_status, return_reason
         except Exception as exc:
-            _log.warning("Reconciliation failed: %s", exc)
-            return None, "unavailable", f"Reconciliation error: {exc}"
+            _log.warning(
+                "Reconciliation computation error "
+                "(prev_batch=%s as_of=%s, curr_batch=%s as_of=%s, "
+                "currency=%s): %s",
+                prev_batch.get("batch_id"), prev_batch.get("as_of"),
+                curr_batch.get("batch_id"), curr_batch.get("as_of"),
+                reporting_currency, exc,
+            )
+            return None, "unavailable", "Reconciliation computation error"

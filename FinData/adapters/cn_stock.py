@@ -61,6 +61,10 @@ class CnStockFetcher(FetcherProtocol):
         if len(df) == 0:
             df = self._try_tencent(code, start_str, end_str, period)
 
+        # 4. Sina ETF (works around corp firewall DPI blocking EastMoney)
+        if len(df) == 0:
+            df = self._try_sina_etf(full_symbol, start_date, end_date)
+
         if len(df) == 0:
             return pd.DataFrame()
 
@@ -74,6 +78,8 @@ class CnStockFetcher(FetcherProtocol):
         return df.loc[start_dt:end_dt]
 
     def _parse_symbol(self, symbol: str) -> tuple[str, str]:
+        from src.core.symbols import _infer_exchange_prefix
+
         symbol = symbol.strip().lower()
         code_match = re.search(r"\d{6}", symbol)
         if not code_match:
@@ -81,18 +87,14 @@ class CnStockFetcher(FetcherProtocol):
         code = code_match.group(0)
         if symbol.startswith(("sh", "sz")):
             return code, symbol
-        prefix = self._infer_exchange_prefix(code)
+        prefix = _infer_exchange_prefix(code)
         return code, f"{prefix}{code}"
 
     @staticmethod
     def _infer_exchange_prefix(code: str) -> str:
-        if code.startswith(("600", "601", "603", "605", "688")):
-            return "sh"
-        if code.startswith(("000", "001", "002", "003", "300")):
-            return "sz"
-        if code.startswith(("4", "8")):  # Beijing exchange
-            return "bj"
-        return "sh"
+        from src.core.symbols import _infer_exchange_prefix as _shared_prefix
+
+        return _shared_prefix(code)
 
     def _try_eastmoney(self, code, start_date, end_date, period, adjust) -> pd.DataFrame:
         try:
@@ -159,6 +161,26 @@ class CnStockFetcher(FetcherProtocol):
                 df["Date"] = pd.to_datetime(df["Date"])
                 df = df.set_index("Date").sort_index()
             return df
+        except Exception:
+            return pd.DataFrame()
+
+    def _try_sina_etf(self, full_symbol, start_date, end_date) -> pd.DataFrame:
+        """Sina ETF daily data — survives corp firewalls that DPI-block EastMoney."""
+        try:
+            df = ak.fund_etf_hist_sina(symbol=full_symbol)
+            if len(df) == 0:
+                return pd.DataFrame()
+            column_map = {
+                "date": "Date", "open": "Open", "close": "Close",
+                "high": "High", "low": "Low", "volume": "Volume",
+            }
+            df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+            if "Date" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"])
+                df = df.set_index("Date").sort_index()
+            start_dt = pd.to_datetime(start_date)
+            end_dt = pd.to_datetime(end_date)
+            return df.loc[start_dt:end_dt]
         except Exception:
             return pd.DataFrame()
 
