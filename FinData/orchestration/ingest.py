@@ -15,11 +15,21 @@ import yaml
 from FinData.adapters import get_fetcher
 from FinData.store.repository import CanonicalStore
 from src.core.calendars import get_calendar
-from src.core.paths import PROJECT_ROOT
+
+# PROJECT_ROOT resolved via environment or cwd walk (avoids src.core.paths import)
+def _find_project_root() -> Path:
+    """Walk up from cwd to find project root (dir containing pyproject.toml)."""
+    from pathlib import Path as _Path
+    cwd = _Path.cwd()
+    for parent in [cwd, *cwd.parents]:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return cwd
 
 
-def load_portfolio() -> tuple[Dict[str, float], Dict[str, float]]:
-    for loc in [PROJECT_ROOT / "local" / "portfolio.yaml", PROJECT_ROOT / "config" / "portfolio.yaml"]:
+def load_portfolio(project_root: Path | None = None) -> tuple[Dict[str, float], Dict[str, float]]:
+    root = project_root or _find_project_root()
+    for loc in [root / "local" / "portfolio.yaml", root / "config" / "portfolio.yaml"]:
         if loc.exists():
             with open(loc, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}

@@ -8,11 +8,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.fastapi_app import app
-from src.core.paths import PROJECT_ROOT
+from findata.config import get_default_config
 
 client = TestClient(app)
 
-QUALITY_FILE = PROJECT_ROOT / "metadata" / "data_quality_issues.parquet"
+QUALITY_FILE = get_default_config().data_dir / "metadata" / "data_quality_issues.parquet"
 
 
 @pytest.fixture

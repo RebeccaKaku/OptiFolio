@@ -20,8 +20,13 @@ import pandas as pd
 
 _log = logging.getLogger(__name__)
 
-from src.core.paths import PROJECT_ROOT
 from .schemas import _COLUMN_ALIASES, _canonical_column_name
+
+
+def _default_quality_path() -> Path:
+    """Default path for quality issues — under findata data dir."""
+    from findata.config import get_default_config
+    return get_default_config().data_dir / "metadata" / "data_quality_issues.parquet"
 
 
 # ── Ingestion quality report (per-batch, in-memory) ──────────────────────────
@@ -58,10 +63,8 @@ class QualityIssueStore:
         df = store.load()          # read back for API / alerting
     """
 
-    DEFAULT_PATH: Path = PROJECT_ROOT / "metadata" / "data_quality_issues.parquet"
-
     def __init__(self, file_path: Optional[Path] = None) -> None:
-        self.file_path = file_path or self.DEFAULT_PATH
+        self.file_path = file_path or _default_quality_path()
 
     def append(self, issues: pd.DataFrame) -> None:
         """Merge *issues* into the existing store, deduplicating by

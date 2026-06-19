@@ -125,7 +125,8 @@ class FxRateProvider:
         return self.get_rate(from_currency, to_currency)
 
     def get_rate(
-        self, from_currency: str, to_currency: str, try_live: bool = False
+        self, from_currency: str, to_currency: str, try_live: bool = False,
+        as_of: "date | None" = None,
     ) -> float:
         """Resolve the conversion rate from_currency → to_currency.
 
@@ -134,6 +135,9 @@ class FxRateProvider:
             to_currency: Target currency code (e.g. "CNY").
             try_live: If True, attempt live yfinance lookup first.
                       Default False to avoid network I/O during valuation.
+            as_of: If provided, look for FX rate on this date in repository
+                   first. Prevents price/FX date mismatches (06-18 close ×
+                   06-20 FX → spurious CNY P&L).
         """
         if from_currency == to_currency:
             return 1.0
@@ -143,6 +147,13 @@ class FxRateProvider:
 
         if cache_key in self._cache:
             return self._cache[cache_key]
+
+        # 0. (NEW) Try dated repository lookup when as_of specified
+        if as_of is not None:
+            rate = self.get_rate_from_repository(from_currency, to_currency, as_of, max_lookback_days=3)
+            if rate is not None and rate > 0:
+                self._cache[cache_key] = rate
+                return rate
 
         # 1. (Optional) Try live fetcher
         if try_live:
@@ -273,6 +284,8 @@ class ValuationEngine:
         holdings: Dict[str, float],
         cash: Dict[str, float],
         request: ValuationRequest,
+        *,
+        strict: bool = True,
     ) -> ValuationResult:
         """Value a portfolio as of a specific date.
 
@@ -280,6 +293,14 @@ class ValuationEngine:
             holdings: {asset_id: quantity}
             cash: {currency: amount}
             request: as_of date + base_currency
+            strict: If True, raise NoPriceDataError on any missing price.
+                    If False (default for dashboard), skip unpriced assets
+                    and return them in ``unpriced`` list.
+
+        Financial invariants:
+            total_value = holdings_value + cash_value
+            positions[].value_base = quantity × price × fx_rate
+            fx_rate must use the same date as price_date (not today).
         """
         assets = [a for a, q in holdings.items() if q > 0]
         if not assets:
@@ -295,28 +316,35 @@ class ValuationEngine:
             end=end_str,
         )
 
-        if prices.empty:
+        if prices.empty and strict:
             raise NoPriceDataError(
                 f"No price data for {assets} up to {end_str}"
             )
 
         # Find last available price for each asset (may differ by asset)
-        price_dates, last_prices = self._get_last_prices(prices, request.as_of, assets)
+        price_dates, last_prices = self._get_last_prices(prices, request.as_of, assets, strict=strict)
 
-        # Build position values
+        # Build position values — skip unpriced when not strict
         positions: Dict[str, PositionValue] = {}
+        unpriced: list[str] = []
         for asset_id, qty in holdings.items():
             if qty <= 0:
                 continue
             if asset_id not in last_prices or pd.isna(last_prices.get(asset_id)):
-                raise NoPriceDataError(
-                    f"No price for {asset_id} on or before {request.as_of}"
-                )
+                if strict:
+                    raise NoPriceDataError(
+                        f"No price for {asset_id} on or before {request.as_of}"
+                    )
+                unpriced.append(asset_id)
+                continue
             price = float(last_prices[asset_id])
             asset_currency = self._get_asset_currency(asset_id)
-            fx_rate = self.fx_provider.get_rate(asset_currency, request.base_currency)
-            value_base = qty * price * fx_rate
+            # FX rate must use the same date as the price (not today)
             asset_price_date = price_dates.get(asset_id)
+            fx_rate = self.fx_provider.get_rate(
+                asset_currency, request.base_currency, as_of=asset_price_date
+            )
+            value_base = qty * price * fx_rate
             asset_stale_days = (request.as_of - asset_price_date).days if asset_price_date else 0
             positions[asset_id] = PositionValue(
                 asset_id=asset_id,
@@ -367,6 +395,7 @@ class ValuationEngine:
             fx_rates=fx_rates,
             price_date=price_date,
             stale_days=max_stale,
+            unpriced=unpriced,
         )
 
     def value_history(
@@ -400,15 +429,20 @@ class ValuationEngine:
         prices: pd.DataFrame,
         as_of: date,
         assets: list[str],
+        *,
+        strict: bool = True,
     ) -> tuple[Dict[str, date], Dict[str, float]]:
         """Get the last available price for each asset on or before as_of.
 
         Each asset may have a different last-trading date.
         Returns ({asset_id: price_date}, {asset_id: close_price}).
+
+        When strict=False, returns empty dicts instead of raising —
+        the caller handles unpriced assets gracefully.
         """
         as_of_ts = pd.Timestamp(as_of)
         valid = prices[prices.index <= as_of_ts]
-        if valid.empty:
+        if valid.empty and strict:
             raise NoPriceDataError(
                 f"No prices on or before {as_of} for {assets}"
             )
@@ -431,7 +465,7 @@ class ValuationEngine:
             price_dates[asset_id] = price_date
             last_prices[asset_id] = float(asset_prices.iloc[-1])
 
-        if not price_dates:
+        if not price_dates and strict:
             raise NoPriceDataError(
                 f"No prices within {self.max_lookback_days} days of {as_of} for {assets}"
             )

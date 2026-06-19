@@ -9,7 +9,7 @@ import pandas as pd
 
 _log = logging.getLogger(__name__)
 
-from src.data_foundation import MarketDataRepository
+from findata.store.market_repo import MarketDataRepository
 
 from .quality import QualityGate, QualityReport
 

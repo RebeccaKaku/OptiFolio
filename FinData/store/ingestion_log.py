@@ -8,7 +8,11 @@ from typing import List, Optional
 
 import pandas as pd
 
-from src.core.paths import PROJECT_ROOT
+from findata.config import get_default_config
+
+
+def _default_log_path() -> Path:
+    return get_default_config().data_dir / "metadata" / "ingestion_runs.parquet"
 
 
 @dataclass
@@ -40,7 +44,7 @@ class IngestionRun:
 
 class IngestionLog:
     def __init__(self, log_path: Optional[Path] = None) -> None:
-        self.log_path = log_path or PROJECT_ROOT / "FinData" / "data" / "metadata" / "ingestion_runs.parquet"
+        self.log_path = log_path or _default_log_path()
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log_run(self, run: IngestionRun) -> None:

@@ -338,6 +338,7 @@ class PortfolioServiceV2:
             result = self.valuation_engine.value(
                 self._holdings, self._cash,
                 ValuationRequest(as_of=target_date, base_currency=currency),
+                strict=False,  # Dashboard: skip unpriced, show what we can
             )
             # Build positions dict expected by ExposureAnalyzer
             positions: Dict[str, Dict[str, Any]] = {
