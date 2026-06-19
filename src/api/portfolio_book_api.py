@@ -134,11 +134,37 @@ class ProductUpdateRequest(StrictRequestModel):
         return _model_dump(self, exclude_unset=True, exclude_none=True)
 
 
+class SnapshotBatchCreateRequest(StrictRequestModel):
+    batch_id: str = Field(min_length=1)
+    as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    source: str = Field(default="manual")
+    quality: str = Field(default="reported")
+    notes: Optional[str] = Field(default=None)
+
+
+class AccountCoverageUpdateRequest(StrictRequestModel):
+    coverage: str = Field(pattern="^(complete|partial|empty)$")
+    notes: Optional[str] = Field(default=None)
+
+
+class PositionSnapshotCreateRequest(StrictRequestModel):
+    account_id: str = Field(min_length=1)
+    product_id: str = Field(min_length=1)
+    quantity: Optional[float] = Field(default=None)
+    market_value: Optional[float] = Field(default=None)
+    cost_basis: Optional[float] = Field(default=None)
+    currency: str = Field(default="CNY", min_length=3, max_length=3)
+    source: Optional[str] = Field(default=None)
+    quality: Optional[str] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
+
+
 # ── Status code mapping ─────────────────────────────────────────────────────
 
 _ERROR_CODE_STATUS = {
     "NOT_FOUND": 404,
     "DUPLICATE": 409,
+    "ALREADY_CONFIRMED": 409,
     "VALIDATION_ERROR": 422,
     "PII_REJECTED": 422,
     "FOREIGN_KEY_ERROR": 422,
@@ -194,6 +220,60 @@ def get_account(account_id: str, svc=Depends(_get_service)):
     if not result.get("success") and result.get("error_code") == "NOT_FOUND":
         status_code = 404
     return _json_response(result, status_override=status_code)
+
+
+# ── Snapshot routes ─────────────────────────────────────────────────────────
+
+
+@router.post("/snapshot-batches")
+def create_snapshot_batch(payload: SnapshotBatchCreateRequest, svc=Depends(_get_service)):
+    """Create a new snapshot batch (draft)."""
+    result = svc.create_snapshot_batch(_model_dump(payload))
+    status_code = 201 if result.get("success") else None
+    return _json_response(result, status_override=status_code)
+
+
+@router.get("/snapshot-batches/{batch_id}")
+def get_snapshot_batch(batch_id: str, svc=Depends(_get_service)):
+    """Get batch details, positions, and progress."""
+    result = svc.get_snapshot_batch(batch_id)
+    return _json_response(result)
+
+
+@router.put("/snapshot-batches/{batch_id}/accounts/{account_id}/coverage")
+def set_batch_account_coverage(
+    batch_id: str,
+    account_id: str,
+    payload: AccountCoverageUpdateRequest,
+    svc=Depends(_get_service),
+):
+    """Set coverage (complete|partial|empty) for an account in a batch."""
+    result = svc.set_batch_account_coverage(batch_id, account_id, _model_dump(payload))
+    return _json_response(result)
+
+
+@router.post("/snapshot-batches/{batch_id}/positions")
+def add_snapshot_position(
+    batch_id: str, payload: PositionSnapshotCreateRequest, svc=Depends(_get_service)
+):
+    """Add a position to a draft batch."""
+    result = svc.add_snapshot_position(batch_id, _model_dump(payload))
+    status_code = 201 if result.get("success") else None
+    return _json_response(result, status_override=status_code)
+
+
+@router.post("/snapshot-batches/{batch_id}/validate")
+def validate_snapshot_batch(batch_id: str, svc=Depends(_get_service)):
+    """Validate if a batch is confirmable."""
+    result = svc.validate_snapshot_batch(batch_id)
+    return _json_response(result)
+
+
+@router.post("/snapshot-batches/{batch_id}/confirm")
+def confirm_snapshot_batch(batch_id: str, svc=Depends(_get_service)):
+    """Confirm a snapshot batch (makes it immutable)."""
+    result = svc.confirm_snapshot_batch(batch_id)
+    return _json_response(result)
 
 
 @router.patch("/accounts/{account_id}")
