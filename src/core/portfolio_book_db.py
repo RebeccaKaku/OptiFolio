@@ -58,7 +58,7 @@ class PortfolioBookDatabase:
     - Connections always enable foreign keys and use ``sqlite3.Row``.
     """
 
-    CURRENT_SCHEMA_VERSION: int = 9
+    CURRENT_SCHEMA_VERSION: int = 10
     _ACCOUNT_UPDATE_FIELDS = frozenset(
         {
             "name",
@@ -204,6 +204,7 @@ class PortfolioBookDatabase:
             7: self._migrate_v7,
             8: self._migrate_v8,
             9: self._migrate_v9,
+            10: self._migrate_v10,
         }
 
         for v in range(from_v + 1, to_v + 1):
@@ -253,6 +254,47 @@ class PortfolioBookDatabase:
             )
             """
         )
+
+    def _migrate_v10(self, conn: sqlite3.Connection) -> None:
+        """Create purpose_buckets and position_bucket_allocations tables."""
+        conn.execute(
+            """
+            CREATE TABLE purpose_buckets (
+                bucket_id              TEXT PRIMARY KEY,
+                name                   TEXT NOT NULL,
+                bucket_type            TEXT NOT NULL CHECK (bucket_type IN ('core', 'purpose_reserve', 'learning')),
+                base_currency          TEXT NOT NULL DEFAULT 'CNY',
+                benchmark_id           TEXT,
+                liquidity_horizon_days INTEGER,
+                risk_notes             TEXT NOT NULL DEFAULT '',
+                status                 TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+                created_at             TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at             TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE position_bucket_allocations (
+                allocation_id  TEXT PRIMARY KEY,
+                batch_id       TEXT NOT NULL,
+                account_id     TEXT NOT NULL,
+                product_id     TEXT NOT NULL,
+                bucket_id      TEXT NOT NULL,
+                allocation_ppm INTEGER NOT NULL CHECK (allocation_ppm >= 0 AND allocation_ppm <= 1000000),
+                notes          TEXT NOT NULL DEFAULT '',
+                created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(batch_id, account_id, product_id, bucket_id),
+                FOREIGN KEY (batch_id) REFERENCES snapshot_batches (batch_id),
+                FOREIGN KEY (account_id) REFERENCES accounts (account_id),
+                FOREIGN KEY (product_id) REFERENCES products (product_id),
+                FOREIGN KEY (bucket_id) REFERENCES purpose_buckets (bucket_id)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX idx_allocations_batch ON position_bucket_allocations (batch_id)")
+        conn.execute("CREATE INDEX idx_allocations_bucket ON position_bucket_allocations (bucket_id)")
 
     def _migrate_v9(self, conn: sqlite3.Connection) -> None:
         """Create exposure_batches and product_exposures tables."""
@@ -1290,6 +1332,183 @@ class PortfolioBookDatabase:
             batch["unknown_residuals"] = residuals
             return batch
 
+    # ── Purpose Buckets CRUD ────────────────────────────────────────────
+
+    def create_bucket(
+        self, bucket_id: str, name: str, bucket_type: str, base_currency: str = 'CNY',
+        benchmark_id: Optional[str] = None, liquidity_horizon_days: Optional[int] = None,
+        risk_notes: str = ""
+    ) -> None:
+        """Create a new purpose bucket."""
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO purpose_buckets (
+                        bucket_id, name, bucket_type, base_currency,
+                        benchmark_id, liquidity_horizon_days, risk_notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (bucket_id, name, bucket_type, base_currency,
+                     benchmark_id, liquidity_horizon_days, risk_notes)
+                )
+
+    def get_bucket(self, bucket_id: str) -> Optional[sqlite3.Row]:
+        """Fetch a bucket by ID."""
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                "SELECT * FROM purpose_buckets WHERE bucket_id = ?", (bucket_id,)
+            ).fetchone()
+
+    def list_buckets(self, status: str = "active") -> List[sqlite3.Row]:
+        """List buckets, optionally filtered by status (active | inactive | all)."""
+        with closing(self.connect()) as conn:
+            if status == "all":
+                return conn.execute(
+                    "SELECT * FROM purpose_buckets ORDER BY name, bucket_id"
+                ).fetchall()
+            return conn.execute(
+                "SELECT * FROM purpose_buckets WHERE status = ? ORDER BY name, bucket_id",
+                (status,)
+            ).fetchall()
+
+    def update_bucket(self, bucket_id: str, **kwargs: Any) -> None:
+        """Update fields of a purpose bucket."""
+        allowed = {
+            "name", "bucket_type", "base_currency", "benchmark_id",
+            "liquidity_horizon_days", "risk_notes", "status"
+        }
+        unknown = set(kwargs) - allowed
+        if unknown:
+            raise ValueError(f"Unknown bucket update fields: {', '.join(unknown)}")
+
+        if not kwargs:
+            return
+
+        fields = [f"{k} = ?" for k in kwargs]
+        values = list(kwargs.values())
+        values.append(bucket_id)
+
+        sql = f"UPDATE purpose_buckets SET {', '.join(fields)}, updated_at = CURRENT_TIMESTAMP WHERE bucket_id = ?"
+        with closing(self.connect()) as conn:
+            with conn:
+                cursor = conn.execute(sql, tuple(values))
+                if cursor.rowcount == 0:
+                    raise PortfolioBookError(f"Bucket {bucket_id} not found")
+
+    def deactivate_bucket(self, bucket_id: str) -> None:
+        """Deactivate a bucket."""
+        self.update_bucket(bucket_id, status="inactive")
+
+    # ── Position Bucket Allocations CRUD ────────────────────────────────
+
+    def set_position_bucket_allocation(
+        self, allocation_id: str, batch_id: str, account_id: str,
+        product_id: str, bucket_id: str, allocation_ppm: int,
+        notes: str = ""
+    ) -> None:
+        """Set allocation for a specific position to a bucket.
+
+        Validations:
+        1. Batch must be 'confirmed'.
+        2. Position must exist in the confirmed batch.
+        3. Bucket must exist and be 'active'.
+        4. Total allocation_ppm for the position must not exceed 1,000,000.
+        """
+        with closing(self.connect()) as conn:
+            with conn:
+                # 1. Batch must be confirmed
+                batch = conn.execute(
+                    "SELECT status FROM snapshot_batches WHERE batch_id = ?",
+                    (batch_id,)
+                ).fetchone()
+                if not batch:
+                    raise PortfolioBookError(f"Batch {batch_id} not found")
+                if batch["status"] != "confirmed":
+                    raise PortfolioBookError(f"Allocations can only be set for confirmed batches (current: {batch['status']})")
+
+                # 2. Position must exist in the batch
+                pos = conn.execute(
+                    """
+                    SELECT 1 FROM position_snapshots
+                    WHERE batch_id = ? AND account_id = ? AND product_id = ?
+                    """,
+                    (batch_id, account_id, product_id)
+                ).fetchone()
+                if not pos:
+                    raise PortfolioBookError(f"Position {product_id} in account {account_id} not found in batch {batch_id}")
+
+                # 3. Bucket must exist and be active
+                bucket = conn.execute(
+                    "SELECT status FROM purpose_buckets WHERE bucket_id = ?",
+                    (bucket_id,)
+                ).fetchone()
+                if not bucket:
+                    raise PortfolioBookError(f"Bucket {bucket_id} not found")
+                if bucket["status"] != "active":
+                    raise PortfolioBookError(f"Cannot allocate to inactive bucket {bucket_id}")
+
+                # 4. Total allocation_ppm for the position must not exceed 1,000,000
+                current_total = conn.execute(
+                    """
+                    SELECT SUM(allocation_ppm) FROM position_bucket_allocations
+                    WHERE batch_id = ? AND account_id = ? AND product_id = ? AND bucket_id != ?
+                    """,
+                    (batch_id, account_id, product_id, bucket_id)
+                ).fetchone()[0] or 0
+
+                if current_total + allocation_ppm > 1000000:
+                    raise PortfolioBookError(
+                        f"Total allocation for position exceeds 1,000,000 ppm "
+                        f"(current other: {current_total}, new: {allocation_ppm})"
+                    )
+
+                conn.execute(
+                    """
+                    INSERT INTO position_bucket_allocations (
+                        allocation_id, batch_id, account_id, product_id,
+                        bucket_id, allocation_ppm, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(batch_id, account_id, product_id, bucket_id) DO UPDATE SET
+                        allocation_ppm = excluded.allocation_ppm,
+                        notes = excluded.notes,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (allocation_id, batch_id, account_id, product_id,
+                     bucket_id, allocation_ppm, notes)
+                )
+
+    def get_position_bucket_allocations(
+        self, batch_id: str, account_id: str, product_id: str
+    ) -> List[sqlite3.Row]:
+        """Fetch all allocations for a specific position in a batch."""
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                """
+                SELECT * FROM position_bucket_allocations
+                WHERE batch_id = ? AND account_id = ? AND product_id = ?
+                ORDER BY allocation_ppm DESC
+                """,
+                (batch_id, account_id, product_id)
+            ).fetchall()
+
+    def get_batch_bucket_allocations(self, batch_id: str) -> List[sqlite3.Row]:
+        """Fetch all allocations for a whole batch."""
+        with closing(self.connect()) as conn:
+            return conn.execute(
+                "SELECT * FROM position_bucket_allocations WHERE batch_id = ?",
+                (batch_id,)
+            ).fetchall()
+
+    def delete_position_bucket_allocation(self, allocation_id: str) -> None:
+        """Delete an allocation."""
+        with closing(self.connect()) as conn:
+            with conn:
+                conn.execute(
+                    "DELETE FROM position_bucket_allocations WHERE allocation_id = ?",
+                    (allocation_id,)
+                )
+
     # ── Backup & Restore ────────────────────────────────────────────────
 
     def backup(self, target_path: str | Path, overwrite: bool = False) -> Path:
@@ -1406,6 +1625,7 @@ class PortfolioBookDatabase:
             if version >= 6: required.append("snapshot_batch_accounts")
             if version >= 8: required.extend(["import_drafts", "import_candidates"])
             if version >= 9: required.extend(["exposure_batches", "product_exposures"])
+            if version >= 10: required.extend(["purpose_buckets", "position_bucket_allocations"])
 
             for table in required:
                 if table not in actual_tables:

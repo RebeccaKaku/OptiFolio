@@ -530,6 +530,47 @@ class TestBackupRestore:
 
         assert db.verify_backup(db_path) is False
 
+    def test_v10_backup_restore_roundtrip(self, initialized, tmp_path):
+        """v10 backup includes purpose_buckets and position_bucket_allocations."""
+        from src.domain.products import ProductDefinition
+        p = ProductDefinition(product_id="p1", name="P1", product_type="bank_wmp")
+        initialized.create_product(p)
+        initialized.create_account("acc1", "Acc 1")
+        initialized.create_snapshot_batch("b1", "2026-06-01")
+        initialized.set_batch_account_coverage("b1", "acc1", "complete")
+        initialized.add_snapshot("b1", "acc1", "p1", quantity=1.0)
+        initialized.confirm_batch("b1")
+
+        initialized.create_bucket("bucket1", "Core", "core")
+        initialized.set_position_bucket_allocation("a1", "b1", "acc1", "p1", "bucket1", 1000000)
+
+        backup_path = tmp_path / "v10_backup.sqlite"
+        initialized.backup(backup_path)
+        assert initialized.verify_backup(backup_path) is True
+
+        # Restore into a new DB
+        db2 = PortfolioBookDatabase(path=tmp_path / "restored_v10.sqlite")
+        db2.restore_from(backup_path)
+
+        bucket = db2.get_bucket("bucket1")
+        assert bucket["name"] == "Core"
+        allocs = db2.get_position_bucket_allocations("b1", "acc1", "p1")
+        assert len(allocs) == 1
+        assert allocs[0]["allocation_ppm"] == 1000000
+
+    def test_v10_verify_backup_fails_if_bucket_table_missing(self, tmp_path):
+        """verify_backup returns False if a v10 DB is missing bucket tables."""
+        db_path = tmp_path / "missing_v10.sqlite"
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("DROP TABLE position_bucket_allocations")
+        conn.commit()
+        conn.close()
+
+        assert db.verify_backup(db_path) is False
+
     def test_v9_backup_restore_roundtrip(self, initialized, tmp_path):
         """v9 backup includes exposure_batches and product_exposures."""
         from src.domain.products import ProductDefinition
@@ -916,12 +957,44 @@ class TestV6Migration:
 
         db = PortfolioBookDatabase(path=db_path)
         db.initialize()
-        assert db.schema_version() == 9
+        assert db.schema_version() == 10
 
         conn = db.connect()
         # Should have exposure_batches and product_exposures
         conn.execute("SELECT * FROM exposure_batches").fetchall()
         conn.execute("SELECT * FROM product_exposures").fetchall()
+        # Should have purpose_buckets and position_bucket_allocations
+        conn.execute("SELECT * FROM purpose_buckets").fetchall()
+        conn.execute("SELECT * FROM position_bucket_allocations").fetchall()
+        conn.close()
+
+    def test_v9_to_v10_migration(self, tmp_path):
+        """Migrating from v9 to v10 creates the new bucket tables."""
+        db_path = tmp_path / "v9_legacy_mig.sqlite"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE _schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("INSERT INTO _schema_meta VALUES ('version', '9')")
+        # Add minimal v9 structure (just enough for tables existence check)
+        conn.execute("CREATE TABLE accounts (account_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE products (product_id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("CREATE TABLE snapshot_batches (batch_id TEXT PRIMARY KEY, as_of TEXT)")
+        conn.execute("CREATE TABLE position_snapshots (snapshot_id INTEGER PRIMARY KEY, batch_id TEXT, account_id TEXT, product_id TEXT)")
+        conn.execute("CREATE TABLE cashflow_events (event_id TEXT PRIMARY KEY, event_type TEXT, account_id TEXT, amount REAL, currency TEXT, effective_date TEXT)")
+        conn.execute("CREATE TABLE snapshot_batch_accounts (batch_id TEXT, account_id TEXT, coverage TEXT, PRIMARY KEY(batch_id, account_id))")
+        conn.execute("CREATE TABLE import_drafts (import_id TEXT PRIMARY KEY, contract_version INTEGER, target_kind TEXT, source_type TEXT, source_ref TEXT)")
+        conn.execute("CREATE TABLE import_candidates (candidate_id TEXT PRIMARY KEY, import_id TEXT, field_name TEXT, review_status TEXT)")
+        conn.execute("CREATE TABLE exposure_batches (exposure_batch_id TEXT PRIMARY KEY, product_id TEXT, as_of TEXT, known_at TEXT)")
+        conn.execute("CREATE TABLE product_exposures (exposure_batch_id TEXT, dimension TEXT, bucket TEXT, weight_ppm INTEGER)")
+        conn.commit()
+        conn.close()
+
+        db = PortfolioBookDatabase(path=db_path)
+        db.initialize()
+        assert db.schema_version() == 10
+
+        conn = db.connect()
+        conn.execute("SELECT * FROM purpose_buckets").fetchall()
+        conn.execute("SELECT * FROM position_bucket_allocations").fetchall()
         conn.close()
 
     def test_v5_to_v6_preserves_old_snapshots(self, tmp_path):
