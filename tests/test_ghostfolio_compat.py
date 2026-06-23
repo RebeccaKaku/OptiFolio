@@ -10,14 +10,13 @@ import pytest
 from fastapi.testclient import TestClient
 from src.api.fastapi_app import app
 from src.services import get_application_services
-from src.core.portfolio_ledger import PortfolioLedgerStore, PortfolioLedger
-
 client = TestClient(app)
 
 
 @pytest.fixture
 def mock_ghostfolio_data():
     services = get_application_services()
+    db = services.portfolio_book._db
 
     # 1. Record a dividend
     services.portfolio_v2.record_dividend(
@@ -27,46 +26,58 @@ def mock_ghostfolio_data():
         currency="USD"
     )
 
-    # 2. Add ledger entries for investments
-    real_path = "data/gold/portfolio_ledger.parquet"
-    backup_path = "data/gold/portfolio_ledger.parquet.bak"
-    has_backup = False
-    if os.path.exists(real_path):
-        os.rename(real_path, backup_path)
-        has_backup = True
+    # 2. Add snapshots for investment timeline
+    # We need account and product first
+    db.initialize()
+    try:
+        db.create_account(account_id="acc1", name="Test Account", base_currency="USD")
+    except Exception:
+        pass # Already exists
 
-    os.makedirs(os.path.dirname(real_path), exist_ok=True)
-    entries = [
-        PortfolioLedger(
-            account_id="acc1",
-            asset_id="TEST_ASSET",
-            quantity=100.0,
-            cost_basis=1000.0,
+    try:
+        from src.domain.products import ProductDefinition
+        db.create_product(ProductDefinition(
+            product_id="TEST_ASSET",
+            name="Test Asset",
+            product_type="stock",
             currency="USD",
-            as_of=datetime(2025, 1, 1)
-        ),
-        PortfolioLedger(
-            account_id="acc1",
-            asset_id="TEST_ASSET",
-            quantity=100.0,
-            cost_basis=1100.0,
-            currency="USD",
-            as_of=datetime(2025, 2, 1)
+            data_source="manual"
+        ))
+    except Exception:
+        pass # Already exists
+
+    # Create two confirmed batches
+    batch1_id = "batch_20250101"
+    try:
+        db.create_snapshot_batch(batch_id=batch1_id, as_of="2025-01-01")
+        db.set_batch_account_coverage(batch_id=batch1_id, account_id="acc1", coverage="complete")
+        db.add_snapshot(
+            batch_id=batch1_id, account_id="acc1", product_id="TEST_ASSET",
+            quantity=100.0, cost_basis=1000.0, currency="USD"
         )
-    ]
-    pd.DataFrame([vars(e) for e in entries]).to_parquet(real_path)
+        db.confirm_batch(batch1_id)
+    except Exception:
+        pass
+
+    batch2_id = "batch_20250201"
+    try:
+        db.create_snapshot_batch(batch_id=batch2_id, as_of="2025-02-01")
+        db.set_batch_account_coverage(batch_id=batch2_id, account_id="acc1", coverage="complete")
+        db.add_snapshot(
+            batch_id=batch2_id, account_id="acc1", product_id="TEST_ASSET",
+            quantity=100.0, cost_basis=1100.0, currency="USD"
+        )
+        db.confirm_batch(batch2_id)
+    except Exception:
+        pass
 
     yield
 
     # Cleanup
-    if os.path.exists(real_path):
-        os.remove(real_path)
-    if has_backup:
-        os.rename(backup_path, real_path)
-
     ca_path = "local/corporate_actions.yaml"
     if os.path.exists(ca_path):
         os.remove(ca_path)
+    # Database is local/portfolio_book.sqlite, usually kept for tests or isolated
 
 
 def test_ghostfolio_details():

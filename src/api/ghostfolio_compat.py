@@ -373,12 +373,22 @@ async def ghostfolio_portfolio_dividends():
 async def ghostfolio_portfolio_investments():
     """Investment timeline for Ghostfolio."""
     try:
-        from src.core.portfolio_ledger import PortfolioLedgerStore
+        from src.core.portfolio_book_db import PortfolioBookDatabase
         import pandas as pd
         from datetime import datetime
 
-        store = PortfolioLedgerStore()
-        df = store.load_entries()
+        db = PortfolioBookDatabase()
+        query = """
+            SELECT b.as_of, SUM(COALESCE(p.cost_basis, 0)) as cost_basis
+            FROM position_snapshots p
+            JOIN snapshot_batches b ON p.batch_id = b.batch_id
+            WHERE b.status = 'confirmed'
+            GROUP BY b.as_of
+            ORDER BY b.as_of ASC
+        """
+        import sqlite3
+        with sqlite3.connect(db.path) as conn:
+            df = pd.read_sql_query(query, conn)
 
         if df.empty:
             return {
@@ -389,14 +399,12 @@ async def ghostfolio_portfolio_investments():
         # Ensure as_of is datetime
         df["as_of"] = pd.to_datetime(df["as_of"])
 
-        # Group by date and sum cost_basis for total investment timeline
-        daily = df.groupby(df["as_of"].dt.date)["cost_basis"].sum().reset_index()
-        daily = daily.sort_values("as_of")
-
         investments = []
-        for _, row in daily.iterrows():
+        for _, row in df.iterrows():
+            # as_of might be date string or datetime string
+            dt = pd.to_datetime(row["as_of"])
             investments.append(
-                {"date": row["as_of"].isoformat(), "investment": float(row["cost_basis"])}
+                {"date": dt.date().isoformat(), "investment": float(row["cost_basis"])}
             )
 
         # Streaks: consecutive months with data
