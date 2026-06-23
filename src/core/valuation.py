@@ -66,10 +66,6 @@ class FxRateProvider:
         market_data: Optional["MarketDataRepository"] = None,
     ):
         self._hardcoded = HardcodedFxRateProvider(fallback_rates)
-        if fallback_rates is None:
-            # We must explicitly clear any internal fallbacks if the user didn't provide any,
-            # because HardcodedFxRateProvider defaults to global fallbacks.
-            self._hardcoded._fallback = {}
         self._cache: Dict[str, float] = {}
         self.market_data = market_data
 
