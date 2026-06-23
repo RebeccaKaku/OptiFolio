@@ -55,12 +55,17 @@ python tools/privacy_scan.py --strict --with-detect-secrets
 
 ## Live Documents
 
-- `docs/CURRENT_STATE_*.md` — live project map (latest dated file), test counts, known bugs, next steps
-- `docs/AI_CONTEXT.md` — full architecture reference for AI assistants
-- `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` — product north star (highest priority)
-- `docs/FINANCIAL_LOGIC_AND_MODULE_DESIGN.md` — target architecture blueprint
-- `docs/TIME_ALIGNMENT_DESIGN.md` — cross-market time alignment design
-- `docs/OPEN_QUESTIONS.md` — pending architecture / financial decisions
+| Document | Purpose |
+|----------|---------|
+| `docs/CURRENT_STATE.md` | Live project map: test counts, known bugs, architecture diagram, next steps |
+| `docs/TODO.md` | Prioritized task queue with file lists and acceptance criteria |
+| `docs/AI_CONTEXT.md` | Full architecture reference — module contracts, data flow, rules |
+| `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` | Product north star (highest priority) |
+| `docs/JULES.md` | How to dispatch work to Jules — issue format, batching, pitfalls |
+| `docs/DECISIONS_PENDING.md` | Open architecture / financial questions for peer review |
+| `docs/GLOSSARY.md` | Financial semantics dictionary |
+
+Reference (read on demand): `ARCHITECTURE_FOUNDATION.md`, `CONTRACTS.md`, `DATA_AUDIT_2026-06-18.md`, `FINANCIAL_LOGIC_AND_MODULE_DESIGN.md`, `TIME_ALIGNMENT_DESIGN.md`, `JULES_CLOUD_TASKS.md`
 
 ## Architecture Boundaries
 

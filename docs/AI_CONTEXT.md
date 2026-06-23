@@ -205,7 +205,7 @@ All 27 DeepSeek tasks have code implementations. The gap is integration — wiri
 - H8: `dashboard_engine.py` np.random dummy data — still present?
 
 ### Architecture Questions
-See `docs/OPEN_QUESTIONS.md` for pending decisions on domain/contracts boundary, src/core/ split, and calendar layer consolidation.
+See `docs/DECISIONS_PENDING.md` for pending decisions on domain/contracts boundary, src/core/ split, and calendar layer consolidation.
 
 ## Test Commands
 

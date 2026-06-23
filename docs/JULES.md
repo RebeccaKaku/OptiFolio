@@ -1,0 +1,122 @@
+# Jules Conventions
+
+**How to dispatch work to Google Jules and avoid common pitfalls.**
+
+---
+
+## Mechanism
+
+Jules watches the `RebeccaKaku/OptiFolio` GitHub repo for issues labeled `jules`.
+Create an issue → Jules picks it up → opens a PR → you review and merge.
+
+Dispatch via `gh` CLI (no token needed if already authed):
+```bash
+gh issue create --title "..." --body "..." --label jules --repo RebeccaKaku/OptiFolio
+```
+
+Or use `tools/jules.py` (legacy, needs `GITHUB_TOKEN`).
+
+---
+
+## Issue Format
+
+Every Jules issue MUST have:
+
+```markdown
+## Scope
+One sentence on what this does.
+
+### Files to DELETE
+- `path/to/dead_file.py`
+
+### Files to EDIT
+- `path/to/file.py` — what to change and why
+
+### Acceptance
+- `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider` passes
+- `grep -rn "old_pattern" src/ --include="*.py"` returns zero
+
+### Financial impact
+None / what changes for the user.
+
+### Files NOT to touch
+- `file_to_leave_alone.py`
+```
+
+---
+
+## Batching Rules
+
+1. **Batches MUST touch mutually exclusive files.** Jules runs in parallel — two issues touching the same file = merge conflict hell.
+2. **One theme per batch.** "Delete dead modules" is a theme. "Remove YAML fallback" is a theme. Don't mix.
+3. **Keep each batch ~2-6 files, ~100-500 line delta.** Too small wastes Jules credits. Too big increases error risk.
+4. **Delete-heavy batches are safest.** Pure deletions rarely break tests.
+
+---
+
+## Pitfalls (learned 2026-06-23/24)
+
+### P1: Jules branches off current main
+Jules creates PRs from whatever `main` looks like when it picks up the issue.
+If you push refactoring commits AFTER creating the issue, Jules' PR will have merge conflicts.
+**Rule**: Push all prerequisite changes BEFORE creating Jules issues, or be prepared to resolve conflicts locally.
+
+### P2: Jules' import paths may be stale
+If you renamed/moved modules, Jules' PR will use old import paths (`from FinData import` instead of `from findata import`).
+**Rule**: Always run `grep -rn "from FinData\|from src.data_foundation"` on Jules' PR branch before merging.
+**Fix**: `git checkout origin/main -- <file>` to revert files that got broken, then manually apply Jules' logic.
+
+### P3: `git checkout --theirs` vs `--ours` in merge context
+When resolving conflicts on Jules' branch:
+- `--theirs` = the branch being merged IN (usually `origin/main`) ← WRONG
+- `--ours` = the current branch (Jules' branch) ← what you usually want
+
+Double-check with `git log --oneline -3` before choosing.
+
+### P4: Jules may delete already-deleted files
+If a file was deleted in your refactoring but still exists on Jules' base branch, Jules may try to delete it again → rename/delete conflict.
+**Fix**: `git rm <file>` on Jules' branch, then commit.
+
+### P5: Test failures after Jules merge
+Common causes:
+- Jules changed a constructor signature → downstream code passes wrong args
+- Jules tightened validation → tests use old format
+- Jules added imports from deleted modules
+
+**Fix pattern**: `git show origin/main:<file> > <file>` to restore stable version, then manually apply Jules' logic on top.
+
+### P6: Jules tasks are per-credit
+Each Jules issue costs credits. Combine small related tasks into one issue.
+But don't make issues too large — Jules performs worse on 10+ file changes.
+
+---
+
+## Successful Jules Patterns
+
+### Pattern A: Pure deletion (high success rate)
+```
+Files to DELETE: dead_module_a.py, dead_module_b.py
+Files to EDIT: __init__.py (remove imports)
+```
+Example: PR #180 — 4 files deleted, 2 imports fixed. Clean merge.
+
+### Pattern B: Path rename (medium)
+```
+Files to EDIT: file_a.py, file_b.py (replace old paths with new)
+```
+Example: PR #181 — unified DB naming. Needed minor conflict resolution.
+
+### Pattern C: Business logic change (harder — needs review)
+```
+Files to EDIT: service.py (remove fallback, change constructor)
+```
+Example: PR #182 — YAML fallback removal. Largest conflict surface. Required manual revert + re-apply.
+
+---
+
+## After Merge Checklist
+
+1. `git checkout main && git pull origin main`
+2. `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`
+3. `grep -rn "from FinData\|from src.data_foundation\|from src.core.symbols" src/ tests/` — should be empty
+4. Commit any fixes, push

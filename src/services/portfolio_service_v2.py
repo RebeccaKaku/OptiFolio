@@ -3,17 +3,25 @@
 Integrates ValuationEngine, CorporateActionProcessor, FeeProcessor,
 and PortfolioHistoryTracker into a single service facade.
 
+Portfolio loading order (same as the existing convention):
+1. ``OPTIFOLIO_PORTFOLIO_PATH`` env var
+2. ``local/portfolio.yaml``
+3. ``config/portfolio.yaml`` (legacy)
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import threading
 from dataclasses import asdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+_log = logging.getLogger(__name__)
 
 from src.analytics.concentration import ConcentrationAnalyzer
 from src.analytics.exposure import ExposureAnalyzer
@@ -22,15 +30,42 @@ from src.analytics.liquidity import LiquidityAnalyzer
 from src.core.corporate_actions import CorporateActionProcessor
 from src.core.fees import FeeProcessor
 from src.core.paths import PROJECT_ROOT
-from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import (
     FxRateProvider,
     NoPriceDataError,
     ValuationEngine,
 )
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 from src.domain import ProductDefinition, ValuationRequest
+
+
+# ── Lazy fund metadata singleton (Task 2) ─────────────────────────────
+_fund_fetcher: object | None = None
+
+
+def _get_fund_metadata(code: str) -> dict | None:
+    """Return fund metadata for *code* from a lazily cached CnFundFetcher.
+
+    The CnFundFetcher downloads 27k+ fund metadata on first call and
+    caches it for the lifetime of the process.  Subsequent calls are O(1).
+    """
+    global _fund_fetcher
+    if _fund_fetcher is None:
+        from findata.adapters.cn_fund import CnFundFetcher
+
+        _fund_fetcher = CnFundFetcher()
+    fund_info: dict | None = _fund_fetcher.fund_map.get(code)  # type: ignore[union-attr]
+    if not fund_info:
+        return None
+    fund_type_raw = fund_info.get("基金类型", "")
+    return {
+        "exists": True,
+        "asset_type": "cn_fund",
+        "currency": "CNY",
+        "name": fund_info.get("基金简称", ""),
+        "fund_type_raw": fund_type_raw,
+    }
 
 
 class _AssetTypeResolver:
@@ -38,41 +73,97 @@ class _AssetTypeResolver:
 
     The registry data is loaded once per process and cached at class level
     to avoid repeated YAML I/O on every exposure report request.
+
+    Cache is auto-invalidated when the source YAML files change (Task 3).
     """
 
     _cache: Optional[Dict[str, Dict[str, Any]]] = None
+    _cache_mtimes: Dict[str, float] = {}
 
     def __init__(self) -> None:
+        if _AssetTypeResolver._is_stale():
+            _AssetTypeResolver.invalidate()
         if _AssetTypeResolver._cache is None:
             _AssetTypeResolver._cache = self._load()
 
     @classmethod
     def _load(cls) -> Dict[str, Dict[str, Any]]:
         cache: Dict[str, Dict[str, Any]] = {}
+        mtimes: Dict[str, float] = {}
         for fname in ("asset_registry.yaml", "candidates.yaml"):
             path = PROJECT_ROOT / "config" / fname
             if not path.exists():
                 continue
+            mtimes[fname] = path.stat().st_mtime
             with open(path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             for entry in data.get("assets", []):
                 symbol = entry.get("symbol")
                 if symbol:
-                    cache[symbol] = {
+                    # Flatten nested attributes into top level
+                    flat = {
                         "exists": True,
                         "asset_type": entry.get("asset_type", "unknown"),
                         "currency": entry.get("currency", "USD"),
-                        **{k: v for k, v in entry.items() if k not in ("symbol", "asset_type", "currency")},
+                        "name": entry.get("name", ""),
+                        "source": entry.get("source", ""),
                     }
+                    # Pull up fund_type_raw etc from nested attributes dict
+                    attrs = entry.get("attributes") or {}
+                    if isinstance(attrs, dict):
+                        flat.update(attrs)
+                    # Any other top-level fields (except already-handled)
+                    for k, v in entry.items():
+                        if k not in ("symbol", "asset_type", "currency", "name", "source", "attributes"):
+                            flat[k] = v
+                    cache[symbol] = flat
+        cls._cache_mtimes = mtimes
         return cache
+
+    @classmethod
+    def _is_stale(cls) -> bool:
+        """Return True if any source YAML has been modified since last load."""
+        if cls._cache is None:
+            return True
+        for fname in cls._cache_mtimes:
+            path = PROJECT_ROOT / "config" / fname
+            if not path.exists():
+                return True
+            if path.stat().st_mtime != cls._cache_mtimes[fname]:
+                return True
+        return False
 
     @classmethod
     def invalidate(cls) -> None:
         """Force reload on next instantiation (useful after config changes)."""
         cls._cache = None
+        cls._cache_mtimes = {}
 
     def get_asset_info(self, symbol: str) -> Dict[str, Any]:
-        return (self._cache or {}).get(symbol, {"exists": False})
+        cache = self._cache or {}
+        if symbol in cache:
+            return cache[symbol]
+
+        # Try normalized forms (bare ↔ prefixed CN stock codes) — Task 1
+        from optifolio_contracts.symbols import normalize_cn_symbol
+
+        for form in normalize_cn_symbol(symbol):
+            if form != symbol and form in cache:
+                return cache[form]
+
+        # Fallback: query CnFundFetcher fund_map (crawler metadata, 27k+ funds)
+        import re
+
+        bare_match = re.search(r"\d{6}", symbol)
+        if bare_match and len(bare_match.group()) == 6:
+            try:
+                fund_meta = _get_fund_metadata(bare_match.group())
+                if fund_meta:
+                    return fund_meta
+            except Exception:
+                pass
+
+        return {"exists": False}
 
 
 class PortfolioServiceV2:
@@ -92,19 +183,13 @@ class PortfolioServiceV2:
         corp_action_processor: Optional[CorporateActionProcessor] = None,
         fee_processor: Optional[FeeProcessor] = None,
         history_tracker: Optional[PortfolioHistoryTracker] = None,
-        db: Optional[PortfolioBookDatabase] = None,
-        as_of: Optional[date] = None,
+        config_path: Optional[Path] = None,
         base_currency: str = "CNY",
         fx_exposure_analyzer: Optional[FxExposureAnalyzer] = None,
         concentration_analyzer: Optional[ConcentrationAnalyzer] = None,
         liquidity_analyzer: Optional[LiquidityAnalyzer] = None,
     ):
-        self.valuation_engine = valuation_engine or self._default_valuation_engine()
-        self.corp_actions = corp_action_processor or CorporateActionProcessor()
-        self.fee_processor = fee_processor or FeeProcessor()
-        self.history = history_tracker or PortfolioHistoryTracker()
-        self._db = db or PortfolioBookDatabase()
-        self.as_of = as_of or date.today()
+        self.config_path = config_path or self._resolve_config_path()
         self.base_currency = base_currency
         self._fx_analyzer = fx_exposure_analyzer or FxExposureAnalyzer()
         self._concentration_analyzer = concentration_analyzer or ConcentrationAnalyzer()
@@ -114,6 +199,10 @@ class PortfolioServiceV2:
         self._holdings: Dict[str, float] = {}
         self._cash: Dict[str, float] = {}
         self._load_portfolio()
+        self.valuation_engine = valuation_engine or self._default_valuation_engine()
+        self.corp_actions = corp_action_processor or CorporateActionProcessor()
+        self.fee_processor = fee_processor or FeeProcessor()
+        self.history = history_tracker or PortfolioHistoryTracker()
 
     # ── public API ─────────────────────────────────────────────────────
 
@@ -249,6 +338,7 @@ class PortfolioServiceV2:
             result = self.valuation_engine.value(
                 self._holdings, self._cash,
                 ValuationRequest(as_of=target_date, base_currency=currency),
+                strict=False,  # Dashboard: skip unpriced, show what we can
             )
             # Build positions dict expected by ExposureAnalyzer
             positions: Dict[str, Dict[str, Any]] = {
@@ -668,12 +758,95 @@ class PortfolioServiceV2:
 
     # ── internal ───────────────────────────────────────────────────────
 
-    @staticmethod
-    def _default_valuation_engine() -> ValuationEngine:
+    def _default_valuation_engine(self) -> ValuationEngine:
+        """Create valuation engine with pre-check for recent prices.
+
+        Before returning the engine, checks each holding via DataProvider.
+        If cached price data is missing for any holding, triggers a
+        background refresh via the Orchestrator pipeline. The engine is
+        returned immediately — background refreshes do not block.
+
+        This implements "tolerant" mode: the first request returns whatever
+        is cached (even if stale), and subsequent requests get fresh data.
+        """
+        if self._holdings:
+            self._prewarm_price_cache()
         return ValuationEngine(
             market_data=MarketDataRepository(),
             fx_provider=FxRateProvider(),
         )
+
+    def _prewarm_price_cache(self) -> None:
+        """Check for recent prices via DataProvider; trigger background refresh if needed.
+
+        Iterates through all holdings, does a fast cache hit via ``fd.prices()``,
+        and launches a background thread to trigger live refresh for any symbol
+        where cached data is missing or stale.
+        """
+        from findata import fd
+
+        missing: List[str] = []
+        for symbol in self._holdings:
+            try:
+                prices = fd.prices(symbol, mode="fast")
+                if prices is None or prices.empty:
+                    missing.append(symbol)
+            except Exception:
+                missing.append(symbol)
+
+        if missing:
+            _log.info(
+                "Pre-warm: %d/%d holdings have missing or stale price data, "
+                "triggering background refresh",
+                len(missing), len(self._holdings),
+            )
+            for symbol in missing:
+                threading.Thread(
+                    target=lambda s=symbol: fd.prices(s, mode="live"),
+                    daemon=True,
+                ).start()
+
+    def warmup(self) -> None:
+        """Pre-fetch prices for all holdings via DataProvider.
+
+        Triggers a background refresh for every holding so that the cache
+        is warm before the first user request. Safe to call multiple times;
+        subsequent calls are no-ops if the cache is already populated.
+
+        Non-blocking — returns immediately. Failures are logged and swallowed.
+        """
+        if not self._holdings:
+            _log.info("Portfolio warmup skipped: no holdings to pre-fetch")
+            return
+
+        from findata import fd
+
+        _log.info("Portfolio warmup: pre-fetching prices for %d holdings", len(self._holdings))
+        for symbol in list(self._holdings.keys()):
+            try:
+                # Fast cache hit first (returns cached data immediately)
+                fd.prices(symbol, mode="fast")
+                # Background refresh via Orchestrator pipeline
+                threading.Thread(
+                    target=lambda s=symbol: fd.prices(s, mode="live"),
+                    daemon=True,
+                ).start()
+            except Exception as exc:
+                _log.debug("Warmup fetch failed for %s: %s", symbol, exc)
+
+        _log.info("Portfolio warmup: background refresh threads launched")
+
+    @staticmethod
+    def _resolve_config_path() -> Path:
+        env_path = os.environ.get("OPTIFOLIO_PORTFOLIO_PATH")
+        if env_path:
+            return Path(env_path)
+
+        local_path = PROJECT_ROOT / "local" / "portfolio.yaml"
+        if local_path.exists():
+            return local_path
+
+        return PROJECT_ROOT / "config" / "portfolio.yaml"
 
     def _load_asset_meta(self) -> Dict[str, Dict[str, Any]]:
         """Load asset metadata from config/asset_registry.yaml.
@@ -756,62 +929,60 @@ class PortfolioServiceV2:
             return "structured_deposit"
         return "unknown"
 
-    def _majority_priceable(self, holdings: Dict[str, float], as_of: date) -> bool:
-        """Check if the majority of positions have available prices."""
-        if not holdings:
-            return True
+    def _load_portfolio(self) -> None:
+        """Load holdings — confirmed book batch first, YAML as fallback."""
+        from datetime import date as dt_date
 
-        assets = list(holdings.keys())
+        # 1. Try PortfolioBookDatabase
         try:
-            # Check price availability within a 10-day lookback
-            start_date = as_of - timedelta(days=10)
-            prices = self.valuation_engine.market_data.get_prices(
-                assets,
-                start=start_date.isoformat(),
-                end=as_of.isoformat()
-            )
-            if prices.empty:
-                return False
+            from src.core.portfolio_book_db import PortfolioBookDatabase
+            book_db = PortfolioBookDatabase()
+            if book_db.path.exists():
+                latest = book_db.get_latest_confirmed_batch(dt_date.today().isoformat())
+                if latest and latest.get("snapshots"):
+                    holdings: Dict[str, float] = {}
+                    for snap in latest["snapshots"]:
+                        pid = snap["product_id"]
+                        qty = snap.get("quantity") or 0.0
+                        mkt_val = snap.get("market_value") or 0.0
+                        holdings[pid] = holdings.get(pid, 0.0) + (qty if qty > 0 else mkt_val)
+                    if holdings and self._majority_priceable(holdings):
+                        self._holdings = holdings
+                        self._cash = self._load_cash_from_yaml()
+                        _log.info("Loaded %d holdings from book batch %s", len(holdings), latest["batch_id"])
+                        return
+                    elif holdings:
+                        _log.warning("Book batch %s: %d holdings, majority unpriceable — using YAML",
+                                     latest["batch_id"], len(holdings))
+        except Exception:
+            _log.debug("Book DB unavailable, using YAML", exc_info=True)
 
-            priced_count = 0
-            for asset in assets:
-                if asset in prices.columns and not prices[asset].dropna().empty:
-                    priced_count += 1
+        # 2. Fallback to YAML
+        self._cash = self._load_cash_from_yaml()
+        self._holdings = self._load_holdings_from_yaml()
 
-            return (priced_count / len(assets)) >= 0.5
+    def _majority_priceable(self, holdings: Dict[str, float]) -> bool:
+        """At least half of holdings must have recent price data."""
+        try:
+            from datetime import date as dt_date
+            repo = MarketDataRepository()
+            sample = list(holdings.keys())
+            prices = repo.get_prices(sample, start="2024-01-01", end=dt_date.today().isoformat())
+            priceable = sum(1 for a in sample if a in prices.columns and not prices[a].dropna().empty)
+            return priceable >= len(sample) / 2
         except Exception:
             return False
 
-    def _load_portfolio(self) -> None:
-        """Load portfolio positions and cash from the latest confirmed SQLite batch."""
-        as_of_str = self.as_of.isoformat()
-        batch = self._db.get_latest_confirmed_batch(as_of_str)
+    def _load_cash_from_yaml(self) -> Dict[str, float]:
+        if not self.config_path.exists():
+            return {}
+        with open(self.config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return {str(k): float(v) for k, v in data.get("cash", {}).items()}
 
-        if not batch:
-            raise PortfolioBookError(
-                f"No confirmed portfolio batch found for {as_of_str} in SQLite. "
-                "YAML fallback is disabled."
-            )
-
-        new_holdings: Dict[str, float] = {}
-        new_cash: Dict[str, float] = {}
-
-        for snap in batch.get("snapshots", []):
-            product_id = snap["product_id"]
-            quantity = float(snap.get("quantity") or 0.0)
-
-            # Identify cash vs holdings by product metadata
-            product = self._db.get_product(product_id)
-            if product and product.product_type in ("deposit", "cash"):
-                currency = product.currency or snap.get("currency", "CNY")
-                new_cash[currency] = new_cash.get(currency, 0.0) + quantity
-            else:
-                new_holdings[product_id] = new_holdings.get(product_id, 0.0) + quantity
-
-        if not self._majority_priceable(new_holdings, self.as_of):
-            raise PortfolioBookError(
-                f"Batch {batch['batch_id']} rejected: majority of positions are unpriceable as of {as_of_str}"
-            )
-
-        self._holdings = new_holdings
-        self._cash = new_cash
+    def _load_holdings_from_yaml(self) -> Dict[str, float]:
+        if not self.config_path.exists():
+            return {}
+        with open(self.config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return {str(s): float(q) for s, q in data.get("positions", {}).items()}

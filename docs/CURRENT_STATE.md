@@ -1,16 +1,16 @@
 # OptiFolio Current State
 
-**Date**: 2026-06-23
+**Date**: 2026-06-24
 **Branch**: `main`
 **Package version**: `0.2.0`
 **Runtime**: Python 3.14.2 (Windows)
-**Verified tests**: `982 passed, 0 failures` (66.85s)
+**Verified tests**: `983 passed, 0 failures`
 
 ---
 
 ## One-Line Status
 
-Major refactoring complete: `FinData/` monolith split into `packages/findata/` (data) and `packages/optifolio_contracts/` (types). All 27 DeepSeek tasks (DS-001 through DS-027) have code implementations. 982 tests green. **Top priority: close the integration gap — update stale docs, wire real data into analytics and dashboard, fix known bugs, and verify end-to-end user flows.**
+Major refactoring complete: `FinData/` monolith → `packages/findata/` + `packages/optifolio_contracts/`. All 27 DeepSeek tasks implemented. 3 Jules PRs merged (dead code removal, DB naming, YAML fallback removal — partially reverted). Fund identifiers now carry akshare-derived subtype (`fund.cn.money.000198`). **Next: complete TODO.md P0 tasks — remove YAML fallback and hardcoded data.**
 
 ---
 
@@ -110,7 +110,7 @@ These were reported in the 2026-06-05 audit. Some may have been fixed in subsequ
 
 ## Architecture Questions Pending
 
-See `docs/OPEN_QUESTIONS.md` for:
+See `docs/DECISIONS_PENDING.md` for:
 
 1. Should `src/domain/` types be promoted to `optifolio_contracts`?
 2. How to resolve `CANONICAL_MARKET_COLUMNS` / `STORE_VERSION` dual definition?
@@ -126,7 +126,7 @@ See `docs/OPEN_QUESTIONS.md` for:
 - [x] CLAUDE.md — updated for new package structure
 - [x] AI_CONTEXT.md — architecture, data flow, module contracts updated
 - [x] CURRENT_STATE.md — this file
-- [ ] OPEN_QUESTIONS.md — pending decisions for peer review
+- [x] DECISIONS_PENDING.md — architecture questions for peer review
 
 ### P1: Bug Fixes
 - [ ] Fix B1: `asset_manager.py:359` crash reference
