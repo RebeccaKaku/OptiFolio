@@ -8,23 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from enum import Enum
 from typing import Dict, List, Optional, Any
 
+from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
 
-class ValuationQuality(str, Enum):
-    """Subjective quality of a valuation."""
-    CONFIRMED = "confirmed"    # Explicitly verified by human or authoritative source
-    REPORTED = "reported"     # Reported by a third party but not yet 'confirmed'
-    ESTIMATED = "estimated"   # Calculated via interpolation, carry-forward, or proxy
-    UNKNOWN = "unknown"       # No reliable data available
-
-
-class ValuationFreshness(str, Enum):
-    """Temporal relevance of a valuation."""
-    CURRENT = "current"       # Matches the requested valuation date
-    STALE = "stale"           # Older than the requested date or stale threshold
-    UNKNOWN = "unknown"       # No date information available
 
 
 @dataclass(frozen=True)

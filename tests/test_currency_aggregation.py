@@ -1,7 +1,8 @@
 import pytest
 from datetime import date, timedelta
 from decimal import Decimal
-from src.core.book_valuation import ValuationResult, ValuationQuality, ValuationFreshness
+from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
+from src.core.book_valuation import ValuationResult
 from src.analytics.currency_aggregation import FxQuote, CurrencyAggregator, CurrencyAggregationResult
 
 

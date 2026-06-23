@@ -1,31 +1,20 @@
 """
 核心业务逻辑模块。
 
-Import directly from submodules — do NOT use package-level imports:
+Import directly from submodules:
     from src.core.valuation import ValuationEngine
     from src.core.calendars import ExchangeCalendar, get_calendar
     from src.core.portfolio_book_db import PortfolioBookDatabase
-
-The lazy __getattr__ below exists only so tests with ``from src.core
-import X`` still work; new code should import from submodules directly.
 """
 
 __all__ = [
-    "AssetManager",
     "CorporateActionProcessor",
-    "DashboardEngine",
     "FeeProcessor",
-    "PortfolioCore",
-    "PortfolioHistoryTracker",
 ]
 
 _LAZY = {
-    "AssetManager": ".asset_manager",
     "CorporateActionProcessor": ".corporate_actions",
-    "DashboardEngine": ".dashboard_engine",
     "FeeProcessor": ".fees",
-    "PortfolioCore": ".portfolio_core",
-    "PortfolioHistoryTracker": ".portfolio_history",
 }
 
 

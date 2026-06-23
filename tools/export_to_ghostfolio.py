@@ -28,7 +28,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 from src.core.paths import PROJECT_ROOT
 from src.core.valuation import _resolve_currency
 

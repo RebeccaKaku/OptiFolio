@@ -1,0 +1,21 @@
+[project]
+name = "findata"
+version = "0.1.0"
+description = "Local-first financial data layer — adapters, store, orchestration, serving"
+requires-python = ">=3.10"
+dependencies = [
+    "optifolio-contracts",
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
+    "duckdb>=1.4.0",
+    "pyarrow>=14.0.0",
+    "akshare>=1.18.0",
+    "yfinance>=1.4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pandas-stubs", "duckdb", "pyarrow"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"

@@ -70,7 +70,13 @@
 <body>
     <div id="app">
         <header>
-            <h1>OptiFolio 我的钱</h1>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+                <h1 style="margin-bottom:0">OptiFolio 我的钱</h1>
+                <nav style="display:flex; gap:12px; font-size:0.85rem">
+                    <a href="/" style="color:#93c5fd; text-decoration:none">📊 仪表盘</a>
+                    <a href="/book" style="color:#60a5fa; text-decoration:none; font-weight:600">📒 我的钱</a>
+                </nav>
+            </div>
             <nav id="wizard-steps">
                 <span class="step active" data-step="0">概览</span>
                 <span class="step" data-step="1">1. 账户</span>
@@ -89,9 +95,9 @@
                     <div id="summary-content" style="display:none">
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
                             <div style="background:#0f172a; padding:20px; border-radius:8px; border:1px solid #334155;">
-                                <div style="color:#94a3b8; font-size:0.9rem;">总资产 (${state.reportingCurrency || 'CNY'})</div>
-                                <div style="font-size:1.8rem; font-weight:bold; color:#60a5fa;" id="total-assets">¥ 0.00</div>
-                                <div id="total-is-exact-badge" class="badge">确认</div>
+                                <div style="color:#94a3b8; font-size:0.9rem;" id="total-assets-label">总资产 (CNY)</div>
+                                <div style="font-size:1.8rem; font-weight:bold; color:#60a5fa;" id="total-assets">--</div>
+                                <div id="total-is-exact-badge" class="badge" style="display:none"></div>
                             </div>
                             <div style="background:#0f172a; padding:20px; border-radius:8px; border:1px solid #334155;">
                                 <div style="color:#94a3b8; font-size:0.9rem;">收益状态</div>
@@ -491,25 +497,60 @@
             document.getElementById('summary-loading').style.display = 'none';
             if (!s.has_data) {
                 document.getElementById('summary-container').innerHTML = `
-                    <div class="alert alert-info">${s.message}</div>
-                    <button onclick="state.currentStep=1; updateUI();">开始建账</button>
+                    <div class="alert alert-info">${s.message || '暂无资产数据'}</div>
+                    <button style="margin-top:12px" onclick="state.currentStep=1; updateUI();">开始建账</button>
                 `;
                 return;
             }
 
             document.getElementById('summary-content').style.display = 'block';
-            document.getElementById('total-assets').textContent = `${s.reporting_currency === 'CNY' ? '¥' : '$'} ${s.total_assets_reporting.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+            // Update label with actual reporting currency
+            document.getElementById('total-assets-label').textContent = `总资产 (${s.reporting_currency || 'CNY'})`;
+
+            const totalEl = document.getElementById('total-assets');
+            const totalVal = s.total_assets_reporting;
+            const currencySymbol = s.reporting_currency === 'CNY' ? '¥' : '$';
+
+            // Count unknown positions to detect "unknown ≠ 0" situation
+            let totalUnknown = 0, totalKnown = 0;
+            Object.values(s.by_currency || {}).forEach(d => {
+                totalUnknown += (d.unknown_count || 0);
+                totalKnown += ((d.count || 0) - (d.unknown_count || 0));
+            });
+
+            if (totalVal === null || totalVal === undefined || isNaN(totalVal)) {
+                totalEl.textContent = `${currencySymbol} 数据不可用`;
+                totalEl.style.color = '#f87171';
+                totalEl.style.fontSize = '1.2rem';
+            } else if (totalVal === 0 && totalKnown === 0 && totalUnknown > 0) {
+                // All positions are unknown — showing 0 would be a financial semantic error
+                totalEl.textContent = `${currencySymbol} 未知 (${totalUnknown} 个持仓待估值)`;
+                totalEl.style.color = '#fbbf24';
+                totalEl.style.fontSize = '1.2rem';
+            } else {
+                totalEl.textContent = `${currencySymbol} ${totalVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                totalEl.style.color = '#60a5fa';
+                totalEl.style.fontSize = '1.8rem';
+            }
 
             const exactBadge = document.getElementById('total-is-exact-badge');
+            exactBadge.style.display = 'inline-block';
             exactBadge.textContent = s.total_is_exact ? '确认' : '估算';
             exactBadge.className = 'badge ' + (s.total_is_exact ? 'badge-green' : 'badge-yellow');
 
             const retStatus = document.getElementById('return-status');
-            retStatus.textContent = s.return_status.toUpperCase();
-            retStatus.style.color = s.return_status === 'available' ? '#4ade80' : (s.return_status === 'estimated' ? '#fbbf24' : '#f87171');
-            document.getElementById('return-reason').textContent = s.return_reason;
+            const statusMap = {
+                'available': { text: '可用', color: '#4ade80' },
+                'estimated': { text: '估算', color: '#fbbf24' },
+                'unavailable': { text: '不可用', color: '#f87171' }
+            };
+            const stInfo = statusMap[s.return_status] || { text: s.return_status, color: '#94a3b8' };
+            retStatus.textContent = stInfo.text;
+            retStatus.style.color = stInfo.color;
+            document.getElementById('return-reason').textContent = s.return_reason || '';
 
-            if (s.usd_total !== undefined) {
+            if (s.usd_total !== undefined && s.usd_total !== null && s.usd_total > 0) {
                 document.getElementById('usd-container').style.display = 'block';
                 document.getElementById('usd-total').textContent = `$ ${s.usd_total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
             } else {
@@ -517,17 +558,26 @@
             }
 
             const currContainer = document.getElementById('currency-breakdown');
-            currContainer.innerHTML = Object.entries(s.by_currency).map(([curr, data]) => `
-                <div class="list-item">
-                    <span><strong>${curr}</strong></span>
-                    <span>${data.amount_original.toLocaleString()} (${data.amount_reporting.toLocaleString()} ${s.reporting_currency})</span>
-                </div>
-            `).join('');
+            if (Object.keys(s.by_currency || {}).length > 0) {
+                currContainer.innerHTML = Object.entries(s.by_currency).map(([curr, data]) => `
+                    <div class="list-item">
+                        <span><strong>${curr}</strong> ${data.unknown_count > 0 ? '<span class="badge badge-yellow">含未知</span>' : ''}</span>
+                        <span>${(data.amount_original || 0).toLocaleString()} (${(data.amount_reporting || 0).toLocaleString()} ${s.reporting_currency})</span>
+                    </div>
+                `).join('');
+            } else {
+                currContainer.innerHTML = '<p class="meta">无币种数据</p>';
+            }
 
             const qualContainer = document.getElementById('quality-breakdown');
-            qualContainer.innerHTML = Object.entries(s.quality_summary).map(([qual, count]) => `
-                <span class="badge ${qual === 'confirmed' ? 'badge-green' : (qual === 'reported' ? 'badge-blue' : 'badge-yellow')}">${qual}: ${count}</span>
-            `).join('');
+            const qEntries = Object.entries(s.quality_summary || {});
+            if (qEntries.length > 0) {
+                qualContainer.innerHTML = qEntries.map(([qual, count]) => `
+                    <span class="badge ${qual === 'confirmed' ? 'badge-green' : (qual === 'reported' ? 'badge-blue' : (qual === 'estimated' ? 'badge-yellow' : 'badge-gray'))}">${qual}: ${count}</span>
+                `).join('');
+            } else {
+                qualContainer.innerHTML = '<span class="badge badge-gray">无质量数据</span>';
+            }
         }
 
         function updateUI() {

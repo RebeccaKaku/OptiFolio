@@ -26,7 +26,7 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from FinData.adapters.bank_wmp import BankWmpFetcher
+from findata.adapters.bank_wmp import BankWmpFetcher
 
 
 @dataclass

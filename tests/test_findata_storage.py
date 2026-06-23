@@ -5,10 +5,10 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from FinData import fd as fd_import
-from FinData.store.quality import QualityGate, QualityReport
-from FinData.store.repository import CanonicalStore
-from FinData.store.schemas import CANONICAL_COLUMNS, store_version
+from findata import fd as fd_import
+from findata.store import QualityGate, QualityReport
+from findata.store import CanonicalStore
+from findata.store.schemas import CANONICAL_MARKET_COLUMNS, STORE_VERSION
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -227,10 +227,10 @@ class TestCanonicalStoreAccept:
         df = _make_df()
         report = store.accept(df, asset_id="TEST", source="unit", currency="USD")
         assert report.passed
-        # Data should now be queryable
+        # Data should now be queryable (canonical ID is equity.us.test)
         prices = store.get_prices(["TEST"])
         assert not prices.empty
-        assert "TEST" in prices.columns
+        assert "equity.us.test" in prices.columns
         assert len(prices) == 20
 
     def test_multiple_assets_stored_and_queried(self, tmp_path):
@@ -240,7 +240,7 @@ class TestCanonicalStoreAccept:
             _make_df(close=[50] * 20), asset_id="BBB", source="unit", currency="USD"
         )
         prices = store.get_prices(["AAA", "BBB"])
-        assert list(prices.columns) == ["AAA", "BBB"]
+        assert list(prices.columns) == ["equity.us.aaa", "equity.us.bbb"]
         assert prices.shape == (20, 2)
 
 
@@ -265,7 +265,7 @@ class TestCanonicalStoreDelegates:
         store.accept(_make_df(), asset_id="AAA", source="unit", currency="USD")
         store.accept(_make_df(), asset_id="BBB", source="unit", currency="USD")
         assets = store.list_assets()
-        assert sorted(assets) == ["AAA", "BBB"]
+        assert sorted(assets) == ["equity.us.aaa", "equity.us.bbb"]
 
     def test_missing_report(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
@@ -286,18 +286,19 @@ class TestCanonicalStoreDelegates:
 
 class TestSchemas:
     def test_store_version_is_set(self):
-        assert store_version == "1.0"
+        assert STORE_VERSION == "2.0"
 
     def test_canonical_columns_contains_required_fields(self):
         required = {"asset_id", "date", "open", "high", "low", "close", "adj_close", "volume", "currency", "source", "timezone"}
-        assert set(CANONICAL_COLUMNS) == required
+        assert set(CANONICAL_MARKET_COLUMNS) == required
 
 
 # ── Merged from test_data_foundation.py ──
 
 import pandas as pd
 
-from src.data_foundation import MarketDataRepository, normalize_market_frame
+from findata.store import MarketDataRepository
+from findata.store.schemas import normalize_market_frame
 
 
 def test_normalize_market_frame_accepts_provider_columns():
@@ -311,13 +312,13 @@ def test_normalize_market_frame_accepts_provider_columns():
 
     normalized = normalize_market_frame(raw, asset_id="AAA", source="unit", currency="USD")
 
-    assert list(normalized["asset_id"].unique()) == ["AAA"]
+    assert list(normalized["asset_id"].unique()) == ["equity.us.aaa"]
     assert list(normalized["adj_close"]) == [100, 101]
     assert normalized["source"].eq("unit").all()
 
 
-def test_normalize_market_frame_strips_cn_stock_prefix():
-    """sh/sz prefix on CN stock codes is stripped to bare 6-digit code."""
+def test_normalize_market_frame_normalizes_cn_stock_ids():
+    """sh/sz/bj prefixed and bare CN stock codes become canonical IDs."""
     raw = pd.DataFrame({
         "date": ["2024-01-01", "2024-01-02"],
         "close": [100, 101],
@@ -326,19 +327,21 @@ def test_normalize_market_frame_strips_cn_stock_prefix():
 
     # sh-prefixed
     df_sh = normalize_market_frame(raw.copy(), asset_id="sh600519", source="unit", currency="CNY")
-    assert df_sh["asset_id"].iloc[0] == "600519"
+    assert df_sh["asset_id"].iloc[0] == "equity.cn.sh.600519"
 
     # sz-prefixed
     df_sz = normalize_market_frame(raw.copy(), asset_id="sz000001", source="unit", currency="CNY")
-    assert df_sz["asset_id"].iloc[0] == "000001"
+    assert df_sz["asset_id"].iloc[0] == "equity.cn.sz.000001"
 
-    # Bare code passes through unchanged
-    df_bare = normalize_market_frame(raw.copy(), asset_id="600028", source="unit", currency="CNY")
-    assert df_bare["asset_id"].iloc[0] == "600028"
+    # Bare code with asset_type hint becomes canonical
+    df_bare = normalize_market_frame(
+        raw.copy(), asset_id="600028", source="unit", currency="CNY", asset_type="cn_stock"
+    )
+    assert df_bare["asset_id"].iloc[0] == "equity.cn.sh.600028"
 
-    # Non-CN codes unchanged
+    # Non-CN codes become canonical US equity IDs
     df_us = normalize_market_frame(raw.copy(), asset_id="AAPL", source="unit", currency="USD")
-    assert df_us["asset_id"].iloc[0] == "AAPL"
+    assert df_us["asset_id"].iloc[0] == "equity.us.aapl"
 
 
 def test_market_data_repository_saves_and_queries_price_matrix(tmp_path):
@@ -370,7 +373,7 @@ def test_market_data_repository_saves_and_queries_price_matrix(tmp_path):
     returns = repo.get_returns(["AAA", "BBB"])
     report = repo.missing_report(["AAA", "BBB"])
 
-    assert list(prices.columns) == ["AAA", "BBB"]
+    assert list(prices.columns) == ["equity.us.aaa", "equity.us.bbb"]
     assert prices.shape == (2, 2)
     assert returns.shape == (2, 2)
     assert report["missing"].sum() == 0
@@ -384,14 +387,14 @@ def test_market_data_repository_observations_round_trip(tmp_path):
             "value": [0.021],
             "known_at": ["2024-02-01T09:00:00"],
         }),
-        series_id="RATE_1Y_CN",
+        series_id="rate.cn.shibor.1y",
         source="unit",
         unit="decimal",
         currency="CNY",
     )
 
     assert len(saved) == 1
-    latest = repo.latest_observation("RATE_1Y_CN", as_of="2024-02-05")
+    latest = repo.latest_observation("rate.cn.shibor.1y", as_of="2024-02-05")
     assert latest is not None
     assert latest["value"] == pytest.approx(0.021)
     assert latest["source"] == "unit"
@@ -406,7 +409,7 @@ def test_market_data_repository_observations_reject_future_leakage(tmp_path):
                 "value": [0.021],
                 "known_at": ["2024-01-31T09:00:00"],
             }),
-            series_id="RATE_1Y_CN",
+            series_id="rate.cn.shibor.1y",
             source="unit",
         )
 
@@ -418,7 +421,7 @@ def test_market_data_repository_lists_observation_series(tmp_path):
             "effective_date": ["2024-01-01", "2024-01-02"],
             "value": [0.01, 0.011],
         }),
-        series_id="RATE_SOFR_USD_ON",
+        series_id="rate.us.sofr.on",
         source="unit",
         unit="decimal",
         currency="USD",
@@ -427,7 +430,7 @@ def test_market_data_repository_lists_observation_series(tmp_path):
     series = repo.list_observation_series()
 
     assert len(series) == 1
-    assert series["series_id"].iloc[0] == "RATE_SOFR_USD_ON"
+    assert series["series_id"].iloc[0] == "rate.us.sofr.on"
     assert series["observations"].iloc[0] == 2
 
 
@@ -438,17 +441,17 @@ def test_market_data_repository_observation_coverage_marks_missing(tmp_path):
             "effective_date": ["2024-01-01"],
             "value": [0.01],
         }),
-        series_id="RATE_SOFR_USD_ON",
+        series_id="rate.us.sofr.on",
         source="unit",
     )
 
     coverage = repo.observation_coverage(
-        ["RATE_SOFR_USD_ON", "RATE_SONIA_GBP_ON"],
+        ["rate.us.sofr.on", "rate.uk.sonia.on"],
         expected_stale_days=5,
         as_of="2024-01-10",
     )
     by_id = {row["series_id"]: row for row in coverage.to_dict(orient="records")}
 
-    assert by_id["RATE_SOFR_USD_ON"]["stale_days"] == 9
-    assert by_id["RATE_SOFR_USD_ON"]["is_stale"] is True
-    assert by_id["RATE_SONIA_GBP_ON"]["missing"] is True
+    assert by_id["rate.us.sofr.on"]["stale_days"] == 9
+    assert by_id["rate.us.sofr.on"]["is_stale"] is True
+    assert by_id["rate.uk.sonia.on"]["missing"] is True
