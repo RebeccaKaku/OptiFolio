@@ -139,7 +139,38 @@ Keep three layers. The split is the correct application of dependency inversion.
 | `CURRENT_STATE.md` | "Where are we right now?" | AI resuming after a break |
 | `PRODUCT_VISION.md` | "What are we building and why?" | AI deciding what to work on next |
 
+## Q6: FinData public API — flat vs namespaced?
+
+### Current state
+
+```python
+fd.prices("AAPL")
+fd.ohlcv("AAPL")
+fd.fx_rate("USD", "CNY")
+fd.rate("1y_cn")
+```
+
+### Proposed direction
+
+```python
+fd.rates.shibor("1y")
+fd.fx.daily("USD", "CNY")
+fd.funds.nav("000198")
+fd.wmp.nav("GRSDR260056")
+fd.dataset("rates.shibor.daily")
+```
+
+Package boundaries are good, but the public API is still flat-call style rather than domain-namespaced.
+
 ### Questions
+
+1. Should `fd` expose namespaced accessors (`fd.rates`, `fd.fx`, `fd.funds`, `fd.wmp`) or stay flat?
+2. Should datasets be explicitly declared (`fd.dataset("rates.shibor.daily")`) rather than inferred from method name?
+3. How does this interact with the `DataProvider` delegation pattern in `findata/__init__.py`?
+
+---
+
+### Questions (from original doc)
 
 1. Is four documents the right number? Too many? Too few?
 2. Should `OPEN_QUESTIONS.md` be a permanent doc or temporary (delete after decisions)?
