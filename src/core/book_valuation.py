@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Dict, List, Optional, Any
 
-# Re-export from canonical location (Phase 2 migration)
-from optifolio_contracts.quality import ValuationQuality, ValuationFreshness  # noqa: F401
+from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
+
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,7 @@ _log = logging.getLogger(__name__)
 class EnhancedAssetManager:
     """资产管理器 — 委托层。
 
-    数据访问 → FinData.fd / PortfolioBookDatabase / AssetImporter。
+    数据访问 → findata.fd / PortfolioBookDatabase / AssetImporter。
     纯逻辑 → 关注列表、指标仪表盘。
     """
 
@@ -45,7 +45,7 @@ class EnhancedAssetManager:
     def list_assets(self, filter_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """列出已注册资产（委托给 FinData）。"""
         try:
-            from FinData import fd
+            from findata import fd
             assets = fd.list_assets()
             result = [{"symbol": a, "type": "unknown"} for a in assets]
             if filter_type:
@@ -90,11 +90,11 @@ class EnhancedAssetManager:
     def update_asset_prices(self, symbols: Optional[List[str]] = None) -> Dict[str, bool]:
         """更新资产价格（委托给 FinData Orchestrator）。"""
         try:
-            from FinData.orchestration.orchestrator import Orchestrator
+            from findata.orchestration.orchestrator import Orchestrator
             orch = Orchestrator()
             targets = symbols or []
             if not targets:
-                from FinData import fd
+                from findata import fd
                 targets = fd.list_assets()
             tasks = orch.schedule(asset_ids=targets)
             results = orch.dispatch(tasks)
@@ -110,7 +110,7 @@ class EnhancedAssetManager:
                            importer_class: Optional[Any] = None) -> bool:
         """注册新资产类型（委托给 FinData adapter registry）。"""
         try:
-            from FinData.adapters import FETCHER_REGISTRY
+            from findata.adapters import FETCHER_REGISTRY
             FETCHER_REGISTRY[asset_type] = fetcher_class()
             _log.info("Registered asset type: %s", asset_type)
             return True
@@ -121,7 +121,7 @@ class EnhancedAssetManager:
     def get_supported_types(self) -> List[str]:
         """获取支持的资产类型列表。"""
         try:
-            from FinData.adapters import FETCHER_REGISTRY
+            from findata.adapters import FETCHER_REGISTRY
             return [k for k, v in FETCHER_REGISTRY.items() if v is not None]
         except Exception:
             return ['cn_stock', 'cn_fund', 'us_equity', 'currency']
@@ -129,7 +129,7 @@ class EnhancedAssetManager:
     def get_fetcher_for_type(self, asset_type: str) -> Optional[Any]:
         """获取资产类型对应的 Fetcher（委托给 FinData）。"""
         try:
-            from FinData.adapters import get_fetcher
+            from findata.adapters import get_fetcher
             return get_fetcher(asset_type)
         except Exception:
             return None
@@ -165,7 +165,7 @@ class EnhancedAssetManager:
         for item in items:
             sym = item["symbol"]
             try:
-                from FinData import fd
+                from findata import fd
                 prices = fd.prices(sym)
                 if prices is not None and len(prices) > 1:
                     rets = prices.pct_change().dropna()
@@ -191,7 +191,7 @@ class EnhancedAssetManager:
     def get_price_history_with_analysis(self, symbol: str, days: int = 30) -> Dict[str, Any]:
         """获取价格历史和分析指标（委托给 FinData）。"""
         try:
-            from FinData import fd
+            from findata import fd
             end = pd.Timestamp.now().strftime("%Y-%m-%d")
             start = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
             prices = fd.prices(symbol, start=start, end=end)
@@ -213,7 +213,7 @@ class EnhancedAssetManager:
     def get_asset_metrics_dashboard(self, symbol: str) -> Dict[str, Any]:
         """获取资产指标仪表盘（委托给 FinData DataProvider）。"""
         try:
-            from FinData import fd
+            from findata import fd
             metrics = fd.metrics(symbol, "all")
             prices = fd.prices(symbol)
             return {
@@ -228,7 +228,7 @@ class EnhancedAssetManager:
     def get_asset_overview_data(self) -> Dict[str, Any]:
         """获取资产概览数据。"""
         try:
-            from FinData import fd
+            from findata import fd
             assets = fd.list_assets()
             return {
                 "asset_count": len(assets),

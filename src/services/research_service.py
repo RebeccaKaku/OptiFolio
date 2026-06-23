@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Sequence
 
 import pandas as pd
 
-from src.data_foundation import MarketDataRepository
+from findata.store import MarketDataRepository
 from src.research import BacktestEngine, BacktestRequest
 
 from .response import failure, success
@@ -55,7 +55,7 @@ class ResearchService:
 
     def get_quality_reports(self, asset_id: Optional[str] = None) -> Dict[str, Any]:
         try:
-            from FinData.store.quality import QualityIssueStore
+            from findata.store import QualityIssueStore
 
             store = QualityIssueStore()
             df = store.load()
@@ -78,7 +78,7 @@ class ResearchService:
         and ``threshold_pct`` (percentage of tracked assets that are stale).
         """
         try:
-            from FinData.store.quality import QualityGate, QualityIssueStore
+            from findata.store import QualityGate, QualityIssueStore
 
             gate = QualityGate(repository=self.market_data)
             issues = gate.stale_price_check(n_days=n_days)

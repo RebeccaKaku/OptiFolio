@@ -36,7 +36,7 @@ from src.core.valuation import (
     NoPriceDataError,
     ValuationEngine,
 )
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 from src.domain import ProductDefinition, ValuationRequest
 
 
@@ -52,7 +52,7 @@ def _get_fund_metadata(code: str) -> dict | None:
     """
     global _fund_fetcher
     if _fund_fetcher is None:
-        from FinData.adapters.cn_fund import CnFundFetcher
+        from findata.adapters.cn_fund import CnFundFetcher
 
         _fund_fetcher = CnFundFetcher()
     fund_info: dict | None = _fund_fetcher.fund_map.get(code)  # type: ignore[union-attr]
@@ -145,7 +145,7 @@ class _AssetTypeResolver:
             return cache[symbol]
 
         # Try normalized forms (bare ↔ prefixed CN stock codes) — Task 1
-        from src.core.symbols import normalize_cn_symbol
+        from optifolio_contracts.symbols import normalize_cn_symbol
 
         for form in normalize_cn_symbol(symbol):
             if form != symbol and form in cache:
@@ -783,7 +783,7 @@ class PortfolioServiceV2:
         and launches a background thread to trigger live refresh for any symbol
         where cached data is missing or stale.
         """
-        from FinData import fd
+        from findata import fd
 
         missing: List[str] = []
         for symbol in self._holdings:
@@ -819,7 +819,7 @@ class PortfolioServiceV2:
             _log.info("Portfolio warmup skipped: no holdings to pre-fetch")
             return
 
-        from FinData import fd
+        from findata import fd
 
         _log.info("Portfolio warmup: pre-fetching prices for %d holdings", len(self._holdings))
         for symbol in list(self._holdings.keys()):

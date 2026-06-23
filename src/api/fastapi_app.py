@@ -304,7 +304,7 @@ def create_app() -> FastAPI:
             load_latest_prices,
             load_portfolio,
         )
-        from src.data_foundation.repository import MarketDataRepository
+        from findata.store import MarketDataRepository
         from datetime import date
 
         holdings, cash = load_portfolio()

@@ -143,7 +143,7 @@ async function loadPortfolio() {
     const errCode = res.error_code || '';
     let reason = errMsg;
     if (errCode === 'NO_PRICE_DATA') {
-      reason = '价格数据缺失 — 部分资产（如 510300）在当前日期无可用市场价格。请检查 FinData 数据源或等待数据更新。';
+      reason = '价格数据缺失 — 部分资产（如 fund.cn.510300）在当前日期无可用市场价格。请检查 findata 数据源或等待数据更新。';
     } else if (errCode === 'OPTIMIZATION_NO_DATA' || errCode === 'OPTIMIZATION_INSUFFICIENT_ASSETS') {
       reason = '资产数据不足 — 尚未有确认的快照批次，无法计算持仓分布。请先完成建账流程。';
     } else if (res.status === 422) {

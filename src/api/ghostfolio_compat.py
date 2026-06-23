@@ -373,7 +373,7 @@ async def ghostfolio_portfolio_dividends():
 async def ghostfolio_portfolio_investments():
     """Investment timeline for Ghostfolio."""
     try:
-        from FinData.store.portfolio_ledger import PortfolioLedgerStore
+        from src.core.portfolio_ledger import PortfolioLedgerStore
         import pandas as pd
         from datetime import datetime
 

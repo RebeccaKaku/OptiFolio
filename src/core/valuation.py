@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
-    from src.data_foundation.repository import MarketDataRepository
+    from findata.store import MarketDataRepository
 
 from src.domain import (
     CashHolding,
@@ -34,8 +34,11 @@ class NoPriceDataError(Exception):
     """Raised when required price data is unavailable for valuation."""
 
 
-class FxRateError(Exception):
-    """Raised when an FX rate cannot be resolved."""
+from optifolio_contracts.fx import (
+    DEFAULT_FALLBACK_RATES,
+    FxRateError,
+    HardcodedFxRateProvider,
+)
 
 
 # ── FX rate provider ───────────────────────────────────────────────────
@@ -52,6 +55,10 @@ class FxRateProvider:
 
     Unlike the legacy PortfolioCore, live rates take priority over
     hardcoded rates when available.
+
+    The hardcoded fallback table is shared with ``findata`` through
+    ``optifolio_contracts.fx.HardcodedFxRateProvider`` so that both
+    layers use the same offline safety net.
     """
 
     # Reverse-rate pairs that are likely wrong when returned as 1.0
@@ -67,13 +74,10 @@ class FxRateProvider:
         fallback_rates: Optional[Dict[tuple, float]] = None,
         market_data: Optional["MarketDataRepository"] = None,
     ):
-        self._fallback = fallback_rates or {
-            ("USD", "CNY"): 7.2,
-            ("EUR", "USD"): 1.1,
-            ("USD", "JPY"): 150,
-            ("USD", "EUR"): 0.91,
-            ("CNY", "USD"): 0.139,
-        }
+        merged_fallback = dict(DEFAULT_FALLBACK_RATES)
+        if fallback_rates:
+            merged_fallback.update(fallback_rates)
+        self._hardcoded = HardcodedFxRateProvider(merged_fallback)
         self._cache: Dict[str, float] = {}
         self.market_data = market_data
 
@@ -86,7 +90,7 @@ class FxRateProvider:
     ) -> float:
         """Resolve the conversion rate using dated FX data from the repository.
 
-        Queries MarketDataRepository for asset ``FX_{FROM}{TO}`` on or
+        Queries MarketDataRepository for canonical FX asset id on or
         before *as_of_date*, walking back up to *max_lookback_days*.
         Falls back to :meth:`get_rate` when the repository is unavailable
         or no matching data exists.
@@ -103,7 +107,11 @@ class FxRateProvider:
         if self.market_data is None:
             return self.get_rate(from_currency, to_currency)
 
-        asset_id = f"FX_{from_currency}{to_currency}"
+        from optifolio_contracts.identifiers import normalize_instrument_id
+
+        asset_id = normalize_instrument_id(
+            f"{from_currency}{to_currency}", asset_type="forex"
+        )
         lookback_start = as_of_date - timedelta(days=max_lookback_days + 3)
 
         try:
@@ -121,7 +129,7 @@ class FxRateProvider:
         except Exception:
             pass
 
-        # Fall back to existing logic (live fetcher / hardcoded table)
+        # Fall back to live/hardcoded path
         return self.get_rate(from_currency, to_currency)
 
     def get_rate(
@@ -142,13 +150,12 @@ class FxRateProvider:
         if from_currency == to_currency:
             return 1.0
 
-        pair_key = (from_currency, to_currency)
         cache_key = f"{from_currency}:{to_currency}"
 
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        # 0. (NEW) Try dated repository lookup when as_of specified
+        # 0. Try dated repository lookup when as_of specified
         if as_of is not None:
             rate = self.get_rate_from_repository(from_currency, to_currency, as_of, max_lookback_days=3)
             if rate is not None and rate > 0:
@@ -165,23 +172,19 @@ class FxRateProvider:
             except Exception:
                 pass
 
-        # 2. Try direct fallback
-        if pair_key in self._fallback:
-            return self._fallback[pair_key]
-
-        # 3. Try transitive via USD
-        usd_from = self._fallback.get((from_currency, "USD"))
-        usd_to = self._fallback.get(("USD", to_currency))
-        if usd_from is not None and usd_to is not None:
-            return usd_from * usd_to
-
-        raise FxRateError(
-            f"Cannot resolve FX rate {from_currency}→{to_currency}"
-        )
+        # 2. Hardcoded fallback table (shared with findata via optifolio_contracts)
+        try:
+            rate = self._hardcoded.get_rate(from_currency, to_currency)
+            self._cache[cache_key] = rate
+            return rate
+        except FxRateError:
+            raise FxRateError(
+                f"Cannot resolve FX rate {from_currency}→{to_currency}"
+            )
 
     def _get_live_rate(self, from_curr: str, to_curr: str) -> float:
         """Fetch live rate from CurrencyFetcher (blocking, network I/O)."""
-        from FinData.adapters.forex import CurrencyFetcher
+        from findata.adapters.forex import CurrencyFetcher
 
         fetcher = CurrencyFetcher()
         rate = fetcher.get_realtime_rate(from_curr, to_curr)
@@ -242,8 +245,13 @@ def _resolve_currency(asset_id: str) -> str:
                     _currency_cache[asset_id] = result
                     return result
 
-    # 3. Heuristic
-    if asset_id.startswith(("sh", "sz")):
+    # 3. Canonical-id heuristics
+    if asset_id.startswith("equity.cn.") or asset_id.startswith("fund.cn.") or asset_id.startswith("wmp.cn."):
+        result = "CNY"
+    elif asset_id.startswith("equity.us."):
+        result = "USD"
+    # 4. Legacy/raw heuristics
+    elif asset_id.startswith(("sh", "sz")):
         result = "CNY"
     elif asset_id.isdigit() and len(asset_id) == 6:
         result = "CNY"
@@ -273,10 +281,10 @@ class ValuationEngine:
         max_lookback_days: int = 5,
     ):
         if market_data is None:
-            from src.data_foundation.repository import MarketDataRepository
+            from findata.store import MarketDataRepository
             market_data = MarketDataRepository()
         self.market_data = market_data
-        self.fx_provider = fx_provider or FxRateProvider()
+        self.fx_provider = fx_provider or FxRateProvider(market_data=market_data)
         self.max_lookback_days = max_lookback_days
 
     def value(

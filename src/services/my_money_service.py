@@ -20,7 +20,7 @@ from src.analytics.reconciliation import (
     CashflowInput,
     CoverageLevel,
 )
-from src.core.book_valuation import ValuationQuality
+from optifolio_contracts.quality import ValuationQuality
 from src.core.portfolio_book_db import PortfolioBookDatabase
 from src.services.book_valuation_service import BookValuationService
 from src.services.response import success, failure
@@ -73,7 +73,8 @@ class MyMoneyService:
             fx_quotes = self._get_fx_quotes(currencies, reporting_currency, target_date)
 
             # Map valuations to ValuationResult objects for the aggregator
-            from src.core.book_valuation import ValuationResult, ValuationFreshness
+            from src.core.book_valuation import ValuationResult
+            from optifolio_contracts.quality import ValuationFreshness
             val_objs = []
             for v in valuations:
                 val_objs.append(ValuationResult(
