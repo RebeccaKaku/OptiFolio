@@ -25,7 +25,7 @@ def _seed_repo(repo: MarketDataRepository):
     datasets = {
         "equity.us.aapl": ("USD", 100.0),
         "equity.us.qqq":  ("USD", 200.0),
-        "fund.cn.510300": ("CNY", 1.0),
+        "fund.cn.etf.sh.510300": ("CNY", 1.0),
     }
     for symbol, (currency, offset) in datasets.items():
         prices = offset + base
@@ -61,7 +61,7 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
     local_dir.mkdir()
     portfolio = {
         "cash": {"USD": 5000.0, "CNY": 10000.0},
-        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50, "fund.cn.510300": 1000},
+        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50, "fund.cn.etf.sh.510300": 1000},
     }
     portfolio_path = local_dir / "portfolio.yaml"
     with open(portfolio_path, "w") as f:
@@ -105,8 +105,8 @@ class TestFxExposureAnalyzer:
     def test_single_currency_all_base(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "fund.cn.510300": PositionValue(
-                asset_id="fund.cn.510300", quantity=1000, price=4.0,
+            "fund.cn.etf.sh.510300": PositionValue(
+                asset_id="fund.cn.etf.sh.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=4000.0,
             ),
         }
@@ -132,8 +132,8 @@ class TestFxExposureAnalyzer:
                 asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
-            "fund.cn.510300": PositionValue(
-                asset_id="fund.cn.510300", quantity=1000, price=4.0,
+            "fund.cn.etf.sh.510300": PositionValue(
+                asset_id="fund.cn.etf.sh.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=4000.0,
             ),
         }
@@ -196,8 +196,8 @@ class TestFxExposureAnalyzer:
                 asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=54000.0,
             ),
-            "fund.cn.510300": PositionValue(
-                asset_id="fund.cn.510300", quantity=1000, price=4.0,
+            "fund.cn.etf.sh.510300": PositionValue(
+                asset_id="fund.cn.etf.sh.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=40000.0,
             ),
         }
@@ -320,14 +320,14 @@ class TestFxExposureIntegration:
             "volume": [10000] * len(dates),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_canonical(frame, asset_id="fund.cn.510300", source="test", currency="CNY")
+        repo.save_canonical(frame, asset_id="fund.cn.etf.sh.510300", source="test", currency="CNY")
 
         fx = _make_fx_provider()
         engine = ValuationEngine(market_data=repo, fx_provider=fx)
 
         local_dir = tmp_path / "local"
         local_dir.mkdir()
-        portfolio = {"cash": {"CNY": 50000.0}, "positions": {"fund.cn.510300": 1000}}
+        portfolio = {"cash": {"CNY": 50000.0}, "positions": {"fund.cn.etf.sh.510300": 1000}}
         portfolio_path = local_dir / "portfolio.yaml"
         with open(portfolio_path, "w") as f:
             yaml.dump(portfolio, f)

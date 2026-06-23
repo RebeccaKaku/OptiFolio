@@ -35,10 +35,17 @@ class TestNormalizeInstrumentId:
             == "equity.cn.sz.000001"
         )
 
-    def test_cn_fund_bare_with_asset_type(self):
+    def test_cn_fund_mixed_with_raw_type(self):
+        # akshare fund_type_raw: 混合型-偏股 → mixed
         assert (
-            normalize_instrument_id("000198", asset_type="cn_fund")
-            == "fund.cn.000198"
+            normalize_instrument_id("005827", asset_type="cn_fund", fund_type_raw="混合型-偏股")
+            == "fund.cn.mixed.005827"
+        )
+
+    def test_cn_fund_money_with_asset_type(self):
+        assert (
+            normalize_instrument_id("004502", asset_type="cn_money_market_fund")
+            == "fund.cn.money.004502"
         )
 
     def test_bare_cn_code_without_asset_type_is_ambiguous(self):

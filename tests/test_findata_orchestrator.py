@@ -334,7 +334,7 @@ class TestOrchestratorSchedule:
     def test_schedule_returns_sorted_by_priority(self, tmp_path):
         from findata.store import CanonicalStore
         store = CanonicalStore(root_dir=str(tmp_path))
-        canonical_ids = ["fx.eur_usd.spot", "equity.us.aapl", "fund.cn.000001"]
+        canonical_ids = ["fx.eur_usd.spot", "equity.us.aapl", "fund.cn.stock.000001"]
         for aid in canonical_ids:
             store.accept(_make_df(), asset_id=aid, source="unit", currency="USD")
 
@@ -342,7 +342,7 @@ class TestOrchestratorSchedule:
         asset_types = {
             "fx.eur_usd.spot": "forex",
             "equity.us.aapl": "us_equity",
-            "fund.cn.000001": "cn_fund",
+            "fund.cn.stock.000001": "cn_fund",
         }
         tasks = orch.schedule(asset_ids=canonical_ids, asset_types=asset_types)
 

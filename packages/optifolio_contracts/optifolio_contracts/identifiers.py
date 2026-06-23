@@ -5,8 +5,11 @@ All identifiers are lowercase and dot-separated. Examples:
     equity.us.aapl
     equity.cn.sh.600519
     equity.cn.sz.000001
-    fund.cn.000198
+    fund.cn.money.000198
+    fund.cn.mixed.005827
     fund.cn.etf.sh.510300
+    fund.cn.bond.xxxxxx
+    fund.cn.stock.xxxxxx
     wmp.cn.icbc.23gs8125
     wmp.cn.boc.amhqlxttusd01b
     wmp.cn.bosc.wpxk24m1203a
@@ -67,6 +70,60 @@ def _infer_cn_exchange(code: str) -> str:
     raise InvalidInstrumentIdError(
         f"Cannot infer exchange for CN code {code!r}"
     )
+
+
+_FUND_ASSET_TYPES = frozenset({
+    "cn_fund", "cn_fund_open", "cn_fund_money", "cn_money_market_fund",
+    "cn_fund_mixed", "cn_fund_bond", "cn_fund_stock", "cn_fund_index",
+    "cn_fund_qdii", "cn_fund_etf", "cn_fund_lof", "cn_fund_fof",
+})
+
+
+def _is_fund_asset_type(asset_type: str) -> bool:
+    """Return True if *asset_type* represents a fund."""
+    return asset_type.lower() in _FUND_ASSET_TYPES or asset_type.startswith("cn_fund")
+
+
+def _fund_subtype(asset_type: str = "", fund_type_raw: str = "") -> str:
+    """Map akshare fund type or asset_type to a fund subtype segment.
+
+    ``fund_type_raw`` (from akshare ``基金类型`` field) takes priority.
+    Examples: 货币型-普通货币 → money, 混合型-偏股 → mixed, 指数型-股票 → index.
+    """
+    ft = fund_type_raw.strip()
+    if ft:
+        ft_lower = ft.lower()
+        if ft.startswith("货币") or "货币" in ft:
+            return "money"
+        if ft.startswith("混合") or "混合" in ft:
+            return "mixed"
+        if ft.startswith("债券") or "债券" in ft:
+            return "bond"
+        if ft.startswith("股票") or "股票" in ft:
+            return "stock"
+        if ft.startswith("指数") or "指数" in ft:
+            return "index"
+        if ft_lower.startswith("qdii"):
+            return "qdii"
+        if ft_lower.startswith("fof"):
+            return "fof"
+    # Fallback: map from asset_type
+    subtype_map = {
+        "cn_fund_money": "money",
+        "cn_money_market_fund": "money",
+        "cn_fund_mixed": "mixed",
+        "cn_fund_bond": "bond",
+        "cn_fund_stock": "stock",
+        "cn_fund_index": "index",
+        "cn_fund_qdii": "qdii",
+        "cn_fund_etf": "etf",
+    }
+    at = asset_type.lower()
+    if at in subtype_map:
+        return subtype_map[at]
+    if at.startswith("cn_fund"):
+        return "mixed"  # safest default for CN mutual funds
+    raise InvalidInstrumentIdError(f"Cannot determine fund subtype from asset_type={asset_type!r} fund_type_raw={fund_type_raw!r}")
 
 
 def _classify_wmp(code: str) -> str:
@@ -204,20 +261,12 @@ def validate_instrument_id(canonical: str) -> None:
             )
 
     elif asset_class == "fund":
-        if len(segments) not in (3, 5):
-            raise InvalidInstrumentIdError(
-                f"fund ID must have 3 or 5 segments: {canonical!r}"
-            )
         if segments[1] != "cn":
             raise InvalidInstrumentIdError(
                 f"Only CN funds supported currently: {canonical!r}"
             )
-        if len(segments) == 3:
-            if not _CN_CODE_RE.match(segments[2]):
-                raise InvalidInstrumentIdError(
-                    f"CN fund code must be 6 digits: {canonical!r}"
-                )
-        else:
+        # fund.cn.etf.<sh|sz>.<code>  (5 segments — ETF with exchange)
+        if len(segments) == 5:
             if segments[2] != "etf" or segments[3] not in ("sh", "sz"):
                 raise InvalidInstrumentIdError(
                     f"ETF fund ID must be fund.cn.etf.<sh|sz>.<code>: {canonical!r}"
@@ -226,6 +275,26 @@ def validate_instrument_id(canonical: str) -> None:
                 raise InvalidInstrumentIdError(
                     f"CN ETF code must be 6 digits: {canonical!r}"
                 )
+        # fund.cn.<subtype>.<code>  (4 segments)
+        elif len(segments) == 4:
+            if segments[2] not in ("open", "money", "mixed", "bond", "stock", "index", "qdii"):
+                raise InvalidInstrumentIdError(
+                    f"Unknown fund subtype {segments[2]!r} in {canonical!r}"
+                )
+            if not _CN_CODE_RE.match(segments[3]):
+                raise InvalidInstrumentIdError(
+                    f"CN fund code must be 6 digits: {canonical!r}"
+                )
+        # fund.cn.<code>  (3 segments — legacy, bare code)
+        elif len(segments) == 3:
+            if not _CN_CODE_RE.match(segments[2]):
+                raise InvalidInstrumentIdError(
+                    f"CN fund code must be 6 digits: {canonical!r}"
+                )
+        else:
+            raise InvalidInstrumentIdError(
+                f"fund ID must have 3, 4, or 5 segments: {canonical!r}"
+            )
 
     elif asset_class == "wmp":
         if len(segments) != 4 or segments[1] != "cn":
@@ -269,6 +338,7 @@ def normalize_instrument_id(
     raw: str,
     *,
     asset_type: str | None = None,
+    fund_type_raw: str = "",
 ) -> str:
     """Convert a raw symbol or display ID to a canonical instrument ID.
 
@@ -277,6 +347,8 @@ def normalize_instrument_id(
              ``23GS8125``, or an already-canonical ID.
         asset_type: Optional hint from the adapter/registry, e.g.
                     ``cn_stock``, ``cn_fund``, ``bank_wmp``.
+        fund_type_raw: Optional akshare ``基金类型`` value for fund subtype
+                       resolution (e.g. ``货币型-普通货币`` → ``money``).
 
     Raises:
         InvalidInstrumentIdError: If the input cannot be normalized.
@@ -316,8 +388,9 @@ def normalize_instrument_id(
 
     # CN 6-digit code: need context
     if _CN_CODE_RE.match(stripped):
-        if asset_type and asset_type.startswith("cn_fund"):
-            return f"fund.cn.{stripped}"
+        if asset_type and _is_fund_asset_type(asset_type):
+            subtype = _fund_subtype(asset_type, fund_type_raw)
+            return f"fund.cn.{subtype}.{stripped}"
         if asset_type and asset_type.startswith("cn_stock"):
             exchange = _infer_cn_exchange(stripped)
             return f"equity.cn.{exchange}.{stripped}"

@@ -59,6 +59,6 @@ def get_application_services() -> ApplicationServices:
         portfolio_book=PortfolioBookService(portfolio_book_db, data_provider),
         book_valuation=book_val_svc,
         my_money=MyMoneyService(portfolio_book_db, book_val_svc, data_provider),
-        portfolio_v2=PortfolioServiceV2(db=portfolio_book_db),
+        portfolio_v2=PortfolioServiceV2(),
         decision_journal=DecisionJournalService(portfolio_book_db),
     )

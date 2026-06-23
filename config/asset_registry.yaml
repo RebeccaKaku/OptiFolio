@@ -6,7 +6,7 @@ assets:
   last_updated: '2026-06-05T18:10:24.747517'
   name: 天弘余额宝货币
   source: akshare_fund_em
-  symbol: fund.cn.000198
+  symbol: fund.cn.money.000198
 - asset_type: cn_fund
   attributes:
     company: 中银基金管理有限公司
@@ -15,7 +15,7 @@ assets:
   last_updated: '2026-06-05T18:10:14.303527'
   name: 中银如意宝货币A
   source: akshare_fund_xq
-  symbol: fund.cn.004502
+  symbol: fund.cn.money.004502
 - asset_type: cn_fund
   attributes:
     company: 易方达基金管理有限公司
@@ -24,7 +24,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.547847'
   name: 易方达蓝筹精选混合
   source: akshare_fund_xq
-  symbol: fund.cn.005827
+  symbol: fund.cn.mixed.005827
 - asset_type: cn_fund
   attributes:
     fund_type_raw: 指数型-股票
@@ -32,7 +32,7 @@ assets:
   last_updated: '2026-06-05T18:10:12.929293'
   name: 沪深300ETF华泰柏瑞
   source: akshare_fund_em
-  symbol: fund.cn.510300
+  symbol: fund.cn.etf.sh.510300
 - asset_type: cn_stock_sh
   attributes:
     exchange: SZ
@@ -55,7 +55,7 @@ assets:
   last_updated: '2026-05-22T03:43:51.816844'
   name: EUR/USD
   source: currency_detector
-  symbol: EUR/USD
+  symbol: fx.eur_usd.spot
 - asset_type: us_equity
   attributes: {}
   currency: USD
@@ -98,7 +98,7 @@ assets:
   last_updated: '2026-02-13T21:11:15.732378'
   name: USD/CAD
   source: currency_detector
-  symbol: USDCAD
+  symbol: fx.usd_cad.spot
 - asset_type: cn_stock
   attributes:
     exchange: SH

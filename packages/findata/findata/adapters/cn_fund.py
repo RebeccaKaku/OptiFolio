@@ -297,7 +297,10 @@ class CnFundFetcherAdapter(FetcherProtocol):
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
         t0 = time.time()
         try:
-            canonical = normalize_instrument_id(symbol, asset_type="cn_fund")
+            # Determine fund subtype from akshare metadata for canonical ID
+            fund_info = self._fetcher.fund_map.get(symbol, {})
+            f_type_raw = fund_info.get("基金类型", "")
+            canonical = normalize_instrument_id(symbol, asset_type="cn_fund", fund_type_raw=f_type_raw)
             df = _run_async(self._fetcher.fetch(symbol, start_date, end_date, **kwargs))
             return FetchResult(symbol=canonical, provider=self.PROVIDER, data=df,
                                success=True, latency_ms=(time.time() - t0) * 1000)
