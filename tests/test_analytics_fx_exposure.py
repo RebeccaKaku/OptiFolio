@@ -6,8 +6,6 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-import yaml
-
 from src.analytics.fx_exposure import FxExposureAnalyzer, FxExposureItem, FxExposureReport
 from src.core.valuation import FxRateProvider, ValuationEngine
 from findata.store import MarketDataRepository
@@ -52,24 +50,64 @@ def _make_fx_provider() -> FxRateProvider:
 
 
 def _make_service(tmp_path: Path) -> PortfolioServiceV2:
+    """Create a PortfolioServiceV2 with test holdings via SQLite book.
+
+    Portfolio data is loaded exclusively from SQLite.  We create an
+    isolated database in *tmp_path*, seed it with the test positions,
+    and pass it to the service constructor.
+    """
+    from src.core.portfolio_book_db import PortfolioBookDatabase
+    from src.domain.products import ProductDefinition
+
     repo = MarketDataRepository(tmp_path / "foundation")
     _seed_repo(repo)
     fx = _make_fx_provider()
     engine = ValuationEngine(market_data=repo, fx_provider=fx)
 
-    local_dir = tmp_path / "local"
-    local_dir.mkdir()
-    portfolio = {
-        "cash": {"USD": 5000.0, "CNY": 10000.0},
-        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50, "fund.cn.etf.sh.510300": 1000},
-    }
-    portfolio_path = local_dir / "portfolio.yaml"
-    with open(portfolio_path, "w") as f:
-        yaml.dump(portfolio, f)
+    # ── isolated SQLite book ──────────────────────────────────────────
+    db = PortfolioBookDatabase(tmp_path / "test_book.sqlite")
+    db.initialize()
+
+    db.create_account(account_id="test_acct", name="Test", base_currency="CNY")
+
+    products = [
+        ("equity.us.aapl", "AAPL", "stock", "USD"),
+        ("equity.us.qqq", "QQQ", "stock", "USD"),
+        ("fund.cn.etf.sh.510300", "510300", "index_fund", "CNY"),
+        ("USD_CASH", "USD Cash", "deposit", "USD"),
+        ("CNY_CASH", "CNY Cash", "deposit", "CNY"),
+    ]
+    for pid, name, ptype, curr in products:
+        try:
+            db.create_product(ProductDefinition(
+                product_id=pid, name=name, product_type=ptype,
+                currency=curr, data_source="test",
+            ))
+        except Exception:
+            pass
+
+    batch_id = "batch_test_fx"
+    db.create_snapshot_batch(batch_id=batch_id, as_of="2025-06-15")
+    db.set_batch_account_coverage(
+        batch_id=batch_id, account_id="test_acct", coverage="complete",
+    )
+
+    db.add_snapshot(batch_id=batch_id, account_id="test_acct",
+                    product_id="equity.us.aapl", quantity=100, currency="USD")
+    db.add_snapshot(batch_id=batch_id, account_id="test_acct",
+                    product_id="equity.us.qqq", quantity=50, currency="USD")
+    db.add_snapshot(batch_id=batch_id, account_id="test_acct",
+                    product_id="fund.cn.etf.sh.510300", quantity=1000, currency="CNY")
+    db.add_snapshot(batch_id=batch_id, account_id="test_acct",
+                    product_id="USD_CASH", quantity=5000, currency="USD")
+    db.add_snapshot(batch_id=batch_id, account_id="test_acct",
+                    product_id="CNY_CASH", quantity=10000, currency="CNY")
+
+    db.confirm_batch(batch_id)
 
     return PortfolioServiceV2(
         valuation_engine=engine,
-        config_path=portfolio_path,
+        db=db,
         base_currency="CNY",
     )
 
@@ -312,6 +350,9 @@ class TestFxExposureIntegration:
 
     def test_get_fx_exposure_all_cny(self, tmp_path):
         """Portfolio with only CNY assets should show 0% non-base."""
+        from src.core.portfolio_book_db import PortfolioBookDatabase
+        from src.domain.products import ProductDefinition
+
         repo = MarketDataRepository(tmp_path / "foundation")
         dates = pd.date_range("2025-01-01", "2025-06-15", freq="B")
         frame = pd.DataFrame({
@@ -325,15 +366,39 @@ class TestFxExposureIntegration:
         fx = _make_fx_provider()
         engine = ValuationEngine(market_data=repo, fx_provider=fx)
 
-        local_dir = tmp_path / "local"
-        local_dir.mkdir()
-        portfolio = {"cash": {"CNY": 50000.0}, "positions": {"fund.cn.etf.sh.510300": 1000}}
-        portfolio_path = local_dir / "portfolio.yaml"
-        with open(portfolio_path, "w") as f:
-            yaml.dump(portfolio, f)
+        # ── isolated SQLite book ──────────────────────────────────────
+        db = PortfolioBookDatabase(tmp_path / "test_book_cny.sqlite")
+        db.initialize()
+
+        db.create_account(account_id="test_acct", name="Test", base_currency="CNY")
+
+        for pid, name, ptype, curr in [
+            ("fund.cn.etf.sh.510300", "510300", "index_fund", "CNY"),
+            ("CNY_CASH", "CNY Cash", "deposit", "CNY"),
+        ]:
+            try:
+                db.create_product(ProductDefinition(
+                    product_id=pid, name=name, product_type=ptype,
+                    currency=curr, data_source="test",
+                ))
+            except Exception:
+                pass
+
+        batch_id = "batch_test_cny"
+        db.create_snapshot_batch(batch_id=batch_id, as_of="2025-06-15")
+        db.set_batch_account_coverage(
+            batch_id=batch_id, account_id="test_acct", coverage="complete",
+        )
+
+        db.add_snapshot(batch_id=batch_id, account_id="test_acct",
+                        product_id="fund.cn.etf.sh.510300", quantity=1000, currency="CNY")
+        db.add_snapshot(batch_id=batch_id, account_id="test_acct",
+                        product_id="CNY_CASH", quantity=50000, currency="CNY")
+
+        db.confirm_batch(batch_id)
 
         svc = PortfolioServiceV2(
-            valuation_engine=engine, config_path=portfolio_path, base_currency="CNY",
+            valuation_engine=engine, db=db, base_currency="CNY",
         )
         result = svc.get_fx_exposure_report(as_of=date(2025, 6, 15), base_currency="CNY")
         assert result["success"]

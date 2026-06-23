@@ -15,27 +15,28 @@ client = TestClient(app)
 
 @pytest.fixture
 def mock_ghostfolio_data():
-    services = get_application_services()
-    db = services.portfolio_book._db
+    """Seed the SQLite portfolio book so PortfolioServiceV2 can load holdings.
 
-    # 1. Record a dividend
-    services.portfolio_v2.record_dividend(
-        asset_id="TEST_ASSET",
-        ex_date=date(2025, 1, 1),
-        amount_per_share=1.5,
-        currency="USD"
-    )
+    The database MUST be seeded before ``get_application_services()`` is
+    called, because ``PortfolioServiceV2._load_portfolio()`` runs during
+    construction and reads the latest confirmed batch.
+    """
+    from src.core.portfolio_book_db import PortfolioBookDatabase
+    from src.domain.products import ProductDefinition
 
-    # 2. Add snapshots for investment timeline
-    # We need account and product first
+    # 0. Clear cached service graph so PortfolioServiceV2 picks up our data
+    get_application_services.cache_clear()
+
+    # 1. Seed the database FIRST
+    db = PortfolioBookDatabase()
     db.initialize()
+
     try:
         db.create_account(account_id="acc1", name="Test Account", base_currency="USD")
     except Exception:
-        pass # Already exists
+        pass
 
     try:
-        from src.domain.products import ProductDefinition
         db.create_product(ProductDefinition(
             product_id="TEST_ASSET",
             name="Test Asset",
@@ -44,7 +45,7 @@ def mock_ghostfolio_data():
             data_source="manual"
         ))
     except Exception:
-        pass # Already exists
+        pass
 
     # Create two confirmed batches
     batch1_id = "batch_20250101"
@@ -71,6 +72,17 @@ def mock_ghostfolio_data():
     except Exception:
         pass
 
+    # 2. NOW create services — PortfolioServiceV2 loads from seeded DB
+    services = get_application_services()
+
+    # 3. Record a dividend
+    services.portfolio_v2.record_dividend(
+        asset_id="TEST_ASSET",
+        ex_date=date(2025, 1, 1),
+        amount_per_share=1.5,
+        currency="USD"
+    )
+
     yield
 
     # Cleanup
@@ -80,7 +92,7 @@ def mock_ghostfolio_data():
     # Database is local/portfolio_book.sqlite, usually kept for tests or isolated
 
 
-def test_ghostfolio_details():
+def test_ghostfolio_details(mock_ghostfolio_data):
     response = client.get("/api/v1/portfolio/details")
     assert response.status_code == 200
     data = response.json()
