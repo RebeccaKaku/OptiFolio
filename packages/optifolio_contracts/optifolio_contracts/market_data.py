@@ -27,11 +27,14 @@ CANONICAL_OBSERVATION_COLUMNS: tuple[str, ...] = (
     "series_id",
     "effective_date",
     "value",
-    "unit",
-    "currency",
+    "known_at",
+    "released_at",
+    "observed_at",
     "source",
     "revision",
-    "known_at",
+    "quality_flags",
+    "unit",
+    "currency",
 )
 
 # Store version — increment when schema changes
