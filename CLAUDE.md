@@ -130,6 +130,65 @@ These are the most common ways an AI session can go wrong:
 - Date strings: ISO format `YYYY-MM-DD`
 - Identifier format: `{domain}.{source}.{local_id}` (e.g., `fund.cn.000198`, `equity.us.AAPL`)
 
+## Jules — Dispatching Work
+
+Jules (Google Labs coding agent) watches this repo for issues labeled `jules`. It picks
+them up, opens PRs, and you review/merge. Jules runs in parallel — multiple issues can
+be worked simultaneously.
+
+### Creating Issues
+```bash
+gh issue create --title "..." --body "..." --label jules --repo RebeccaKaku/OptiFolio
+```
+See `docs/JULES-*.md` for issue format, batching rules, and pitfall documentation.
+
+### Batching Rules (CRITICAL)
+1. **Batches MUST touch mutually exclusive files.** Jules runs parallel — same file = merge hell.
+2. **One theme per batch.** "Delete dead modules" is one theme. Don't mix themes.
+3. **Keep each batch ~2-6 files, ~100-500 line delta.**
+4. **Pure-deletion batches are safest** — rarely break tests.
+5. **Push all prerequisite changes BEFORE creating Jules issues** — Jules branches off current main.
+
+### Issue Format
+Every Jules issue MUST include these sections:
+```markdown
+## Scope — one sentence
+
+### Files to DELETE
+### Files to EDIT — what and why
+
+### Acceptance
+- Exact test command
+- grep patterns that must return zero
+
+### Financial impact
+### Files NOT to touch
+```
+
+### PR Review Cycle
+1. Create issues → set 20-minute `ScheduleWakeup` timer.
+2. On wakeup: `gh pr list --repo RebeccaKaku/OptiFolio`.
+3. For each Jules PR:
+   a. `gh pr checkout <N>` → review diff.
+   b. Check imports: `grep -rn "from FinData\|from src.data_foundation\|from src.core.symbols"`.
+   c. `git merge origin/main` → resolve conflicts (Jules often branches off stale main).
+   d. `python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider`.
+   e. If green: `gh pr merge <N> --squash`. If red: fix, commit, push, then merge.
+4. After merge: `git checkout main && git pull origin main`.
+5. Dispatch next batch of issues.
+
+### Fallback Escalation
+- **20 min**: first check. If no PRs, reschedule another 20-minute timer.
+- **40 min**: second check. If still no PRs, tasks may be too complex. Simplify the easiest issue and complete it yourself. Leave simplified versions for Jules.
+- **2 hours**: third+ check. Jules likely down. Complete ALL remaining tasks yourself. Use `Agent` tool with `subagent_type: "general-purpose"` for parallel work.
+
+### After Jules Merge
+Always:
+1. `git pull origin main`
+2. Run full test suite
+3. `grep -rn "from FinData\|from src.data_foundation" src/ tests/` — must be empty
+4. Commit any fixes, push
+
 ## Working Protocol
 
 - Product priority comes from `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md`.
