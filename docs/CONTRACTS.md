@@ -7,7 +7,7 @@
 
 ## FetchResult
 
-**Location**: `FinData/adapters/__init__.py:29`  
+**Location**: `packages/findata/findata/adapters/__init__.py`  
 **金融语义**: 一次数据抓取操作的结果。无论成功或失败都返回此结构，调用方不需单独处理异常。
 
 | Field | Type | Nullable | Format | Meaning | Source | Consumer | Invariants | Example |

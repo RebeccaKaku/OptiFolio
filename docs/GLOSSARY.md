@@ -69,14 +69,14 @@
   - 来源: 无交易日的向前回溯、线性插值
 - **UNKNOWN**: 完全无法获取可靠价格。
   - 典型场景: 银行理财无二级市场报价
-- **代码位置**: `src/core/book_valuation.py` (`ValuationQuality` enum)
+- **代码位置**: `optifolio_contracts/quality.py` (`ValuationQuality` enum)
 
 ### Valuation Freshness
 
 - **CURRENT**: 价格日期与估值日期一致 (同一交易日)。
 - **STALE**: 价格日期早于估值日期，但仍在可接受范围内 (≤5 交易日)。
 - **UNKNOWN**: 无法确定价格日期。
-- **代码位置**: `src/core/book_valuation.py` (`ValuationFreshness` enum)
+- **代码位置**: `optifolio_contracts/quality.py` (`ValuationFreshness` enum)
 
 ---
 
@@ -162,7 +162,7 @@ closing_value - opening_value =
 
 - **定义**: 在 `asset_registry.yaml` 和 Fetcher Registry 中使用的资产分类标签。决定用哪个 fetcher 抓数据。
 - **格式**: 小写字母 + 下划线 (如 `cn_stock`, `us_equity`, `cn_fund`)
-- **枚举**: 见 `FinData/adapters/__init__.py` FETCHER_REGISTRY
+- **枚举**: 见 `packages/findata/findata/adapters/__init__.py` FETCHER_REGISTRY
 
 ### product_type (产品类型)
 
@@ -178,7 +178,7 @@ closing_value - opening_value =
   - 基金: 6 位数字代码 (`510300`, `005827`)
   - 银行理财: WMP 代码 (`GRSDR260056`)
   - 汇率: `FX_{FROM}{TO}` (`FX_USDCNY`)
-- **归一化**: 代码中通过 `src/core/symbols.py` 的 `normalize_cn_symbol()` 统一处理前缀。
+- **归一化**: 代码中通过 `optifolio_contracts.symbols.normalize_cn_symbol()` 统一处理前缀。旧的 `src/core/symbols.py` 已于 2026-06-23 删除。
 
 ---
 
@@ -236,4 +236,4 @@ closing_value - opening_value =
 
 | Date | Version | Changes |
 |------|---------|---------|
-| 2026-06-20 | 1.0 | Initial glossary covering all core financial concepts |
+| 2026-06-23 | 1.1 | Updated code locations for FinData → packages migration |
