@@ -5,15 +5,6 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 _log = logging.getLogger(__name__)
 
-OFFLINE_ASSET_FALLBACKS = {
-    "cn_stock_sh:600519": {"name": "贵州茅台", "currency": "CNY", "exchange": "SH", "source": "offline_fallback"},
-    "cn_stock_sz:000001": {"name": "平安银行", "currency": "CNY", "exchange": "SZ", "source": "offline_fallback"},
-    "cn_fund_qdii:002892": {"name": "华夏移动互联混合", "currency": "USD", "source": "offline_fallback"},
-    "cn_fund_etf:510300": {"name": "沪深300ETF", "currency": "CNY", "source": "offline_fallback"},
-    "cn_fund:23713A": {"name": "高盛工银理财·盛景", "currency": "CNY", "source": "offline_fallback"},
-    "cn_fund:WH2025109A": {"name": "慧精灵9号", "currency": "CNY", "source": "offline_fallback"},
-}
-
 class AssetDefinition:
     def __init__(self, symbol, asset_type, name=None, currency=None, conflict_id=None, is_conflict=False, **kwargs):
         self.symbol, self.asset_type, self.name = symbol, asset_type, name or symbol
@@ -166,12 +157,7 @@ class AssetImporter:
     def import_asset(self, symbol, asset_type=None, name=None, currency=None, refresh=False, **kwargs):
         if asset_type and asset_type not in self.valid_asset_types: return None
         t = asset_type or self._infer_asset_type(symbol); ns = self._normalize_symbol(symbol, t)
-        _OC = {k: v for k, v in OFFLINE_ASSET_FALLBACKS.items()}
-        for k, v in OFFLINE_ASSET_FALLBACKS.items():
-            typ, sym = k.split(':'); _OC[f"{typ}:{sym[2:] if sym.startswith(('sh','sz')) else sym}"] = v
-        m = (_OC.get(f"{t}:{ns}") or _OC.get(f"{t}:{symbol}") or {}).copy()
-        a = AssetDefinition(ns if t == 'cn_stock' else symbol, t, name or m.get('name'), currency or m.get('currency'), **kwargs)
-        if m: a.update_from_api(m)
+        a = AssetDefinition(ns if t == 'cn_stock' else symbol, t, name, currency, **kwargs)
         if name: a.name = name
         if currency: a.currency = currency
         if not currency and a.name: a.currency = self.registry.detect_currency(a.name, a.currency)
