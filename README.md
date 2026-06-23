@@ -50,12 +50,12 @@ src/
 | Document | Purpose |
 |----------|---------|
 | `CLAUDE.md` | AI assistant instructions — rules, architecture, migration traps |
-| `docs/CURRENT_STATE.md` | Live project map — test counts, bugs, next steps |
-| `docs/TODO.md` | Prioritized task queue |
-| `docs/AI_CONTEXT.md` | Full architecture reference |
+| `docs/CURRENT_STATE-656c946.md` | Live project map — test counts, bugs, next steps |
+| `docs/TODO-656c946.md` | Prioritized task queue |
+| `docs/AI_CONTEXT-656c946.md` | Full architecture reference |
 | `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` | Product north star |
-| `docs/JULES.md` | How to dispatch work to Jules |
-| `docs/GLOSSARY.md` | Financial semantics dictionary |
+| `docs/JULES-656c946.md` | How to dispatch work to Jules |
+| `docs/GLOSSARY-656c946.md` | Financial semantics dictionary |
 
 ## Development
 

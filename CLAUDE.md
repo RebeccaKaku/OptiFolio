@@ -3,7 +3,7 @@
 ## Project Context
 
 OptiFolio v0.2.0 — personal multi-asset portfolio risk engine. Python >=3.10 (dev on 3.14 / Windows).
-Test counts change frequently. Read the latest `docs/CURRENT_STATE_*.md` and run a fresh test.
+Test counts change frequently. Read `docs/CURRENT_STATE-656c946.md` and run a fresh test.
 The data layer is in `packages/findata/` (formerly `FinData/`); shared types live in `packages/optifolio_contracts/`.
 `app.py` (legacy Streamlit) has been deleted. All interfaces are now FastAPI on port 8011.
 
@@ -57,15 +57,15 @@ python tools/privacy_scan.py --strict --with-detect-secrets
 
 | Document | Purpose |
 |----------|---------|
-| `docs/CURRENT_STATE.md` | Live project map: test counts, known bugs, architecture diagram, next steps |
-| `docs/TODO.md` | Prioritized task queue with file lists and acceptance criteria |
-| `docs/AI_CONTEXT.md` | Full architecture reference — module contracts, data flow, rules |
+| `docs/CURRENT_STATE-656c946.md` | Live project map: test counts, known bugs, architecture diagram, next steps |
+| `docs/TODO-656c946.md` | Prioritized task queue with file lists and acceptance criteria |
+| `docs/AI_CONTEXT-656c946.md` | Full architecture reference — module contracts, data flow, rules |
 | `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` | Product north star (highest priority) |
-| `docs/JULES.md` | How to dispatch work to Jules — issue format, batching, pitfalls |
-| `docs/DECISIONS_PENDING.md` | Open architecture / financial questions for peer review |
-| `docs/GLOSSARY.md` | Financial semantics dictionary |
+| `docs/JULES-656c946.md` | How to dispatch work to Jules — issue format, batching, pitfalls |
+| `docs/DECISIONS_PENDING-656c946.md` | Open architecture / financial questions for peer review |
+| `docs/GLOSSARY-656c946.md` | Financial semantics dictionary |
 
-Reference (read on demand): `ARCHITECTURE_FOUNDATION.md`, `CONTRACTS.md`, `DATA_AUDIT_2026-06-18.md`, `FINANCIAL_LOGIC_AND_MODULE_DESIGN.md`, `TIME_ALIGNMENT_DESIGN.md`, `JULES_CLOUD_TASKS.md`
+Reference (read on demand): `ARCHITECTURE_FOUNDATION-656c946.md`, `CONTRACTS-656c946.md`, `DATA_AUDIT-656c946.md`, `FINANCIAL_LOGIC_AND_MODULE_DESIGN.md`, `TIME_ALIGNMENT_DESIGN.md`, `JULES_CLOUD_TASKS-656c946.md`
 
 ## Architecture Boundaries
 

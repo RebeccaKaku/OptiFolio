@@ -439,5 +439,5 @@ print(f"Cache size: {stats['total_size_mb']:.2f} MB")
 
 For issues or questions:
 1. Check this user guide
-2. Review the API documentation in `docs/AI_CONTEXT.md`
+2. Review the API documentation in `docs/AI_CONTEXT-656c946.md`
 3. Run `api_checker.quick_check()` to diagnose network issues

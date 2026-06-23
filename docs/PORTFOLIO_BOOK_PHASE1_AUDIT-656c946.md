@@ -20,7 +20,7 @@
 ## 验证结果与证据
 
 - DS-006A 当时 Personal Book 专项：`77 passed`，全量：`731 passed, 2 warnings`；
-- 此后 DS-006B/DS-006C 和多项仓库清理已进入主分支；旧测试数字仅作为历史证据，当前总数以 fresh run 和 `docs/AI_CONTEXT.md` 为准；
+- 此后 DS-006B/DS-006C 和多项仓库清理已进入主分支；旧测试数字仅作为历史证据，当前总数以 fresh run 和 `docs/AI_CONTEXT-656c946.md` 为准；
 - 关闭提交：DS-006A `d614b19`、DS-006B `1dd037a`、DS-006C `eef07e7`；
 - 全量测试需要在当前受管环境设置 `NUMBA_DISABLE_JIT=1`，否则 vectorbt/Numba 在收集阶段尝试创建不可用缓存；
 - 基础隐私扫描：`0 blocker(s)`；48 条 warning 均为 `account_id`、GitHub secret 表达式等启发式命中，需要后续单独降噪；

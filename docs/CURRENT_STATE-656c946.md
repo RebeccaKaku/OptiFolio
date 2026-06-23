@@ -110,7 +110,7 @@ These were reported in the 2026-06-05 audit. Some may have been fixed in subsequ
 
 ## Architecture Questions Pending
 
-See `docs/DECISIONS_PENDING.md` for:
+See `docs/DECISIONS_PENDING-656c946.md` for:
 
 1. Should `src/domain/` types be promoted to `optifolio_contracts`?
 2. How to resolve `CANONICAL_MARKET_COLUMNS` / `STORE_VERSION` dual definition?

@@ -233,7 +233,7 @@ Only Task 11 depends on Task 6. All other tasks can run in parallel.
 | :--- | :--- | :--- |
 | DS-001~027 | ✅ Complete | All 27 DeepSeek tasks implemented |
 
-> See `docs/CURRENT_STATE.md` for current milestone status and remaining integration work.
+> See `docs/CURRENT_STATE-656c946.md` for current milestone status and remaining integration work.
 
 ## Quick Start For Jules
 

@@ -3,7 +3,7 @@
 > **Product priority:** Read `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` before proposing or implementing new work. It is the current product north star and overrides older feature queues when priorities conflict.
 
 > This document is the source of truth for AI assistants working on this codebase.
-> Last updated: 2026-06-23. Cross-check with `docs/CURRENT_STATE.md`.
+> Last updated: 2026-06-23. Cross-check with `docs/CURRENT_STATE-656c946.md`.
 
 ## Project Identity
 
@@ -205,7 +205,7 @@ All 27 DeepSeek tasks have code implementations. The gap is integration — wiri
 - H8: `dashboard_engine.py` np.random dummy data — still present?
 
 ### Architecture Questions
-See `docs/DECISIONS_PENDING.md` for pending decisions on domain/contracts boundary, src/core/ split, and calendar layer consolidation.
+See `docs/DECISIONS_PENDING-656c946.md` for pending decisions on domain/contracts boundary, src/core/ split, and calendar layer consolidation.
 
 ## Test Commands
 
