@@ -20,6 +20,10 @@ def mock_ghostfolio_data():
     The database MUST be seeded before ``get_application_services()`` is
     called, because ``PortfolioServiceV2._load_portfolio()`` runs during
     construction and reads the latest confirmed batch.
+
+    Strategy: the *latest* batch contains only cash (no price lookup needed),
+    so ``get_value()`` succeeds without market data.  Earlier batches carry
+    TEST_ASSET snapshots for the dividend and investment timeline tests.
     """
     from src.core.portfolio_book_db import PortfolioBookDatabase
     from src.domain.products import ProductDefinition
@@ -36,39 +40,57 @@ def mock_ghostfolio_data():
     except Exception:
         pass
 
+    for pid, name, ptype, curr in [
+        ("TEST_ASSET", "Test Asset", "stock", "USD"),
+        ("CNY_CASH", "CNY Cash", "deposit", "CNY"),
+    ]:
+        try:
+            db.create_product(ProductDefinition(
+                product_id=pid, name=name, product_type=ptype,
+                currency=curr, data_source="manual",
+            ))
+        except Exception:
+            pass
+
+    # Batch A (earlier) — TEST_ASSET for investments / dividends
+    batch_a = "batch_20250101"
     try:
-        db.create_product(ProductDefinition(
-            product_id="TEST_ASSET",
-            name="Test Asset",
-            product_type="stock",
-            currency="USD",
-            data_source="manual"
-        ))
+        db.create_snapshot_batch(batch_id=batch_a, as_of="2025-01-01")
+        db.set_batch_account_coverage(batch_id=batch_a, account_id="acc1", coverage="complete")
+        db.add_snapshot(
+            batch_id=batch_a, account_id="acc1", product_id="TEST_ASSET",
+            quantity=100.0, cost_basis=1000.0, currency="USD",
+        )
+        db.confirm_batch(batch_a)
     except Exception:
         pass
 
-    # Create two confirmed batches
-    batch1_id = "batch_20250101"
+    # Batch B (earlier) — second data point for streak calculation
+    batch_b = "batch_20250201"
     try:
-        db.create_snapshot_batch(batch_id=batch1_id, as_of="2025-01-01")
-        db.set_batch_account_coverage(batch_id=batch1_id, account_id="acc1", coverage="complete")
+        db.create_snapshot_batch(batch_id=batch_b, as_of="2025-02-01")
+        db.set_batch_account_coverage(batch_id=batch_b, account_id="acc1", coverage="complete")
         db.add_snapshot(
-            batch_id=batch1_id, account_id="acc1", product_id="TEST_ASSET",
-            quantity=100.0, cost_basis=1000.0, currency="USD"
+            batch_id=batch_b, account_id="acc1", product_id="TEST_ASSET",
+            quantity=100.0, cost_basis=1100.0, currency="USD",
         )
-        db.confirm_batch(batch1_id)
+        db.confirm_batch(batch_b)
     except Exception:
         pass
 
-    batch2_id = "batch_20250201"
+    # Batch C (latest) — cash only, so get_value() succeeds without market data.
+    # Use today's date so it sorts AFTER any pre-existing dev batches
+    # and becomes the batch that PortfolioServiceV2._load_portfolio() picks up.
+    from datetime import date as _date
+    batch_c = "batch_test_latest"
     try:
-        db.create_snapshot_batch(batch_id=batch2_id, as_of="2025-02-01")
-        db.set_batch_account_coverage(batch_id=batch2_id, account_id="acc1", coverage="complete")
+        db.create_snapshot_batch(batch_id=batch_c, as_of=_date.today().isoformat())
+        db.set_batch_account_coverage(batch_id=batch_c, account_id="acc1", coverage="complete")
         db.add_snapshot(
-            batch_id=batch2_id, account_id="acc1", product_id="TEST_ASSET",
-            quantity=100.0, cost_basis=1100.0, currency="USD"
+            batch_id=batch_c, account_id="acc1", product_id="CNY_CASH",
+            quantity=10000.0, currency="CNY",
         )
-        db.confirm_batch(batch2_id)
+        db.confirm_batch(batch_c)
     except Exception:
         pass
 
@@ -80,7 +102,7 @@ def mock_ghostfolio_data():
         asset_id="TEST_ASSET",
         ex_date=date(2025, 1, 1),
         amount_per_share=1.5,
-        currency="USD"
+        currency="USD",
     )
 
     yield
@@ -89,7 +111,6 @@ def mock_ghostfolio_data():
     ca_path = "local/corporate_actions.yaml"
     if os.path.exists(ca_path):
         os.remove(ca_path)
-    # Database is local/portfolio_book.sqlite, usually kept for tests or isolated
 
 
 def test_ghostfolio_details(mock_ghostfolio_data):

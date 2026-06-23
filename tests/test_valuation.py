@@ -239,7 +239,7 @@ class TestFxRateFromRepository:
         provider = FxRateProvider(market_data=repo)
         rate = provider.get_rate("USD", "CNY", as_of=date(2025, 6, 7))
 
-        assert rate == 7.1763
+        assert rate == 7.1886  # lookback from Sat 06-07 → Thu 06-04
 
     def test_retrieves_rate_with_lookback(self, tmp_path):
         """Rate on a weekend — should walk back to Friday."""
