@@ -11,21 +11,13 @@ import X`` still work; new code should import from submodules directly.
 """
 
 __all__ = [
-    "AssetManager",
     "CorporateActionProcessor",
-    "DashboardEngine",
     "FeeProcessor",
-    "PortfolioCore",
-    "PortfolioHistoryTracker",
 ]
 
 _LAZY = {
-    "AssetManager": ".asset_manager",
     "CorporateActionProcessor": ".corporate_actions",
-    "DashboardEngine": ".dashboard_engine",
     "FeeProcessor": ".fees",
-    "PortfolioCore": ".portfolio_core",
-    "PortfolioHistoryTracker": ".portfolio_history",
 }
 
 

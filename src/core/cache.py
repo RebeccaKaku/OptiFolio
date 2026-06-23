@@ -12,10 +12,9 @@ import time
 import threading
 from typing import Dict, List, Any, Optional, Union
 from datetime import datetime, timedelta
-from .interfaces import ICacheProvider
 
 
-class MemoryCache(ICacheProvider):
+class MemoryCache:
     """内存缓存实现"""
     
     def __init__(self):
