@@ -12,7 +12,6 @@ _log = logging.getLogger(__name__)
 from src.core.paths import (
     PROJECT_ROOT,
     get_database_path,
-    get_legacy_database_candidates,
     get_local_dir,
     get_portfolio_config_path,
 )
@@ -51,7 +50,7 @@ def ensure_local_portfolio() -> Dict[str, Any]:
 
 
 def ensure_local_database() -> Dict[str, Any]:
-    local_db = get_local_dir() / "optifolio_db.db"
+    local_db = get_local_dir() / "portfolio_book.sqlite"
     configured_db = get_database_path()
 
     if local_db.exists():
@@ -64,10 +63,6 @@ def ensure_local_database() -> Dict[str, Any]:
             "created": copied,
             "source": str(configured_db),
         }
-
-    for legacy_path in get_legacy_database_candidates():
-        if _copy_if_missing(legacy_path, local_db):
-            return {"path": str(local_db), "created": True, "source": str(legacy_path)}
 
     local_db.parent.mkdir(parents=True, exist_ok=True)
     return {"path": str(local_db), "created": True, "source": "initialized"}

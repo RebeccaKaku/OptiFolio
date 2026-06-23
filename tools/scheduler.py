@@ -303,25 +303,6 @@ class DailyRunner:
         if errors:
             logger.warning("  %d error(s): %s", len(errors), errors)
 
-        # Step 7: Save portfolio ledger
-        try:
-            from FinData.store.portfolio_ledger import PortfolioLedgerStore
-            store = PortfolioLedgerStore()
-            for symbol, pos in valuation_data.get("positions", {}).items():
-                store.append(PortfolioLedger(
-                    account_id="default",
-                    asset_id=symbol,
-                    quantity=pos.get("quantity", 0),
-                    cost_basis=0,
-                    currency=pos.get("currency", "CNY"),
-                    as_of=today,
-                ))
-            steps_completed.append("ledger")
-            logger.info(f"Portfolio ledger saved: {today}")
-        except Exception as exc:
-            errors.append(f"ledger: {exc}")
-            logger.warning(f"Portfolio ledger skipped: {exc}")
-
         return {
             "date": today.isoformat(),
             "valuation": valuation_data,

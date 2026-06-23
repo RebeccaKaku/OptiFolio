@@ -14,7 +14,7 @@ def test_bootstrap_creates_local_runtime_files(monkeypatch, tmp_path):
     portfolio_path = Path(result["portfolio"]["path"])
     database_path = Path(result["database"]["path"])
     assert portfolio_path == local_dir / "portfolio.yaml"
-    assert database_path == local_dir / "optifolio_db.db"
+    assert database_path == local_dir / "portfolio_book.sqlite"
     assert portfolio_path.exists()
 
 

@@ -49,13 +49,5 @@ def get_portfolio_config_path() -> Path:
 def get_database_path() -> Path:
     return resolve_private_file(
         "OPTIFOLIO_DB_PATH",
-        "optifolio_db.db",
-        "data/optifolio_db.db",
+        "portfolio_book.sqlite",
     )
-
-
-def get_legacy_database_candidates() -> list[Path]:
-    return [
-        PROJECT_ROOT / "data" / "optifolio_db.db",
-        PROJECT_ROOT / "data" / "optifolio.db",
-    ]
