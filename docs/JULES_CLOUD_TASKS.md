@@ -1,10 +1,12 @@
 # Google Jules Cloud Task Handoff
 
-Context: OptiFolio v0.2.0, 592 tests green. Comprehensive audit completed 2026-06-05.
-FinData is self-contained. Streamlit `app.py` is FROZEN — all new work goes to
-`src/api/`, `src/services/`, `src/analytics/`, `FinData/`. Crossroads bugs (H1-H5)
-are already fixed. These tasks are designed to be fully independent — zero file
-overlap between them, each is one PR.
+> **Status (2026-06-23): All tasks (6-11) complete. All DS tasks (001-027) implemented.
+> This document is retained for historical reference. File paths reference the
+> pre-migration `FinData/` structure; current equivalents are in `packages/findata/`.**
+
+Context: OptiFolio v0.2.0, 982 tests green. FinData → packages migration complete.
+Streamlit `app.py` is FROZEN — all new work goes to
+`src/api/`, `src/services/`, `src/analytics/`, `packages/findata/`.
 
 ## Rules
 
@@ -17,7 +19,7 @@ overlap between them, each is one PR.
 - Use `logging` (not `print()`) for new log lines. Import from `logging.getLogger(__name__)`.
 - Follow existing response conventions: services return via `success()` / `failure()` from
   `src/services/response.py`; API handlers use `_json_response()`.
-- The fd singleton (`from FinData import fd`) is the only public data API — do not import
+- The fd singleton (`from findata import fd`) is the only public data API — do not import
   fetchers directly.
 
 ---
@@ -225,13 +227,13 @@ Only Task 11 depends on Task 6. All other tasks can run in parallel.
 
 ---
 
-## DS Task Status
+## DS Task Status (2026-06-23)
 
 | Task | Status | Description |
 | :--- | :--- | :--- |
-| DS-001~014 | Complete | Personal Book Foundation + API + M2 analytics |
-| DS-015 | In progress | My Money Summary |
-| DS-016~027 | Pending | Risk + Decisions + Lab |
+| DS-001~027 | ✅ Complete | All 27 DeepSeek tasks implemented |
+
+> See `docs/CURRENT_STATE.md` for current milestone status and remaining integration work.
 
 ## Quick Start For Jules
 

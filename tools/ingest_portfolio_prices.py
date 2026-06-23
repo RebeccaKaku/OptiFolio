@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from FinData.orchestration.ingest import ingest_portfolio
+from findata.orchestration.ingest import ingest_portfolio
 
 
 def main():

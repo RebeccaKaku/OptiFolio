@@ -1,9 +1,12 @@
 """FastAPI entrypoint for the new OptiFolio HTTP API."""
 
+import logging
 import os
+import time
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import Body, FastAPI, Query
+from fastapi import Body, FastAPI, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,6 +17,8 @@ from src.services import get_application_services
 from .ghostfolio_compat import router as ghostfolio_router
 from .static_dashboard import router as dashboard_router
 from src.services.response import success
+
+_log = logging.getLogger(__name__)
 
 
 class BacktestPayload(BaseModel):
@@ -62,10 +67,27 @@ def _json_response(payload: dict) -> JSONResponse:
 
 
 def create_app() -> FastAPI:
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        """Pre-warm the portfolio price cache on server startup.
+
+        Calls PortfolioServiceV2.warmup() to trigger background price
+        refreshes for all holdings. Does NOT block startup if it fails.
+        """
+        try:
+            _log.info("Startup warmup: pre-fetching portfolio prices...")
+            get_application_services().portfolio_v2.warmup()
+            _log.info("Startup warmup: complete")
+        except Exception as exc:
+            _log.warning("Startup warmup failed (non-blocking): %s", exc)
+        yield
+
     app = FastAPI(
         title="OptiFolio API",
         version="0.1.0",
         description="HTTP API for OptiFolio portfolio and asset services.",
+        lifespan=_lifespan,
     )
 
     cors_origins_str = os.environ.get("CORS_ORIGINS", "")
@@ -81,6 +103,17 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "Accept"],
     )
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        """Log every HTTP request with duration and status."""
+        start = time.monotonic()
+        response = await call_next(request)
+        duration_ms = (time.monotonic() - start) * 1000
+        status = response.status_code
+        level = logging.WARNING if status >= 400 else logging.DEBUG
+        _log.log(level, "%s %s → %d (%.1fms)", request.method, request.url.path, status, duration_ms)
+        return response
 
     @app.get("/health", tags=["system"])
     def health() -> JSONResponse:
@@ -271,7 +304,7 @@ def create_app() -> FastAPI:
             load_latest_prices,
             load_portfolio,
         )
-        from src.data_foundation.repository import MarketDataRepository
+        from findata.store import MarketDataRepository
         from datetime import date
 
         holdings, cash = load_portfolio()
@@ -575,9 +608,6 @@ def create_app() -> FastAPI:
 
     from .my_money_api import router as my_money_router
     app.include_router(my_money_router)
-
-    from .case_study_api import router as case_study_router
-    app.include_router(case_study_router)
 
     app.mount("/static", StaticFiles(directory="src/api/static"), name="static")
 

@@ -9,11 +9,9 @@ import pytest
 import yaml
 
 from src.analytics.fx_exposure import FxExposureAnalyzer, FxExposureItem, FxExposureReport
-from src.core.portfolio_book_db import PortfolioBookDatabase
-from src.core.valuation import FxRateProvider, ValuationEngine, NoPriceDataError
-from src.data_foundation.repository import MarketDataRepository
+from src.core.valuation import FxRateProvider, ValuationEngine
+from findata.store import MarketDataRepository
 from src.domain import CashHolding, PositionValue, ValuationRequest
-from src.domain.products import ProductDefinition
 from src.services.portfolio_service_v2 import PortfolioServiceV2
 
 
@@ -25,9 +23,9 @@ def _seed_repo(repo: MarketDataRepository):
     base = pd.Series(range(len(dates)), index=dates) * 0.5
 
     datasets = {
-        "AAPL":  ("USD", 100.0),
-        "QQQ":   ("USD", 200.0),
-        "510300": ("CNY", 1.0),
+        "equity.us.aapl": ("USD", 100.0),
+        "equity.us.qqq":  ("USD", 200.0),
+        "fund.cn.510300": ("CNY", 1.0),
     }
     for symbol, (currency, offset) in datasets.items():
         prices = offset + base
@@ -53,7 +51,7 @@ def _make_fx_provider() -> FxRateProvider:
     })
 
 
-def _make_service(tmp_path: Path, as_of: date = date(2025, 6, 15)) -> PortfolioServiceV2:
+def _make_service(tmp_path: Path) -> PortfolioServiceV2:
     repo = MarketDataRepository(tmp_path / "foundation")
     _seed_repo(repo)
     fx = _make_fx_provider()
@@ -61,31 +59,17 @@ def _make_service(tmp_path: Path, as_of: date = date(2025, 6, 15)) -> PortfolioS
 
     local_dir = tmp_path / "local"
     local_dir.mkdir()
-    db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
-    db.initialize()
-
-    # Setup data in DB
-    db.create_account("ACC01", "Test Account")
-    db.create_product(ProductDefinition(product_id="AAPL", name="Apple", product_type="equity", currency="USD"))
-    db.create_product(ProductDefinition(product_id="QQQ", name="QQQ", product_type="equity", currency="USD"))
-    db.create_product(ProductDefinition(product_id="510300", name="HS300", product_type="equity", currency="CNY"))
-    db.create_product(ProductDefinition(product_id="USD_CASH", name="USD Cash", product_type="deposit", currency="USD"))
-    db.create_product(ProductDefinition(product_id="CNY_CASH", name="CNY Cash", product_type="deposit", currency="CNY"))
-
-    batch_id = "BATCH_01"
-    db.create_snapshot_batch(batch_id, as_of.isoformat())
-    db.set_batch_account_coverage(batch_id, "ACC01", "complete")
-    db.add_snapshot(batch_id, "ACC01", "AAPL", quantity=100.0)
-    db.add_snapshot(batch_id, "ACC01", "QQQ", quantity=50.0)
-    db.add_snapshot(batch_id, "ACC01", "510300", quantity=1000.0)
-    db.add_snapshot(batch_id, "ACC01", "USD_CASH", quantity=5000.0)
-    db.add_snapshot(batch_id, "ACC01", "CNY_CASH", quantity=10000.0)
-    db.confirm_batch(batch_id)
+    portfolio = {
+        "cash": {"USD": 5000.0, "CNY": 10000.0},
+        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50, "fund.cn.510300": 1000},
+    }
+    portfolio_path = local_dir / "portfolio.yaml"
+    with open(portfolio_path, "w") as f:
+        yaml.dump(portfolio, f)
 
     return PortfolioServiceV2(
         valuation_engine=engine,
-        db=db,
-        as_of=as_of,
+        config_path=portfolio_path,
         base_currency="CNY",
     )
 
@@ -121,8 +105,8 @@ class TestFxExposureAnalyzer:
     def test_single_currency_all_base(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "510300": PositionValue(
-                asset_id="510300", quantity=1000, price=4.0,
+            "fund.cn.510300": PositionValue(
+                asset_id="fund.cn.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=4000.0,
             ),
         }
@@ -144,12 +128,12 @@ class TestFxExposureAnalyzer:
     def test_mixed_currencies(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
-            "510300": PositionValue(
-                asset_id="510300", quantity=1000, price=4.0,
+            "fund.cn.510300": PositionValue(
+                asset_id="fund.cn.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=4000.0,
             ),
         }
@@ -171,7 +155,7 @@ class TestFxExposureAnalyzer:
         cny_item = next(e for e in report.exposures if e.currency == "CNY")
 
         assert usd_item.value_base == 144000.0
-        assert usd_item.asset_ids == ["AAPL"]
+        assert usd_item.asset_ids == ["equity.us.aapl"]
         assert round(usd_item.pct, 1) == 91.1
         assert "USD/CNY" in usd_item.sensitivity_note
 
@@ -185,12 +169,12 @@ class TestFxExposureAnalyzer:
     def test_multiple_assets_same_currency(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
-            "QQQ": PositionValue(
-                asset_id="QQQ", quantity=50, price=300.0,
+            "equity.us.qqq": PositionValue(
+                asset_id="equity.us.qqq", quantity=50, price=300.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
         }
@@ -202,18 +186,18 @@ class TestFxExposureAnalyzer:
         assert len(report.exposures) == 1
         usd_item = report.exposures[0]
         assert usd_item.currency == "USD"
-        assert set(usd_item.asset_ids) == {"AAPL", "QQQ"}
+        assert set(usd_item.asset_ids) == {"equity.us.aapl", "equity.us.qqq"}
         assert usd_item.pct == 100.0
 
     def test_warnings_when_non_base_exceeds_threshold(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=54000.0,
             ),
-            "510300": PositionValue(
-                asset_id="510300", quantity=1000, price=4.0,
+            "fund.cn.510300": PositionValue(
+                asset_id="fund.cn.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=40000.0,
             ),
         }
@@ -245,8 +229,8 @@ class TestFxExposureAnalyzer:
     def test_sensitivity_note_contains_value(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=50000.0,
             ),
         }
@@ -261,8 +245,8 @@ class TestFxExposureAnalyzer:
     def test_to_dict_serializable(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
         }
@@ -320,28 +304,9 @@ class TestFxExposureIntegration:
         repo = MarketDataRepository(tmp_path / "foundation")
         # No seed — empty repo
         engine = ValuationEngine(market_data=repo)
-
-        local_dir = tmp_path / "local"
-        local_dir.mkdir()
-        db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
-        db.initialize()
-        db.create_account("ACC01", "Test Account")
-        # For this test, we need to bypass the _majority_priceable check in _load_portfolio.
-        # Cash-only portfolios bypass it because holdings is empty.
-        db.create_product(ProductDefinition(product_id="USD_CASH", name="USD Cash", product_type="deposit", currency="USD"))
-
-        as_of = date(2020, 1, 1)
-        batch_id = "BATCH_01"
-        db.create_snapshot_batch(batch_id, as_of.isoformat())
-        db.set_batch_account_coverage(batch_id, "ACC01", "complete")
-        db.add_snapshot(batch_id, "ACC01", "USD_CASH", quantity=100.0)
-        db.confirm_batch(batch_id)
-
-        svc = PortfolioServiceV2(valuation_engine=engine, db=db, as_of=as_of, base_currency="CNY")
-        # Now mock the valuation engine to throw NoPriceDataError during report generation
-        from unittest.mock import patch
-        with patch.object(svc.valuation_engine, "value", side_effect=NoPriceDataError("No FX rate")):
-            result = svc.get_fx_exposure_report(as_of=as_of, base_currency="CNY")
+        svc = PortfolioServiceV2(valuation_engine=engine, base_currency="CNY")
+        svc._holdings = {"UNKNOWN": 100}
+        result = svc.get_fx_exposure_report(as_of=date(2020, 1, 1), base_currency="CNY")
         assert not result["success"]
         assert result["error_code"] == "NO_PRICE_DATA"
 
@@ -355,31 +320,22 @@ class TestFxExposureIntegration:
             "volume": [10000] * len(dates),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_canonical(frame, asset_id="510300", source="test", currency="CNY")
+        repo.save_canonical(frame, asset_id="fund.cn.510300", source="test", currency="CNY")
 
         fx = _make_fx_provider()
         engine = ValuationEngine(market_data=repo, fx_provider=fx)
 
         local_dir = tmp_path / "local"
         local_dir.mkdir()
-        db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
-        db.initialize()
-        db.create_account("ACC01", "Test Account")
-        db.create_product(ProductDefinition(product_id="510300", name="HS300", product_type="equity", currency="CNY"))
-        db.create_product(ProductDefinition(product_id="CNY_CASH", name="CNY Cash", product_type="deposit", currency="CNY"))
-
-        as_of = date(2025, 6, 15)
-        batch_id = "BATCH_01"
-        db.create_snapshot_batch(batch_id, as_of.isoformat())
-        db.set_batch_account_coverage(batch_id, "ACC01", "complete")
-        db.add_snapshot(batch_id, "ACC01", "510300", quantity=1000.0)
-        db.add_snapshot(batch_id, "ACC01", "CNY_CASH", quantity=50000.0)
-        db.confirm_batch(batch_id)
+        portfolio = {"cash": {"CNY": 50000.0}, "positions": {"fund.cn.510300": 1000}}
+        portfolio_path = local_dir / "portfolio.yaml"
+        with open(portfolio_path, "w") as f:
+            yaml.dump(portfolio, f)
 
         svc = PortfolioServiceV2(
-            valuation_engine=engine, db=db, as_of=as_of, base_currency="CNY",
+            valuation_engine=engine, config_path=portfolio_path, base_currency="CNY",
         )
-        result = svc.get_fx_exposure_report(as_of=as_of, base_currency="CNY")
+        result = svc.get_fx_exposure_report(as_of=date(2025, 6, 15), base_currency="CNY")
         assert result["success"]
         data = result["data"]
         assert data["net_non_base_pct"] == 0.0

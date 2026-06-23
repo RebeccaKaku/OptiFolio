@@ -41,7 +41,7 @@ def get_application_services() -> ApplicationServices:
     from src.services.portfolio_service_v2 import PortfolioServiceV2
     from src.services.decision_journal_service import DecisionJournalService
     from src.core.enhanced_asset_manager import get_enhanced_asset_manager
-    from FinData.serving.provider import DataProvider
+    from findata.serving.provider import DataProvider
 
     portfolio_book_db = PortfolioBookDatabase()
     portfolio_book_db.initialize()

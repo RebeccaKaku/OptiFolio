@@ -10,7 +10,7 @@ from src.core.valuation import (
     NoPriceDataError,
     ValuationEngine,
 )
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 from src.domain import ValuationRequest
 
 
@@ -53,10 +53,10 @@ class TestValuationEngine:
 
     def test_single_asset_single_date(self, tmp_path):
         engine = _make_engine(tmp_path)
-        _seed_prices(engine.market_data, ["AAPL"], ["2025-01-13", "2025-01-14", "2025-01-15"])
+        _seed_prices(engine.market_data, ["equity.us.aapl"], ["2025-01-13", "2025-01-14", "2025-01-15"])
 
         result = engine.value(
-            {"AAPL": 10},
+            {"equity.us.aapl": 10},
             {"USD": 500},
             ValuationRequest(as_of=date(2025, 1, 15), base_currency="USD"),
         )
@@ -65,31 +65,31 @@ class TestValuationEngine:
         assert result.holdings_value == pytest.approx(1020.0)
         assert result.cash_value == pytest.approx(500.0)
         assert result.base_currency == "USD"
-        assert result.positions["AAPL"].price == 102.0
-        assert result.positions["AAPL"].quantity == 10
+        assert result.positions["equity.us.aapl"].price == 102.0
+        assert result.positions["equity.us.aapl"].quantity == 10
         assert result.price_date == date(2025, 1, 15)
 
     def test_next_day_nav_convention(self, tmp_path):
         """value_on(T+1) uses T's close price."""
         engine = _make_engine(tmp_path)
-        _seed_prices(engine.market_data, ["QQQ"], ["2025-06-02", "2025-06-03"])
+        _seed_prices(engine.market_data, ["equity.us.qqq"], ["2025-06-02", "2025-06-03"])
 
         # Ask for value on 2025-06-04 → uses 06-03 close
         result = engine.value(
-            {"QQQ": 5}, {"USD": 0},
+            {"equity.us.qqq": 5}, {"USD": 0},
             ValuationRequest(as_of=date(2025, 6, 4), base_currency="USD"),
         )
 
         assert result.price_date == date(2025, 6, 3)
-        assert result.positions["QQQ"].price == 101.0
+        assert result.positions["equity.us.qqq"].price == 101.0
 
     def test_multi_asset_multi_currency(self, tmp_path):
         engine = _make_engine(tmp_path)
-        _seed_prices(engine.market_data, ["AAPL"], ["2025-01-15"])
-        _seed_prices(engine.market_data, ["510300"], ["2025-01-15"])
+        _seed_prices(engine.market_data, ["equity.us.aapl"], ["2025-01-15"])
+        _seed_prices(engine.market_data, ["fund.cn.510300"], ["2025-01-15"])
 
         result = engine.value(
-            {"AAPL": 10, "510300": 100},
+            {"equity.us.aapl": 10, "fund.cn.510300": 100},
             {"USD": 500, "CNY": 10000},
             ValuationRequest(as_of=date(2025, 1, 15), base_currency="CNY"),
         )
@@ -99,8 +99,8 @@ class TestValuationEngine:
         # USD cash: 500 * 7.2 = 3600 CNY
         # CNY cash: 10000 * 1.0 = 10000 CNY
         assert result.base_currency == "CNY"
-        assert "AAPL" in result.positions
-        assert "510300" in result.positions
+        assert "equity.us.aapl" in result.positions
+        assert "fund.cn.510300" in result.positions
 
     def test_empty_holdings_returns_cash_only(self, tmp_path):
         engine = _make_engine(tmp_path)
@@ -124,11 +124,11 @@ class TestValuationEngine:
     def test_lookback_walks_to_prior_date(self, tmp_path):
         """If T has no price but T-1 does, use T-1."""
         engine = _make_engine(tmp_path)
-        _seed_prices(engine.market_data, ["AAPL"], ["2025-01-10"])
+        _seed_prices(engine.market_data, ["equity.us.aapl"], ["2025-01-10"])
 
         # Ask for value on 2025-01-15 → should find 01-10 (within 5 days)
         result = engine.value(
-            {"AAPL": 10}, {"USD": 0},
+            {"equity.us.aapl": 10}, {"USD": 0},
             ValuationRequest(as_of=date(2025, 1, 15), base_currency="USD"),
         )
         assert result.price_date == date(2025, 1, 10)
@@ -136,42 +136,42 @@ class TestValuationEngine:
     def test_raises_when_price_too_old(self, tmp_path):
         """If most recent price is > max_lookback_days, raise error."""
         engine = _make_engine(tmp_path)
-        _seed_prices(engine.market_data, ["AAPL"], ["2025-01-01"])
+        _seed_prices(engine.market_data, ["equity.us.aapl"], ["2025-01-01"])
 
         with pytest.raises(NoPriceDataError):
             engine.value(
-                {"AAPL": 10}, {"USD": 0},
+                {"equity.us.aapl": 10}, {"USD": 0},
                 ValuationRequest(as_of=date(2025, 1, 15), base_currency="USD"),
             )
 
     def test_value_history(self, tmp_path):
         engine = _make_engine(tmp_path)
         _seed_prices(
-            engine.market_data, ["AAPL"],
+            engine.market_data, ["equity.us.aapl"],
             [f"2025-01-{d:02d}" for d in range(10, 16)]
         )
 
         dates = [date(2025, 1, d) for d in range(12, 16)]
         results = engine.value_history(
-            {"AAPL": 10}, {"USD": 0}, dates, base_currency="USD",
+            {"equity.us.aapl": 10}, {"USD": 0}, dates, base_currency="USD",
         )
         assert len(results) == 4
         assert results[0].as_of == date(2025, 1, 12)
 
     def test_to_dict_roundtrip(self, tmp_path):
         engine = _make_engine(tmp_path)
-        _seed_prices(engine.market_data, ["AAPL"], ["2025-01-15"])
+        _seed_prices(engine.market_data, ["equity.us.aapl"], ["2025-01-15"])
 
         result = engine.value(
-            {"AAPL": 10}, {"USD": 500},
+            {"equity.us.aapl": 10}, {"USD": 500},
             ValuationRequest(as_of=date(2025, 1, 15), base_currency="USD"),
         )
 
         d = result.to_dict()
         assert d["as_of"] == "2025-01-15"
-        assert "AAPL" in d["positions"]
-        assert d["positions"]["AAPL"]["quantity"] == 10
-        assert d["positions"]["AAPL"]["price"] == 100.0
+        assert "equity.us.aapl" in d["positions"]
+        assert d["positions"]["equity.us.aapl"]["quantity"] == 10
+        assert d["positions"]["equity.us.aapl"]["price"] == 100.0
         assert "USD" in d["cash_breakdown"]
 
 
@@ -203,7 +203,7 @@ from datetime import date
 import pandas as pd
 
 from src.core.valuation import FxRateProvider, FxRateError
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -215,14 +215,14 @@ def _seed_fx_data(repo: MarketDataRepository) -> None:
         "date": ["2025-06-02", "2025-06-03", "2025-06-04"],
         "close": [7.1848, 7.1763, 7.1886],
     })
-    repo.save_canonical(usd, asset_id="FX_USDCNY", source="test", currency="CNY")
+    repo.save_canonical(usd, asset_id="fx.usd_cny.spot", source="test", currency="CNY")
 
     # EUR/CNY: 8.18 .. 8.20
     eur = pd.DataFrame({
         "date": ["2025-06-02", "2025-06-03", "2025-06-04"],
         "close": [8.1830, 8.1853, 8.1920],
     })
-    repo.save_canonical(eur, asset_id="FX_EURCNY", source="test", currency="CNY")
+    repo.save_canonical(eur, asset_id="fx.eur_cny.spot", source="test", currency="CNY")
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────
@@ -342,7 +342,7 @@ class TestFxRateProviderBackwardCompat:
         """EUR→CNY via USD: EUR→USD (1.1) * USD→CNY (7.2) = 7.92."""
         provider = FxRateProvider()
         rate = provider.get_rate("EUR", "CNY")
-        assert rate == 1.1 * 7.2  # 7.92
+        assert rate == pytest.approx(1.1 * 7.2)  # 7.92
 
     def test_get_rate_raises_for_unknown(self):
         provider = FxRateProvider()

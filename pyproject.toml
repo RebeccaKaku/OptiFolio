@@ -3,7 +3,7 @@ name = "optifolio"
 version = "0.2.0"
 description = "Quantitative finance project for asset pricing and optimization"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10"
 dependencies = [
     # 核心金融数据
     "akshare>=1.18.0",

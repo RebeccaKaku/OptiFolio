@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from FinData import fd as fd_import
-from FinData.store.repository import CanonicalStore
+from findata import fd as fd_import
+from findata.store import CanonicalStore
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -32,7 +32,7 @@ def _populated_provider(tmp_path, asset_id="AAPL", df=None):
     if df is None:
         df = _make_df()
     store.accept(df, asset_id=asset_id, source="unit", currency="USD")
-    from FinData.serving.provider import DataProvider
+    from findata.serving.provider import DataProvider
     return DataProvider(store=store), store
 
 
@@ -66,7 +66,7 @@ class TestDataProviderPrices:
 
         # Mock get_prices to return a panel with NaNs
         dates = pd.date_range("2024-01-01", periods=3, freq="B")
-        mock_panel = pd.DataFrame({"AAPL": [100.0, np.nan, 102.0]}, index=dates)
+        mock_panel = pd.DataFrame({"equity.us.aapl": [100.0, np.nan, 102.0]}, index=dates)
         monkeypatch.setattr(provider._store, "get_prices", lambda *args, **kwargs: mock_panel)
 
         prices = provider.prices("AAPL")
@@ -107,11 +107,11 @@ class TestDataProviderPrices:
             return {}
 
         monkeypatch.setattr(
-            "FinData.orchestration.orchestrator.Orchestrator.schedule",
+            "findata.orchestration.orchestrator.Orchestrator.schedule",
             fake_schedule,
         )
         monkeypatch.setattr(
-            "FinData.orchestration.orchestrator.Orchestrator.dispatch",
+            "findata.orchestration.orchestrator.Orchestrator.dispatch",
             fake_dispatch,
         )
         prices = provider.prices("AAPL", mode="live")
@@ -131,7 +131,7 @@ class TestDataProviderOhlcv:
         assert "close" in df.columns
         assert "adj_close" in df.columns
         assert "volume" in df.columns
-        assert df["asset_id"].iloc[0] == "AAPL"
+        assert df["asset_id"].iloc[0] == "equity.us.aapl"
 
 
 class TestDataProviderPanel:
@@ -142,7 +142,7 @@ class TestDataProviderPanel:
             _make_df(close=np.linspace(50, 70, 60)),
             asset_id="BBB", source="unit", currency="USD",
         )
-        from FinData.serving.provider import DataProvider
+        from findata.serving.provider import DataProvider
         provider = DataProvider(store=store)
         panel = provider.panel(["AAA", "BBB"])
         assert isinstance(panel, pd.DataFrame)
@@ -162,7 +162,7 @@ class TestDataProviderReturns:
 
     def test_returns_empty_data_returns_empty_series(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
-        from FinData.serving.provider import DataProvider
+        from findata.serving.provider import DataProvider
         provider = DataProvider(store=store)
         returns = provider.returns("NONEXISTENT")
         assert isinstance(returns, pd.Series)
@@ -175,7 +175,7 @@ class TestDataProviderReturns:
             "close": [100.0],
         })
         store.accept(df, asset_id="SINGLE", source="unit", currency="USD")
-        from FinData.serving.provider import DataProvider
+        from findata.serving.provider import DataProvider
         provider = DataProvider(store=store)
         returns = provider.returns("SINGLE")
         assert len(returns) == 0
@@ -217,7 +217,7 @@ class TestDataProviderMetrics:
 
     def test_metrics_empty_data_returns_zeros(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
-        from FinData.serving.provider import DataProvider
+        from findata.serving.provider import DataProvider
         provider = DataProvider(store=store)
         result = provider.metrics("NONEXISTENT", "sharpe_ratio")
         assert result["sharpe_ratio"] == 0.0
@@ -229,7 +229,7 @@ class TestDataProviderMetrics:
             "close": [100.0],
         })
         store.accept(df, asset_id="SINGLE", source="unit", currency="USD")
-        from FinData.serving.provider import DataProvider
+        from findata.serving.provider import DataProvider
         provider = DataProvider(store=store)
         result = provider.metrics("SINGLE", "all")
         # max_drawdown is None when no data (distinguishes from zero drawdown)
@@ -317,7 +317,7 @@ class TestDataProviderRates:
                 "value": [0.0531],
                 "known_at": ["2024-02-01T09:00:00"],
             }),
-            series_id="RATE_SOFR_USD_ON",
+            series_id="rate.us.sofr.on",
             source="fred",
             unit="decimal",
             currency="USD",
@@ -350,7 +350,7 @@ class TestDataProviderRates:
         assert result["source"] == "unit_rate_feed"
         assert result["warning"] is not None
         assert "TENOR MISMATCH" in result["warning"]
-        assert "SHIBOR" in result["warning"]
+        assert "shibor" in result["warning"].lower()
 
     def test_rate_1y_cn_no_observation_returns_missing(self, tmp_path):
         """When repo exists but no observation stored, report as missing."""
@@ -396,15 +396,14 @@ class TestDataProviderRates:
         assert result["source"] == "missing_observation"
         assert result["warning"] is not None
 
-    def test_rate_emergency_fallback_when_no_repo(self):
-        """When store has no repo at all, use emergency fallback."""
-        from FinData.serving.provider import DataProvider
+    def test_rate_no_repo_returns_missing(self):
+        """When store has no repo at all, report as missing_observation."""
+        from findata.serving.provider import DataProvider
         # Create a provider with a store that has no 'repo' attribute
         provider = DataProvider(store=object())  # object() has no .repo
         result = provider.rate("1y_cn")
-        assert result["source"] == "emergency_fallback"
-        assert result["value"] > 0
-        assert "EMERGENCY FALLBACK" in result["warning"]
+        assert result["source"] == "missing_observation"
+        assert result["value"] == 0.0
 
     def test_rate_1y_us_no_observation_returns_missing(self, tmp_path):
         provider, _ = _populated_provider(tmp_path)
@@ -422,7 +421,7 @@ class TestDataProviderFxRates:
                 "date": ["2025-06-02", "2025-06-03"],
                 "close": [7.11, 7.22],
             }),
-            asset_id="FX_USDCNY",
+            asset_id="fx.usd_cny.spot",
             source="unit_fx",
             currency="CNY",
         )
@@ -432,7 +431,18 @@ class TestDataProviderFxRates:
         assert result == pytest.approx(7.22)
 
     def test_fx_rate_usd_cny_returns_float(self, tmp_path):
-        provider, _ = _populated_provider(tmp_path)
+        provider, store = _populated_provider(tmp_path)
+        # Seed a cached FX observation so the test does not require network.
+        store.accept(
+            pd.DataFrame({
+                "date": pd.date_range(end=pd.Timestamp.today(), periods=3, freq="D"),
+                "close": [7.20, 7.21, 7.22],
+            }),
+            asset_id="fx.usd_cny.spot",
+            source="test",
+            currency="CNY",
+            timezone="UTC",
+        )
         result = provider.fx_rate("USD", "CNY")
         assert isinstance(result, float)
         assert result > 0
@@ -451,16 +461,16 @@ class TestDataProviderObservations:
                 "effective_date": ["2024-01-02", "2024-01-03"],
                 "value": [0.031, 0.032],
             }),
-            series_id="RATE_SOFR_USD_ON",
+            series_id="rate.us.sofr.on",
             source="unit",
             unit="decimal",
             currency="USD",
         )
 
-        df = provider.observations(["RATE_SOFR_USD_ON"], start="2024-01-03")
+        df = provider.observations(["rate.us.sofr.on"], start="2024-01-03")
 
         assert len(df) == 1
-        assert df["series_id"].iloc[0] == "RATE_SOFR_USD_ON"
+        assert df["series_id"].iloc[0] == "rate.us.sofr.on"
         assert df["value"].iloc[0] == pytest.approx(0.032)
 
     def test_latest_observation_serializes_dates(self, tmp_path):
@@ -471,15 +481,15 @@ class TestDataProviderObservations:
                 "value": [0.031],
                 "known_at": ["2024-01-03T09:00:00"],
             }),
-            series_id="RATE_SOFR_USD_ON",
+            series_id="rate.us.sofr.on",
             source="unit",
             unit="decimal",
             currency="USD",
         )
 
-        row = provider.latest_observation("RATE_SOFR_USD_ON")
+        row = provider.latest_observation("rate.us.sofr.on")
 
-        assert row["series_id"] == "RATE_SOFR_USD_ON"
+        assert row["series_id"] == "rate.us.sofr.on"
         assert row["effective_date"] == "2024-01-02"
         assert row["known_at"].startswith("2024-01-03T09:00:00")
 
@@ -490,7 +500,7 @@ class TestDataProviderObservations:
                 "effective_date": ["2024-01-02"],
                 "value": [0.031],
             }),
-            series_id="RATE_SOFR_USD_ON",
+            series_id="rate.us.sofr.on",
             source="unit",
         )
 
@@ -500,8 +510,8 @@ class TestDataProviderObservations:
             as_of="2024-01-10",
         )
 
-        assert set(coverage["series_id"]) == {"RATE_SOFR_USD_ON", "RATE_SONIA_GBP_ON"}
-        missing = coverage[coverage["series_id"] == "RATE_SONIA_GBP_ON"].iloc[0]
+        assert set(coverage["series_id"]) == {"rate.us.sofr.on", "rate.uk.sonia.on"}
+        missing = coverage[coverage["series_id"] == "rate.uk.sonia.on"].iloc[0]
         assert bool(missing["missing"]) is True
 
 
@@ -556,7 +566,7 @@ class TestFdBackCompat:
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -567,7 +577,7 @@ class TestFdBackCompat:
 
     def test_fd_prices_unknown_symbol_returns_none(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -582,7 +592,7 @@ class TestFdBackCompat:
             asset_id="BBB", source="unit", currency="USD",
         )
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -592,22 +602,22 @@ class TestFdBackCompat:
         assert panel.shape == (60, 2)
 
     def test_fd_same_instance_on_multiple_imports(self):
-        import FinData
-        from FinData import fd as fd1
-        from FinData import fd as fd2
+        import findata
+        from findata import fd as fd1
+        from findata import fd as fd2
 
         assert fd1 is fd2
-        assert fd1 is FinData.fd
+        assert fd1 is findata.fd
 
     def test_fd_is_findata_instance(self):
-        from FinData import fd, FinData
+        from findata import fd, FinData
         assert isinstance(fd, FinData)
 
     def test_fd_returns_works(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -619,7 +629,7 @@ class TestFdBackCompat:
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -628,13 +638,13 @@ class TestFdBackCompat:
         # Multi-field OHLCV: flat DataFrame with date index + field columns
         for col in ("open", "high", "low", "close", "adj_close", "volume"):
             assert col in df.columns, f"Expected OHLCV column {col}"
-        assert df["asset_id"].iloc[0] == "AAPL"
+        assert df["asset_id"].iloc[0] == "equity.us.aapl"
 
     def test_fd_metrics_works(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -643,7 +653,7 @@ class TestFdBackCompat:
 
     def test_fd_rate_works(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -657,7 +667,7 @@ class TestFdBackCompat:
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -670,18 +680,18 @@ class TestFdBackCompat:
         store.accept(_make_df(), asset_id="AAA", source="unit", currency="USD")
         store.accept(_make_df(), asset_id="BBB", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
         assets = fd_test.list_assets()
-        assert sorted(assets) == ["AAA", "BBB"]
+        assert sorted(assets) == ["equity.us.aaa", "equity.us.bbb"]
 
     def test_fd_missing_report_works(self, tmp_path):
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAA", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 
@@ -694,11 +704,11 @@ class TestFdBackCompat:
 class TestFdSingletonDeferred:
     def test_fd_singleton_imports_cleanly(self):
         """Verify that importing fd does not crash."""
-        from FinData import fd
+        from findata import fd
         assert fd is not None
 
     def test_fd_has_all_public_methods(self):
-        from FinData import fd
+        from findata import fd
         public_methods = [
             "prices", "ohlcv", "panel", "returns", "metrics",
             "rate", "fx_rate", "observations", "latest_observation",
@@ -719,7 +729,7 @@ class TestFdStoragePatternsStillWork:
         store = CanonicalStore(root_dir=str(tmp_path))
         store.accept(_make_df(), asset_id="AAPL", source="unit", currency="USD")
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store  # Back-compat injection
 
@@ -735,7 +745,7 @@ class TestFdStoragePatternsStillWork:
             asset_id="BBB", source="unit", currency="USD",
         )
 
-        from FinData import FinData
+        from findata import FinData
         fd_test = FinData()
         fd_test._store = store
 

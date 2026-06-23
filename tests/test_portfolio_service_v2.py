@@ -10,11 +10,9 @@ import yaml
 
 from src.core.corporate_actions import CorporateActionProcessor
 from src.core.fees import FeeProcessor
-from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import FxRateProvider, ValuationEngine
-from src.data_foundation.repository import MarketDataRepository
-from src.domain.products import ProductDefinition
+from findata.store import MarketDataRepository
 from src.services.portfolio_service_v2 import PortfolioServiceV2
 
 
@@ -23,12 +21,12 @@ def _seed_repo(repo: MarketDataRepository):
     dates = pd.date_range("2025-01-01", "2025-06-15", freq="B")
     prices = 100.0 + pd.Series(range(len(dates)), index=dates) * 0.5
 
-    for symbol in ["AAPL", "QQQ", "510300"]:
-        offset = 0
-        if symbol == "QQQ":
-            offset = 200
-        elif symbol == "510300":
-            offset = 1
+    datasets = {
+        "equity.us.aapl": ("USD", 0),
+        "equity.us.qqq":  ("USD", 200),
+        "fund.cn.510300": ("CNY", 1),
+    }
+    for symbol, (currency, offset) in datasets.items():
         frame = pd.DataFrame({
             "close": [p + offset for p in prices],
             "open": [p + offset for p in prices],
@@ -37,10 +35,22 @@ def _seed_repo(repo: MarketDataRepository):
             "volume": [10000] * len(prices),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_canonical(frame, asset_id=symbol, source="test", currency="USD" if symbol != "510300" else "CNY")
+        repo.save_canonical(frame, asset_id=symbol, source="test", currency=currency)
 
 
-def _make_service(tmp_path: Path, as_of: date = date(2025, 6, 15)) -> PortfolioServiceV2:
+def _make_temp_portfolio(tmp_path: Path) -> Path:
+    """Write a minimal portfolio YAML to a temp directory."""
+    portfolio = {
+        "cash": {"USD": 5000.0, "CNY": 10000.0},
+        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50},
+    }
+    portfolio_path = tmp_path / "portfolio.yaml"
+    with open(portfolio_path, "w") as f:
+        yaml.dump(portfolio, f)
+    return portfolio_path
+
+
+def _make_service(tmp_path: Path) -> PortfolioServiceV2:
     repo = MarketDataRepository(tmp_path / "foundation")
     _seed_repo(repo)
 
@@ -52,25 +62,7 @@ def _make_service(tmp_path: Path, as_of: date = date(2025, 6, 15)) -> PortfolioS
 
     local_dir = tmp_path / "local"
     local_dir.mkdir()
-
-    db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
-    db.initialize()
-
-    # Setup data in DB
-    db.create_account("ACC01", "Test Account")
-    db.create_product(ProductDefinition(product_id="AAPL", name="Apple", product_type="equity", currency="USD"))
-    db.create_product(ProductDefinition(product_id="QQQ", name="QQQ", product_type="equity", currency="USD"))
-    db.create_product(ProductDefinition(product_id="USD_CASH", name="USD Cash", product_type="deposit", currency="USD"))
-    db.create_product(ProductDefinition(product_id="CNY_CASH", name="CNY Cash", product_type="deposit", currency="CNY"))
-
-    batch_id = "BATCH_01"
-    db.create_snapshot_batch(batch_id, as_of.isoformat())
-    db.set_batch_account_coverage(batch_id, "ACC01", "complete")
-    db.add_snapshot(batch_id, "ACC01", "AAPL", quantity=100.0)
-    db.add_snapshot(batch_id, "ACC01", "QQQ", quantity=50.0)
-    db.add_snapshot(batch_id, "ACC01", "USD_CASH", quantity=5000.0)
-    db.add_snapshot(batch_id, "ACC01", "CNY_CASH", quantity=10000.0)
-    db.confirm_batch(batch_id)
+    portfolio_path = _make_temp_portfolio(local_dir)
 
     cap = CorporateActionProcessor(local_dir / "corporate_actions.yaml")
     fee = FeeProcessor()
@@ -81,8 +73,7 @@ def _make_service(tmp_path: Path, as_of: date = date(2025, 6, 15)) -> PortfolioS
         corp_action_processor=cap,
         fee_processor=fee,
         history_tracker=hist,
-        db=db,
-        as_of=as_of,
+        config_path=portfolio_path,
         base_currency="CNY",
     )
 
@@ -99,8 +90,8 @@ class TestPortfolioServiceV2:
         assert data["base_currency"] == "USD"
         assert data["total_value"] > 5000  # AAPL + QQQ + cash
         assert len(data["positions"]) == 2
-        assert "AAPL" in data["positions"]
-        assert "QQQ" in data["positions"]
+        assert "equity.us.aapl" in data["positions"]
+        assert "equity.us.qqq" in data["positions"]
         assert "USD" in data["cash_breakdown"]
         assert "CNY" in data["cash_breakdown"]
 
@@ -126,8 +117,8 @@ class TestPortfolioServiceV2:
         svc = _make_service(tmp_path)
         result = svc.get_current_holdings()
         assert result["success"]
-        assert result["data"]["holdings"]["AAPL"] == 100
-        assert result["data"]["holdings"]["QQQ"] == 50
+        assert result["data"]["holdings"]["equity.us.aapl"] == 100
+        assert result["data"]["holdings"]["equity.us.qqq"] == 50
         assert result["data"]["cash"]["USD"] == 5000
 
     def test_cash_balances(self, tmp_path):
@@ -139,14 +130,14 @@ class TestPortfolioServiceV2:
     def test_record_and_apply_dividend(self, tmp_path):
         svc = _make_service(tmp_path)
         div_result = svc.record_dividend(
-            "AAPL", date(2025, 6, 10), amount_per_share=1.0, currency="USD",
+            "equity.us.aapl", date(2025, 6, 10), amount_per_share=1.0, currency="USD",
         )
         assert div_result["success"]
 
         # Value after dividend ex-date — holdings unchanged in PortfolioServiceV2
         # because corporate actions are only applied in get_value_history()
         holdings = svc.get_current_holdings()
-        assert holdings["data"]["holdings"]["AAPL"] == 100  # holdings unchanged
+        assert holdings["data"]["holdings"]["equity.us.aapl"] == 100  # holdings unchanged
 
     def test_metrics_computed(self, tmp_path):
         svc = _make_service(tmp_path)
@@ -169,19 +160,17 @@ class TestPortfolioServiceV2:
         assert result["success"]
         assert result["data"]["count"] >= 2
 
-    def test_error_on_missing_confirmed_batch(self, tmp_path):
-        """When no confirmed batch exists, should raise PortfolioBookError."""
+    def test_empty_portfolio_no_config(self, tmp_path):
+        """When no config file exists, should start with empty holdings."""
         repo = MarketDataRepository(tmp_path / "foundation")
         engine = ValuationEngine(market_data=repo)
-        db = PortfolioBookDatabase(tmp_path / "empty_book.sqlite")
-        db.initialize()
-
-        with pytest.raises(PortfolioBookError, match="No confirmed portfolio batch found"):
-            PortfolioServiceV2(
-                valuation_engine=engine,
-                db=db,
-                as_of=date(2025, 6, 15),
-            )
+        svc = PortfolioServiceV2(
+            valuation_engine=engine,
+            config_path=tmp_path / "nonexistent.yaml",
+        )
+        holdings = svc.get_current_holdings()
+        assert holdings["data"]["holdings"] == {}
+        assert holdings["data"]["cash"] == {}
 
     # ── history tracker & enhanced metrics ────────────────────────────────
 

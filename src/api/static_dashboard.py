@@ -49,6 +49,10 @@ HTML = r"""<!DOCTYPE html>
 </head>
 <body>
 <button class="refresh" onclick="loadAll()">Refresh</button>
+<nav style="margin-bottom:16px; display:flex; gap:12px; align-items:center">
+  <a href="/" style="color:#60a5fa; text-decoration:none; font-weight:600">📊 仪表盘</a>
+  <a href="/book" style="color:#93c5fd; text-decoration:none">📒 我的钱</a>
+</nav>
 <h1>OptiFolio</h1>
 <div class="subtitle">Portfolio & Market Data Overview</div>
 
@@ -101,8 +105,16 @@ HTML = r"""<!DOCTYPE html>
 const API = '';
 
 async function get(path) {
-  try { const r = await fetch(API + path); if (!r.ok) throw new Error(r.status); return await r.json(); }
-  catch(e) { return { success: false, error: e.message }; }
+  try {
+    const r = await fetch(API + path);
+    if (!r.ok) {
+      // Try to parse error body for structured error info
+      let body = {};
+      try { body = await r.json(); } catch(_) {}
+      return { success: false, status: r.status, message: body.message || body.detail || `HTTP ${r.status}`, error_code: body.error_code || '' };
+    }
+    return await r.json();
+  } catch(e) { return { success: false, error: e.message }; }
 }
 
 function fmt(n, d) {
@@ -126,7 +138,21 @@ async function loadPortfolio() {
   const el = document.getElementById('port-summary');
   const today = new Date().toISOString().slice(0, 10);
   const res = await get(`/api/portfolio/v2/risk/exposure?as_of=${today}`);
-  if (!res.success) { el.innerHTML = '<div class="error">' + (res.message || res.error) + '</div>'; return; }
+  if (!res.success) {
+    const errMsg = res.message || res.error || 'Unknown error';
+    const errCode = res.error_code || '';
+    let reason = errMsg;
+    if (errCode === 'NO_PRICE_DATA') {
+      reason = '价格数据缺失 — 部分资产（如 fund.cn.510300）在当前日期无可用市场价格。请检查 findata 数据源或等待数据更新。';
+    } else if (errCode === 'OPTIMIZATION_NO_DATA' || errCode === 'OPTIMIZATION_INSUFFICIENT_ASSETS') {
+      reason = '资产数据不足 — 尚未有确认的快照批次，无法计算持仓分布。请先完成建账流程。';
+    } else if (res.status === 422) {
+      reason = '数据不可用 — ' + errMsg;
+    }
+    el.innerHTML = '<div class="error" style="line-height:1.6">⚠️ ' + reason + '<br><span class="small" style="display:block;margin-top:8px">错误码: ' + (errCode || 'N/A') + '</span></div>';
+    showEmptyState();
+    return;
+  }
   const d = res.data;
   let html = '<div class="metric"><span class="metric-label">Total Value</span><span class="metric-value green">' + money(d.total_value) + '</span></div>';
   d.by_asset_class.forEach(i => {
@@ -154,6 +180,12 @@ async function loadPortfolio() {
   posEl.innerHTML = rows || '<tr><td colspan="4" class="small">No positions</td></tr>';
 }
 
+function showEmptyState() {
+  document.getElementById('exposure').innerHTML = '<div class="small">暂无风险敞口数据</div>';
+  document.getElementById('currency').innerHTML = '<div class="small">暂无货币敞口数据</div>';
+  document.getElementById('pos-table').innerHTML = '<tr><td colspan="4" class="small">暂无持仓数据 — 请先 <a href="/book" style="color:#60a5fa">完成建账</a></td></tr>';
+}
+
 async function loadRegistry() {
   const el = document.getElementById('reg-table');
   const res = await get('/api/assets/overview');
@@ -179,20 +211,26 @@ async function loadWMP() {
   document.getElementById('wmp-count').textContent = '(' + wmps.length + ' shown / ' + all.length + ' total)';
   if (wmps.length === 0) { el.innerHTML = '<tr><td colspan="4">No WMP assets found</td></tr>'; return; }
 
-  // Fetch prices for each
-  const rows = await Promise.all(wmps.map(async code => {
-    try {
-      const pr = await get('/api/market/prices?assets=' + encodeURIComponent(code) + '&start=2024-01-01&end=2026-06-05');
-      if (pr.success && pr.data && pr.data.records && pr.data.records.length > 0) {
-        const recs = pr.data.records;
+  // Fetch prices in a single batch call
+  const params = new URLSearchParams();
+  wmps.forEach(code => params.append('assets', code));
+  params.append('start', '2024-01-01');
+  params.append('end', '2026-06-05');
+  const pr = await get('/api/market/prices?' + params.toString());
+
+  const rows = wmps.map(code => {
+    if (pr.success && pr.data && pr.data.records && pr.data.records.length > 0) {
+      // Find records that have data for this code (non-null value in the pivot)
+      const recs = pr.data.records.filter(r => r[code] != null);
+      if (recs.length > 0) {
         const last = recs[recs.length - 1];
         const first = recs[0];
-        const price = last[code] || last.adj_close || last.close || '-';
+        const price = last[code] || '-';
         return '<tr><td>' + code + '</td><td>' + fmt(price, 4) + '</td><td>' + recs.length + '</td><td class="small">' + first.date + ' ~ ' + last.date + '</td></tr>';
       }
-    } catch(e) {}
+    }
     return '<tr><td>' + code + '</td><td>-</td><td>-</td><td>-</td></tr>';
-  }));
+  });
   el.innerHTML = rows.join('');
 }
 
@@ -217,3 +255,5 @@ def onboarding_ui():
     """Serve the manual onboarding wizard."""
     path = os.path.join(os.path.dirname(__file__), "static", "book.html")
     return FileResponse(path)
+
+

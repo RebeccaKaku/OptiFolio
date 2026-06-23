@@ -1,5 +1,8 @@
 # FinData Data Audit Report — 2026-06-18
 
+> **Note (2026-06-23):** File paths updated for FinData → packages migration.
+> Line numbers may have shifted; substance of findings unchanged.
+
 **Auditor:** Claude (Financial Data QA) | **Tests:** 641/641 pass | **Branch:** main
 
 ---
@@ -21,7 +24,8 @@ FinData is well-architected with solid test coverage, but **the data it serves i
 
 ### C2. Hardcoded rate fallbacks are wrong and used in production
 
-**File:** `FinData/serving/provider.py:115-119`
+**File:** `packages/findata/findata/serving/provider.py` (formerly `FinData/serving/provider.py`):
+115-119`
 ```python
 _RATE_FALLBACKS = {
     "1y_cn": 0.017,   # 1.7% — actual SHIBOR 1Y ≈ 1.46% (0.2pp off)
@@ -35,7 +39,7 @@ _RATE_FALLBACKS = {
 
 ### C3. ALL 9294 rows have timezone="UTC" — cross-market time alignment broken
 
-**File:** `data/foundation/market_prices.parquet` (timezone column), `src/data_foundation/schemas.py:122-136` (normalization code exists but timezone param never passed during import)
+**File:** `data/foundation/market_prices.parquet` (timezone column), `packages/findata/findata/store/schemas.py` (normalization code exists but timezone param never passed during import)
 
 **Impact:** US equities should be `America/New_York`, CN stocks `Asia/Shanghai`. "Monday's close" may be tagged on wrong calendar date.
 
@@ -78,7 +82,8 @@ _RATE_FALLBACKS = {
 
 ### H2. `DataProvider.fx_rate()` never uses live FX rates
 
-**File:** `FinData/serving/provider.py:162-173`, `src/core/valuation.py:127-169`
+**File:** `packages/findata/findata/serving/provider.py` (formerly `FinData/serving/provider.py`):
+162-173`, `src/core/valuation.py:127-169`
 **Root cause:** `FxRateProvider.get_rate()` has `try_live=False` by default. No code path calls it with `try_live=True`. Stored FX data is also stale.
 
 ### H3. Tests assert against hardcoded stubs instead of verifying reasonableness
@@ -122,7 +127,8 @@ Both contain near-identical `TestFdPrices`, `TestFdPanel`, `TestFdSingleton`, `T
 
 ### M5. `annualized_return` with <5 data points is unstable
 
-**File:** `FinData/serving/provider.py:262-266`
+**File:** `packages/findata/findata/serving/provider.py` (formerly `FinData/serving/provider.py`):
+262-266`
 Formula `(1 + total) ** (365/days) - 1` produces extreme values with 1-3 data points. Guarded for <2 but not for 3-5 over <1 week.
 
 ---

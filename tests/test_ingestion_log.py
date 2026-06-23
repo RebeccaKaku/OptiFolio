@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 from datetime import datetime
-from FinData.store.ingestion_log import IngestionLog, IngestionRun
+from findata.store.ingestion_log import IngestionLog, IngestionRun
 from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
 from src.api.fastapi_app import app

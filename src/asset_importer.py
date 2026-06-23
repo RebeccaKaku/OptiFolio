@@ -61,8 +61,11 @@ class AssetRegistry:
     def config_path(self, v):
         if v != self._config_path: self._config_path, self._db_instance = v, None; self._init_db(); self.load_config()
     def _init_db(self):
-        base = os.path.basename(self._config_path).replace(".yaml", ".sqlite")
-        p = os.path.join(os.path.dirname(self._config_path) or ".", base)
+        from pathlib import Path
+        base = Path(self._config_path).stem + ".sqlite"
+        local_dir = Path("local")
+        local_dir.mkdir(parents=True, exist_ok=True)
+        p = local_dir / base
         from src.core.portfolio_book_db import PortfolioBookDatabase
         self._db_instance = PortfolioBookDatabase(p); self._db_instance.initialize()
     def _sync(self):
@@ -144,7 +147,7 @@ class AssetImporter:
     def __init__(self, registry_path="config/asset_registry.yaml", candidates_path="config/candidates.yaml", **kwargs):
         self.registry, self.candidates_path = AssetRegistry(registry_path), candidates_path
         try:
-            from FinData.adapters import FETCHER_REGISTRY
+            from findata.adapters import FETCHER_REGISTRY
             self.valid_asset_types = list(FETCHER_REGISTRY.keys())
         except: self.valid_asset_types = ['cn_stock', 'cn_fund', 'us_equity', 'currency', 'cn_stock_sh', 'cn_stock_sz', 'hk_stock', 'us_stock'] + [f'cn_fund_{x}' for x in ['qdii', 'etf', 'open', 'money', 'lof', 'index']]
     def _infer_asset_type(self, s):

@@ -6,7 +6,7 @@ assets:
   last_updated: '2026-06-05T18:10:24.747517'
   name: 天弘余额宝货币
   source: akshare_fund_em
-  symbol: 000198
+  symbol: fund.cn.000198
 - asset_type: cn_fund
   attributes:
     company: 中银基金管理有限公司
@@ -15,7 +15,7 @@ assets:
   last_updated: '2026-06-05T18:10:14.303527'
   name: 中银如意宝货币A
   source: akshare_fund_xq
-  symbol: '004502'
+  symbol: fund.cn.004502
 - asset_type: cn_fund
   attributes:
     company: 易方达基金管理有限公司
@@ -24,7 +24,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.547847'
   name: 易方达蓝筹精选混合
   source: akshare_fund_xq
-  symbol: 005827
+  symbol: fund.cn.005827
 - asset_type: cn_fund
   attributes:
     fund_type_raw: 指数型-股票
@@ -32,7 +32,7 @@ assets:
   last_updated: '2026-06-05T18:10:12.929293'
   name: 沪深300ETF华泰柏瑞
   source: akshare_fund_em
-  symbol: '510300'
+  symbol: fund.cn.510300
 - asset_type: cn_stock_sh
   attributes:
     exchange: SZ
@@ -40,12 +40,12 @@ assets:
   last_updated: '2026-06-18T17:22:53.247048'
   name: 贵州茅台
   source: akshare_stock_info
-  symbol: '600519'
+  symbol: equity.cn.sh.600519
 - asset_type: us_equity
   attributes: {}
   currency: USD
   name: AAPL
-  symbol: AAPL
+  symbol: equity.us.aapl
 - asset_type: currency
   attributes:
     base_currency: USD
@@ -60,7 +60,7 @@ assets:
   attributes: {}
   currency: USD
   name: GLD
-  symbol: GLD
+  symbol: equity.us.gld
 - asset_type: us_equity
   attributes:
     exchange: NMS
@@ -69,7 +69,7 @@ assets:
   last_updated: '2026-02-18T00:16:40.855410'
   name: Alphabet Inc.
   source: yfinance
-  symbol: GOOGL
+  symbol: equity.us.googl
 - asset_type: us_equity
   attributes:
     exchange: NMS
@@ -78,17 +78,17 @@ assets:
   last_updated: '2026-02-18T00:25:30.188533'
   name: Microsoft Corporation
   source: yfinance
-  symbol: MSFT
+  symbol: equity.us.msft
 - asset_type: us_equity
   attributes: {}
   currency: USD
   name: QQQ
-  symbol: QQQ
+  symbol: equity.us.qqq
 - asset_type: us_equity
   attributes: {}
   currency: USD
   name: TLT
-  symbol: TLT
+  symbol: equity.us.tlt
 - asset_type: currency
   attributes:
     base_currency: USD
@@ -106,7 +106,7 @@ assets:
   last_updated: '2026-05-22T03:43:51.811457'
   name: 平安银行
   source: akshare_stock_info
-  symbol: '000001'
+  symbol: equity.cn.sz.000001
 - asset_type: cn_stock
   attributes:
     exchange: SH
@@ -114,7 +114,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.637710'
   name: 中国石化
   source: akshare_stock_info
-  symbol: '600028'
+  symbol: equity.cn.sh.600028
 - asset_type: cn_stock
   attributes:
     exchange: SH
@@ -122,7 +122,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.601514'
   name: 工商银行
   source: akshare_stock_info
-  symbol: '601398'
+  symbol: equity.cn.sh.601398
 - asset_type: cn_stock
   attributes:
     exchange: SH
@@ -130,7 +130,7 @@ assets:
   last_updated: '2026-06-05T18:10:13.619995'
   name: 紫金矿业
   source: akshare_stock_info
-  symbol: '601899'
-description: 资产注册表 (自动前缀+智能币种)
+  symbol: equity.cn.sh.601899
+description: 资产注册表 (canonical instrument IDs)
 last_updated: '2026-06-18T17:22:53.247114'
 version: '2.0'

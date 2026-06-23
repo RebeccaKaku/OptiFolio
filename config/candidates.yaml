@@ -1,91 +1,54 @@
-# config/candidates.yaml - 简化版本
-# 只使用三种资产类型：cn_stock, cn_fund, us_equity
-# AssetImporter根据符号前缀自动识别具体类型
-
 candidates:
   assets:
-    # --- 美股战线 ---
-    - symbol: "AAPL"
-      asset_type: "us_equity"
-      
-    - symbol: "QQQ"
-      asset_type: "us_equity"
-      
-    - symbol: "GOOGL"
-      asset_type: "us_equity"
-      
-    - symbol: "GLD"
-      asset_type: "us_equity"
-      
-    - symbol: "TLT"
-      asset_type: "us_equity"
-      
-    - symbol: "SGOV"
-      asset_type: "us_equity"
-
-    # --- 中国基金战线 ---
-    # 注意：基金代码保持原样，不带前缀
-    - symbol: "510300"
-      asset_type: "cn_fund"
-      
-    - symbol: "005827"
-      asset_type: "cn_fund"
-      
-    - symbol: "002892"
-      asset_type: "cn_fund"
-      
-    - symbol: "022459"
-      asset_type: "cn_fund"
-      
-    - symbol: "161723"
-      asset_type: "cn_fund"
-      
-    - symbol: "000071"
-      asset_type: "cn_fund"
-      
-    - symbol: "019599"
-      asset_type: "cn_fund"
-      
-    - symbol: "001235"
-      asset_type: "cn_fund"
-      
-    - symbol: "015282"
-      asset_type: "cn_fund"
-      
-    - symbol: "015283"
-      asset_type: "cn_fund"
-      
-    - symbol: "004502"
-      asset_type: "cn_fund"
-      
-    - symbol: "000198"
-      asset_type: "cn_fund"
-      
-    - symbol: "003537"
-      asset_type: "cn_fund"
-      
-    - symbol: "161226"
-      asset_type: "cn_fund"
-
-    # --- 中国股票战线 ---
-    # A股代码必须带前缀，从根本上解决撞号问题
-    # sh000001 (上证平安银行) vs sz000001 (深证平安银行) vs 000001 (华夏基金)
-    - symbol: "sh600519"
-      asset_type: "cn_stock"
-      
-    - symbol: "sh601398"
-      asset_type: "cn_stock"
-      
-    - symbol: "sh601899"
-      asset_type: "cn_stock"
-      
-    - symbol: "sh600028"
-      asset_type: "cn_stock"
-      
-    # 示例：深证股票
-    - symbol: "sz000001"
-      asset_type: "cn_stock"
-      
-    # 示例：上证股票  
-    - symbol: "sh000001"
-      asset_type: "cn_stock"
+  - symbol: equity.us.aapl
+    asset_type: us_equity
+  - symbol: equity.us.qqq
+    asset_type: us_equity
+  - symbol: equity.us.googl
+    asset_type: us_equity
+  - symbol: equity.us.gld
+    asset_type: us_equity
+  - symbol: equity.us.tlt
+    asset_type: us_equity
+  - symbol: equity.us.sgov
+    asset_type: us_equity
+  - symbol: fund.cn.510300
+    asset_type: cn_fund
+  - symbol: fund.cn.005827
+    asset_type: cn_fund
+  - symbol: fund.cn.002892
+    asset_type: cn_fund
+  - symbol: fund.cn.022459
+    asset_type: cn_fund
+  - symbol: fund.cn.161723
+    asset_type: cn_fund
+  - symbol: fund.cn.000071
+    asset_type: cn_fund
+  - symbol: fund.cn.019599
+    asset_type: cn_fund
+  - symbol: fund.cn.001235
+    asset_type: cn_fund
+  - symbol: fund.cn.015282
+    asset_type: cn_fund
+  - symbol: fund.cn.015283
+    asset_type: cn_fund
+  - symbol: fund.cn.004502
+    asset_type: cn_fund
+  - symbol: fund.cn.000198
+    asset_type: cn_fund
+  - symbol: fund.cn.003537
+    asset_type: cn_fund
+  - symbol: fund.cn.161226
+    asset_type: cn_fund
+  - symbol: equity.cn.sh.600519
+    asset_type: cn_stock
+  - symbol: equity.cn.sh.601398
+    asset_type: cn_stock
+  - symbol: equity.cn.sh.601899
+    asset_type: cn_stock
+  - symbol: equity.cn.sh.600028
+    asset_type: cn_stock
+  - symbol: equity.cn.sz.000001
+    asset_type: cn_stock
+  - symbol: equity.cn.sh.000001
+    asset_type: cn_stock

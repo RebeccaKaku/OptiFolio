@@ -1,0 +1,13 @@
+[project]
+name = "optifolio-contracts"
+version = "0.1.0"
+description = "Pure contracts, types, protocols, and enums for OptiFolio — no external dependencies"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "pandas-stubs"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"

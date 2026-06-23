@@ -154,7 +154,11 @@ class CashHolding:
 
 @dataclass(frozen=True)
 class ValuationResult:
-    """Result of a date-specific portfolio valuation."""
+    """Result of a date-specific portfolio valuation.
+
+    Financial semantics: see docs/GLOSSARY.md#asset-valuation
+    Data contract: see docs/CONTRACTS.md#valuationresult-domain-version
+    """
 
     as_of: date
     total_value: float
@@ -166,6 +170,7 @@ class ValuationResult:
     fx_rates: Dict[str, float] = field(default_factory=dict)
     price_date: Optional[date] = None  # actual date of prices used
     stale_days: Optional[int] = None  # max staleness across positions
+    unpriced: List[str] = field(default_factory=list)  # asset_ids skipped (strict=False)
     corporate_action_adjustments: float = 0.0
     fee_adjustments: float = 0.0
 
@@ -185,6 +190,8 @@ class ValuationResult:
             "fx_rates": dict(self.fx_rates),
             "price_date": self.price_date.isoformat() if self.price_date else None,
             "stale_days": self.stale_days,
+            "unpriced": list(self.unpriced),
+            "unpriced_count": len(self.unpriced),
             "corporate_action_adjustments": self.corporate_action_adjustments,
             "fee_adjustments": self.fee_adjustments,
         }
