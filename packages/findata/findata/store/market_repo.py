@@ -407,6 +407,8 @@ class MarketDataRepository:
             return pd.DataFrame()
 
         if len(fields) == 1:
+            # Dedup: keep last value per (date, asset_id) to avoid pivot crash
+            rows = rows.drop_duplicates(subset=["date", "asset_id"], keep="last")
             matrix = rows.pivot(index="date", columns="asset_id", values=fields[0])
             matrix.index = pd.to_datetime(matrix.index)
             return matrix.reindex(columns=canonical_assets).sort_index()

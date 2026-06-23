@@ -3,10 +3,9 @@
 Integrates ValuationEngine, CorporateActionProcessor, FeeProcessor,
 and PortfolioHistoryTracker into a single service facade.
 
-Portfolio loading order (same as the existing convention):
-1. ``OPTIFOLIO_PORTFOLIO_PATH`` env var
-2. ``local/portfolio.yaml``
-3. ``config/portfolio.yaml`` (legacy)
+Portfolio positions and cash are loaded exclusively from the SQLite personal
+book (``PortfolioBookDatabase``).  There is no YAML fallback — if no confirmed
+batch exists the service raises ``PortfolioBookError``.
 """
 
 from __future__ import annotations
@@ -183,13 +182,13 @@ class PortfolioServiceV2:
         corp_action_processor: Optional[CorporateActionProcessor] = None,
         fee_processor: Optional[FeeProcessor] = None,
         history_tracker: Optional[PortfolioHistoryTracker] = None,
-        config_path: Optional[Path] = None,
+        db: Optional[PortfolioBookDatabase] = None,
         base_currency: str = "CNY",
         fx_exposure_analyzer: Optional[FxExposureAnalyzer] = None,
         concentration_analyzer: Optional[ConcentrationAnalyzer] = None,
         liquidity_analyzer: Optional[LiquidityAnalyzer] = None,
     ):
-        self.config_path = config_path or self._resolve_config_path()
+        self._db = db  # may be None; _load_portfolio creates default
         self.base_currency = base_currency
         self._fx_analyzer = fx_exposure_analyzer or FxExposureAnalyzer()
         self._concentration_analyzer = concentration_analyzer or ConcentrationAnalyzer()
@@ -836,18 +835,6 @@ class PortfolioServiceV2:
 
         _log.info("Portfolio warmup: background refresh threads launched")
 
-    @staticmethod
-    def _resolve_config_path() -> Path:
-        env_path = os.environ.get("OPTIFOLIO_PORTFOLIO_PATH")
-        if env_path:
-            return Path(env_path)
-
-        local_path = PROJECT_ROOT / "local" / "portfolio.yaml"
-        if local_path.exists():
-            return local_path
-
-        return PROJECT_ROOT / "config" / "portfolio.yaml"
-
     def _load_asset_meta(self) -> Dict[str, Dict[str, Any]]:
         """Load asset metadata from config/asset_registry.yaml.
 
@@ -930,59 +917,50 @@ class PortfolioServiceV2:
         return "unknown"
 
     def _load_portfolio(self) -> None:
-        """Load holdings — confirmed book batch first, YAML as fallback."""
+        """Load positions and cash from the SQLite personal book.
+
+        The SQLite book is the ONLY source of truth.  There is no YAML
+        fallback — if no confirmed batch exists we fail honestly so the
+        caller knows data is missing instead of silently serving stale
+        YAML positions.
+        """
         from datetime import date as dt_date
 
-        # 1. Try PortfolioBookDatabase
-        try:
-            from src.core.portfolio_book_db import PortfolioBookDatabase
-            book_db = PortfolioBookDatabase()
-            if book_db.path.exists():
-                latest = book_db.get_latest_confirmed_batch(dt_date.today().isoformat())
-                if latest and latest.get("snapshots"):
-                    holdings: Dict[str, float] = {}
-                    for snap in latest["snapshots"]:
-                        pid = snap["product_id"]
-                        qty = snap.get("quantity") or 0.0
-                        mkt_val = snap.get("market_value") or 0.0
-                        holdings[pid] = holdings.get(pid, 0.0) + (qty if qty > 0 else mkt_val)
-                    if holdings and self._majority_priceable(holdings):
-                        self._holdings = holdings
-                        self._cash = self._load_cash_from_yaml()
-                        _log.info("Loaded %d holdings from book batch %s", len(holdings), latest["batch_id"])
-                        return
-                    elif holdings:
-                        _log.warning("Book batch %s: %d holdings, majority unpriceable — using YAML",
-                                     latest["batch_id"], len(holdings))
-        except Exception:
-            _log.debug("Book DB unavailable, using YAML", exc_info=True)
+        from src.core.portfolio_book_db import PortfolioBookDatabase
 
-        # 2. Fallback to YAML
-        self._cash = self._load_cash_from_yaml()
-        self._holdings = self._load_holdings_from_yaml()
+        book_db = self._db or PortfolioBookDatabase()
+        if not book_db.path.exists():
+            raise PortfolioBookError(
+                "Portfolio book database not found. "
+                "Run bootstrap or create a snapshot batch."
+            )
 
-    def _majority_priceable(self, holdings: Dict[str, float]) -> bool:
-        """At least half of holdings must have recent price data."""
-        try:
-            from datetime import date as dt_date
-            repo = MarketDataRepository()
-            sample = list(holdings.keys())
-            prices = repo.get_prices(sample, start="2024-01-01", end=dt_date.today().isoformat())
-            priceable = sum(1 for a in sample if a in prices.columns and not prices[a].dropna().empty)
-            return priceable >= len(sample) / 2
-        except Exception:
-            return False
+        latest = book_db.get_latest_confirmed_batch(dt_date.today().isoformat())
+        if not latest or not latest.get("snapshots"):
+            raise PortfolioBookError(
+                "No confirmed portfolio batch found in SQLite. "
+                "YAML fallback has been removed — create a snapshot batch first."
+            )
 
-    def _load_cash_from_yaml(self) -> Dict[str, float]:
-        if not self.config_path.exists():
-            return {}
-        with open(self.config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        return {str(k): float(v) for k, v in data.get("cash", {}).items()}
+        holdings: Dict[str, float] = {}
+        cash_holdings: Dict[str, float] = {}
 
-    def _load_holdings_from_yaml(self) -> Dict[str, float]:
-        if not self.config_path.exists():
-            return {}
-        with open(self.config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        return {str(s): float(q) for s, q in data.get("positions", {}).items()}
+        for snap in latest["snapshots"]:
+            pid = snap["product_id"]
+            qty = snap.get("quantity") or 0.0
+            mkt_val = snap.get("market_value") or 0.0
+
+            # Cash positions: _CASH suffix or deposit product_type
+            if pid.endswith("_CASH"):
+                cash_holdings[pid.replace("_CASH", "")] = cash_holdings.get(
+                    pid.replace("_CASH", ""), 0.0
+                ) + (qty if qty > 0 else mkt_val)
+            else:
+                holdings[pid] = holdings.get(pid, 0.0) + (qty if qty > 0 else mkt_val)
+
+        self._holdings = holdings
+        self._cash = cash_holdings
+        _log.info(
+            "Loaded %d holdings + %d cash positions from batch %s",
+            len(holdings), len(cash_holdings), latest["batch_id"],
+        )

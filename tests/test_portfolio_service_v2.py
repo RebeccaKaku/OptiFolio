@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-import yaml
-
 from src.core.corporate_actions import CorporateActionProcessor
 from src.core.fees import FeeProcessor
+from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import FxRateProvider, ValuationEngine
+from src.domain.products import ProductDefinition
 from findata.store import MarketDataRepository
 from src.services.portfolio_service_v2 import PortfolioServiceV2
 
@@ -38,16 +38,35 @@ def _seed_repo(repo: MarketDataRepository):
         repo.save_canonical(frame, asset_id=symbol, source="test", currency=currency)
 
 
-def _make_temp_portfolio(tmp_path: Path) -> Path:
-    """Write a minimal portfolio YAML to a temp directory."""
-    portfolio = {
-        "cash": {"USD": 5000.0, "CNY": 10000.0},
-        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50},
-    }
-    portfolio_path = tmp_path / "portfolio.yaml"
-    with open(portfolio_path, "w") as f:
-        yaml.dump(portfolio, f)
-    return portfolio_path
+def _make_book(tmp_path: Path) -> PortfolioBookDatabase:
+    """Create a minimal SQLite book with test positions."""
+    from src.domain.products import ProductDefinition
+
+    db = PortfolioBookDatabase(tmp_path / "portfolio_book.sqlite")
+    db.initialize()
+
+    db.create_account("test_acct", "Test Account")
+    for pid, ptype, curr in [
+        ("equity.us.aapl", "equity", "USD"),
+        ("equity.us.qqq", "equity", "USD"),
+        ("USD_CASH", "deposit", "USD"),
+        ("CNY_CASH", "deposit", "CNY"),
+    ]:
+        try:
+            db.create_product(ProductDefinition(
+                product_id=pid, name=pid, product_type=ptype, currency=curr))
+        except Exception:
+            pass
+
+    batch_id = "test_batch_01"
+    db.create_snapshot_batch(batch_id, "2025-06-15")
+    db.set_batch_account_coverage(batch_id, "test_acct", "complete")
+    db.add_snapshot(batch_id, "test_acct", "equity.us.aapl", quantity=100.0)
+    db.add_snapshot(batch_id, "test_acct", "equity.us.qqq", quantity=50.0)
+    db.add_snapshot(batch_id, "test_acct", "USD_CASH", quantity=5000.0)
+    db.add_snapshot(batch_id, "test_acct", "CNY_CASH", quantity=10000.0)
+    db.confirm_batch(batch_id)
+    return db
 
 
 def _make_service(tmp_path: Path) -> PortfolioServiceV2:
@@ -62,7 +81,8 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
 
     local_dir = tmp_path / "local"
     local_dir.mkdir()
-    portfolio_path = _make_temp_portfolio(local_dir)
+    db_path = local_dir / "portfolio_book.sqlite"
+    db = _make_book(local_dir)
 
     cap = CorporateActionProcessor(local_dir / "corporate_actions.yaml")
     fee = FeeProcessor()
@@ -73,7 +93,7 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
         corp_action_processor=cap,
         fee_processor=fee,
         history_tracker=hist,
-        config_path=portfolio_path,
+        db=db,
         base_currency="CNY",
     )
 
@@ -160,17 +180,14 @@ class TestPortfolioServiceV2:
         assert result["success"]
         assert result["data"]["count"] >= 2
 
-    def test_empty_portfolio_no_config(self, tmp_path):
-        """When no config file exists, should start with empty holdings."""
+    def test_service_initializes_with_default_db(self, tmp_path):
+        """PortfolioServiceV2 should initialize from the default SQLite book."""
         repo = MarketDataRepository(tmp_path / "foundation")
         engine = ValuationEngine(market_data=repo)
-        svc = PortfolioServiceV2(
-            valuation_engine=engine,
-            config_path=tmp_path / "nonexistent.yaml",
-        )
+        # No config_path — uses default PortfolioBookDatabase (only SQLite)
+        svc = PortfolioServiceV2(valuation_engine=engine)
         holdings = svc.get_current_holdings()
-        assert holdings["data"]["holdings"] == {}
-        assert holdings["data"]["cash"] == {}
+        assert holdings["success"]
 
     # ── history tracker & enhanced metrics ────────────────────────────────
 
