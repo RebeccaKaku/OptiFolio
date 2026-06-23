@@ -3,17 +3,13 @@
 Integrates ValuationEngine, CorporateActionProcessor, FeeProcessor,
 and PortfolioHistoryTracker into a single service facade.
 
-Portfolio loading order (same as the existing convention):
-1. ``OPTIFOLIO_PORTFOLIO_PATH`` env var
-2. ``local/portfolio.yaml``
-3. ``config/portfolio.yaml`` (legacy)
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -26,6 +22,7 @@ from src.analytics.liquidity import LiquidityAnalyzer
 from src.core.corporate_actions import CorporateActionProcessor
 from src.core.fees import FeeProcessor
 from src.core.paths import PROJECT_ROOT
+from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import (
     FxRateProvider,
@@ -95,7 +92,8 @@ class PortfolioServiceV2:
         corp_action_processor: Optional[CorporateActionProcessor] = None,
         fee_processor: Optional[FeeProcessor] = None,
         history_tracker: Optional[PortfolioHistoryTracker] = None,
-        config_path: Optional[Path] = None,
+        db: Optional[PortfolioBookDatabase] = None,
+        as_of: Optional[date] = None,
         base_currency: str = "CNY",
         fx_exposure_analyzer: Optional[FxExposureAnalyzer] = None,
         concentration_analyzer: Optional[ConcentrationAnalyzer] = None,
@@ -105,7 +103,8 @@ class PortfolioServiceV2:
         self.corp_actions = corp_action_processor or CorporateActionProcessor()
         self.fee_processor = fee_processor or FeeProcessor()
         self.history = history_tracker or PortfolioHistoryTracker()
-        self.config_path = config_path or self._resolve_config_path()
+        self._db = db or PortfolioBookDatabase()
+        self.as_of = as_of or date.today()
         self.base_currency = base_currency
         self._fx_analyzer = fx_exposure_analyzer or FxExposureAnalyzer()
         self._concentration_analyzer = concentration_analyzer or ConcentrationAnalyzer()
@@ -676,18 +675,6 @@ class PortfolioServiceV2:
             fx_provider=FxRateProvider(),
         )
 
-    @staticmethod
-    def _resolve_config_path() -> Path:
-        env_path = os.environ.get("OPTIFOLIO_PORTFOLIO_PATH")
-        if env_path:
-            return Path(env_path)
-
-        local_path = PROJECT_ROOT / "local" / "portfolio.yaml"
-        if local_path.exists():
-            return local_path
-
-        return PROJECT_ROOT / "config" / "portfolio.yaml"
-
     def _load_asset_meta(self) -> Dict[str, Dict[str, Any]]:
         """Load asset metadata from config/asset_registry.yaml.
 
@@ -769,16 +756,62 @@ class PortfolioServiceV2:
             return "structured_deposit"
         return "unknown"
 
+    def _majority_priceable(self, holdings: Dict[str, float], as_of: date) -> bool:
+        """Check if the majority of positions have available prices."""
+        if not holdings:
+            return True
+
+        assets = list(holdings.keys())
+        try:
+            # Check price availability within a 10-day lookback
+            start_date = as_of - timedelta(days=10)
+            prices = self.valuation_engine.market_data.get_prices(
+                assets,
+                start=start_date.isoformat(),
+                end=as_of.isoformat()
+            )
+            if prices.empty:
+                return False
+
+            priced_count = 0
+            for asset in assets:
+                if asset in prices.columns and not prices[asset].dropna().empty:
+                    priced_count += 1
+
+            return (priced_count / len(assets)) >= 0.5
+        except Exception:
+            return False
+
     def _load_portfolio(self) -> None:
-        if not self.config_path.exists():
-            self._holdings = {}
-            self._cash = {}
-            return
+        """Load portfolio positions and cash from the latest confirmed SQLite batch."""
+        as_of_str = self.as_of.isoformat()
+        batch = self._db.get_latest_confirmed_batch(as_of_str)
 
-        with open(self.config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        if not batch:
+            raise PortfolioBookError(
+                f"No confirmed portfolio batch found for {as_of_str} in SQLite. "
+                "YAML fallback is disabled."
+            )
 
-        self._cash = {str(k): float(v) for k, v in data.get("cash", {}).items()}
-        self._holdings = {}
-        for symbol, shares in data.get("positions", {}).items():
-            self._holdings[str(symbol)] = float(shares)
+        new_holdings: Dict[str, float] = {}
+        new_cash: Dict[str, float] = {}
+
+        for snap in batch.get("snapshots", []):
+            product_id = snap["product_id"]
+            quantity = float(snap.get("quantity") or 0.0)
+
+            # Identify cash vs holdings by product metadata
+            product = self._db.get_product(product_id)
+            if product and product.product_type in ("deposit", "cash"):
+                currency = product.currency or snap.get("currency", "CNY")
+                new_cash[currency] = new_cash.get(currency, 0.0) + quantity
+            else:
+                new_holdings[product_id] = new_holdings.get(product_id, 0.0) + quantity
+
+        if not self._majority_priceable(new_holdings, self.as_of):
+            raise PortfolioBookError(
+                f"Batch {batch['batch_id']} rejected: majority of positions are unpriceable as of {as_of_str}"
+            )
+
+        self._holdings = new_holdings
+        self._cash = new_cash

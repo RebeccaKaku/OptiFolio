@@ -10,9 +10,11 @@ import yaml
 
 from src.core.corporate_actions import CorporateActionProcessor
 from src.core.fees import FeeProcessor
+from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import FxRateProvider, ValuationEngine
 from src.data_foundation.repository import MarketDataRepository
+from src.domain.products import ProductDefinition
 from src.services.portfolio_service_v2 import PortfolioServiceV2
 
 
@@ -38,19 +40,7 @@ def _seed_repo(repo: MarketDataRepository):
         repo.save_canonical(frame, asset_id=symbol, source="test", currency="USD" if symbol != "510300" else "CNY")
 
 
-def _make_temp_portfolio(tmp_path: Path) -> Path:
-    """Write a minimal portfolio YAML to a temp directory."""
-    portfolio = {
-        "cash": {"USD": 5000.0, "CNY": 10000.0},
-        "positions": {"AAPL": 100, "QQQ": 50},
-    }
-    portfolio_path = tmp_path / "portfolio.yaml"
-    with open(portfolio_path, "w") as f:
-        yaml.dump(portfolio, f)
-    return portfolio_path
-
-
-def _make_service(tmp_path: Path) -> PortfolioServiceV2:
+def _make_service(tmp_path: Path, as_of: date = date(2025, 6, 15)) -> PortfolioServiceV2:
     repo = MarketDataRepository(tmp_path / "foundation")
     _seed_repo(repo)
 
@@ -62,7 +52,25 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
 
     local_dir = tmp_path / "local"
     local_dir.mkdir()
-    portfolio_path = _make_temp_portfolio(local_dir)
+
+    db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
+    db.initialize()
+
+    # Setup data in DB
+    db.create_account("ACC01", "Test Account")
+    db.create_product(ProductDefinition(product_id="AAPL", name="Apple", product_type="equity", currency="USD"))
+    db.create_product(ProductDefinition(product_id="QQQ", name="QQQ", product_type="equity", currency="USD"))
+    db.create_product(ProductDefinition(product_id="USD_CASH", name="USD Cash", product_type="deposit", currency="USD"))
+    db.create_product(ProductDefinition(product_id="CNY_CASH", name="CNY Cash", product_type="deposit", currency="CNY"))
+
+    batch_id = "BATCH_01"
+    db.create_snapshot_batch(batch_id, as_of.isoformat())
+    db.set_batch_account_coverage(batch_id, "ACC01", "complete")
+    db.add_snapshot(batch_id, "ACC01", "AAPL", quantity=100.0)
+    db.add_snapshot(batch_id, "ACC01", "QQQ", quantity=50.0)
+    db.add_snapshot(batch_id, "ACC01", "USD_CASH", quantity=5000.0)
+    db.add_snapshot(batch_id, "ACC01", "CNY_CASH", quantity=10000.0)
+    db.confirm_batch(batch_id)
 
     cap = CorporateActionProcessor(local_dir / "corporate_actions.yaml")
     fee = FeeProcessor()
@@ -73,7 +81,8 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
         corp_action_processor=cap,
         fee_processor=fee,
         history_tracker=hist,
-        config_path=portfolio_path,
+        db=db,
+        as_of=as_of,
         base_currency="CNY",
     )
 
@@ -160,17 +169,19 @@ class TestPortfolioServiceV2:
         assert result["success"]
         assert result["data"]["count"] >= 2
 
-    def test_empty_portfolio_no_config(self, tmp_path):
-        """When no config file exists, should start with empty holdings."""
+    def test_error_on_missing_confirmed_batch(self, tmp_path):
+        """When no confirmed batch exists, should raise PortfolioBookError."""
         repo = MarketDataRepository(tmp_path / "foundation")
         engine = ValuationEngine(market_data=repo)
-        svc = PortfolioServiceV2(
-            valuation_engine=engine,
-            config_path=tmp_path / "nonexistent.yaml",
-        )
-        holdings = svc.get_current_holdings()
-        assert holdings["data"]["holdings"] == {}
-        assert holdings["data"]["cash"] == {}
+        db = PortfolioBookDatabase(tmp_path / "empty_book.sqlite")
+        db.initialize()
+
+        with pytest.raises(PortfolioBookError, match="No confirmed portfolio batch found"):
+            PortfolioServiceV2(
+                valuation_engine=engine,
+                db=db,
+                as_of=date(2025, 6, 15),
+            )
 
     # ── history tracker & enhanced metrics ────────────────────────────────
 

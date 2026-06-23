@@ -9,9 +9,11 @@ import pytest
 import yaml
 
 from src.analytics.fx_exposure import FxExposureAnalyzer, FxExposureItem, FxExposureReport
-from src.core.valuation import FxRateProvider, ValuationEngine
+from src.core.portfolio_book_db import PortfolioBookDatabase
+from src.core.valuation import FxRateProvider, ValuationEngine, NoPriceDataError
 from src.data_foundation.repository import MarketDataRepository
 from src.domain import CashHolding, PositionValue, ValuationRequest
+from src.domain.products import ProductDefinition
 from src.services.portfolio_service_v2 import PortfolioServiceV2
 
 
@@ -51,7 +53,7 @@ def _make_fx_provider() -> FxRateProvider:
     })
 
 
-def _make_service(tmp_path: Path) -> PortfolioServiceV2:
+def _make_service(tmp_path: Path, as_of: date = date(2025, 6, 15)) -> PortfolioServiceV2:
     repo = MarketDataRepository(tmp_path / "foundation")
     _seed_repo(repo)
     fx = _make_fx_provider()
@@ -59,17 +61,31 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
 
     local_dir = tmp_path / "local"
     local_dir.mkdir()
-    portfolio = {
-        "cash": {"USD": 5000.0, "CNY": 10000.0},
-        "positions": {"AAPL": 100, "QQQ": 50, "510300": 1000},
-    }
-    portfolio_path = local_dir / "portfolio.yaml"
-    with open(portfolio_path, "w") as f:
-        yaml.dump(portfolio, f)
+    db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
+    db.initialize()
+
+    # Setup data in DB
+    db.create_account("ACC01", "Test Account")
+    db.create_product(ProductDefinition(product_id="AAPL", name="Apple", product_type="equity", currency="USD"))
+    db.create_product(ProductDefinition(product_id="QQQ", name="QQQ", product_type="equity", currency="USD"))
+    db.create_product(ProductDefinition(product_id="510300", name="HS300", product_type="equity", currency="CNY"))
+    db.create_product(ProductDefinition(product_id="USD_CASH", name="USD Cash", product_type="deposit", currency="USD"))
+    db.create_product(ProductDefinition(product_id="CNY_CASH", name="CNY Cash", product_type="deposit", currency="CNY"))
+
+    batch_id = "BATCH_01"
+    db.create_snapshot_batch(batch_id, as_of.isoformat())
+    db.set_batch_account_coverage(batch_id, "ACC01", "complete")
+    db.add_snapshot(batch_id, "ACC01", "AAPL", quantity=100.0)
+    db.add_snapshot(batch_id, "ACC01", "QQQ", quantity=50.0)
+    db.add_snapshot(batch_id, "ACC01", "510300", quantity=1000.0)
+    db.add_snapshot(batch_id, "ACC01", "USD_CASH", quantity=5000.0)
+    db.add_snapshot(batch_id, "ACC01", "CNY_CASH", quantity=10000.0)
+    db.confirm_batch(batch_id)
 
     return PortfolioServiceV2(
         valuation_engine=engine,
-        config_path=portfolio_path,
+        db=db,
+        as_of=as_of,
         base_currency="CNY",
     )
 
@@ -304,9 +320,28 @@ class TestFxExposureIntegration:
         repo = MarketDataRepository(tmp_path / "foundation")
         # No seed — empty repo
         engine = ValuationEngine(market_data=repo)
-        svc = PortfolioServiceV2(valuation_engine=engine, base_currency="CNY")
-        svc._holdings = {"UNKNOWN": 100}
-        result = svc.get_fx_exposure_report(as_of=date(2020, 1, 1), base_currency="CNY")
+
+        local_dir = tmp_path / "local"
+        local_dir.mkdir()
+        db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
+        db.initialize()
+        db.create_account("ACC01", "Test Account")
+        # For this test, we need to bypass the _majority_priceable check in _load_portfolio.
+        # Cash-only portfolios bypass it because holdings is empty.
+        db.create_product(ProductDefinition(product_id="USD_CASH", name="USD Cash", product_type="deposit", currency="USD"))
+
+        as_of = date(2020, 1, 1)
+        batch_id = "BATCH_01"
+        db.create_snapshot_batch(batch_id, as_of.isoformat())
+        db.set_batch_account_coverage(batch_id, "ACC01", "complete")
+        db.add_snapshot(batch_id, "ACC01", "USD_CASH", quantity=100.0)
+        db.confirm_batch(batch_id)
+
+        svc = PortfolioServiceV2(valuation_engine=engine, db=db, as_of=as_of, base_currency="CNY")
+        # Now mock the valuation engine to throw NoPriceDataError during report generation
+        from unittest.mock import patch
+        with patch.object(svc.valuation_engine, "value", side_effect=NoPriceDataError("No FX rate")):
+            result = svc.get_fx_exposure_report(as_of=as_of, base_currency="CNY")
         assert not result["success"]
         assert result["error_code"] == "NO_PRICE_DATA"
 
@@ -327,15 +362,24 @@ class TestFxExposureIntegration:
 
         local_dir = tmp_path / "local"
         local_dir.mkdir()
-        portfolio = {"cash": {"CNY": 50000.0}, "positions": {"510300": 1000}}
-        portfolio_path = local_dir / "portfolio.yaml"
-        with open(portfolio_path, "w") as f:
-            yaml.dump(portfolio, f)
+        db = PortfolioBookDatabase(local_dir / "portfolio_book.sqlite")
+        db.initialize()
+        db.create_account("ACC01", "Test Account")
+        db.create_product(ProductDefinition(product_id="510300", name="HS300", product_type="equity", currency="CNY"))
+        db.create_product(ProductDefinition(product_id="CNY_CASH", name="CNY Cash", product_type="deposit", currency="CNY"))
+
+        as_of = date(2025, 6, 15)
+        batch_id = "BATCH_01"
+        db.create_snapshot_batch(batch_id, as_of.isoformat())
+        db.set_batch_account_coverage(batch_id, "ACC01", "complete")
+        db.add_snapshot(batch_id, "ACC01", "510300", quantity=1000.0)
+        db.add_snapshot(batch_id, "ACC01", "CNY_CASH", quantity=50000.0)
+        db.confirm_batch(batch_id)
 
         svc = PortfolioServiceV2(
-            valuation_engine=engine, config_path=portfolio_path, base_currency="CNY",
+            valuation_engine=engine, db=db, as_of=as_of, base_currency="CNY",
         )
-        result = svc.get_fx_exposure_report(as_of=date(2025, 6, 15), base_currency="CNY")
+        result = svc.get_fx_exposure_report(as_of=as_of, base_currency="CNY")
         assert result["success"]
         data = result["data"]
         assert data["net_non_base_pct"] == 0.0
