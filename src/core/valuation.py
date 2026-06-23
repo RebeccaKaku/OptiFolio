@@ -35,7 +35,6 @@ class NoPriceDataError(Exception):
 
 
 from optifolio_contracts.fx import (
-    DEFAULT_FALLBACK_RATES,
     FxRateError,
     HardcodedFxRateProvider,
 )
@@ -51,14 +50,6 @@ class FxRateProvider:
     1. Same currency → 1.0
     2. MarketDataRepository (dated historical FX rates)
     3. Live CurrencyFetcher (yfinance)
-    4. Hardcoded fallback table (offline safety net)
-
-    Unlike the legacy PortfolioCore, live rates take priority over
-    hardcoded rates when available.
-
-    The hardcoded fallback table is shared with ``findata`` through
-    ``optifolio_contracts.fx.HardcodedFxRateProvider`` so that both
-    layers use the same offline safety net.
     """
 
     # Reverse-rate pairs that are likely wrong when returned as 1.0
@@ -74,10 +65,7 @@ class FxRateProvider:
         fallback_rates: Optional[Dict[tuple, float]] = None,
         market_data: Optional["MarketDataRepository"] = None,
     ):
-        merged_fallback = dict(DEFAULT_FALLBACK_RATES)
-        if fallback_rates:
-            merged_fallback.update(fallback_rates)
-        self._hardcoded = HardcodedFxRateProvider(merged_fallback)
+        self._hardcoded = HardcodedFxRateProvider(fallback_rates)
         self._cache: Dict[str, float] = {}
         self.market_data = market_data
 
@@ -87,13 +75,13 @@ class FxRateProvider:
         to_currency: str,
         as_of_date: date,
         max_lookback_days: int = 5,
-    ) -> float:
+    ) -> Optional[float]:
         """Resolve the conversion rate using dated FX data from the repository.
 
         Queries MarketDataRepository for canonical FX asset id on or
         before *as_of_date*, walking back up to *max_lookback_days*.
-        Falls back to :meth:`get_rate` when the repository is unavailable
-        or no matching data exists.
+        Returns None when the repository is unavailable or no matching
+        data exists.
 
         Args:
             from_currency: Source currency code (e.g. "USD").
@@ -105,7 +93,7 @@ class FxRateProvider:
             return 1.0
 
         if self.market_data is None:
-            return self.get_rate(from_currency, to_currency)
+            return None
 
         from optifolio_contracts.identifiers import normalize_instrument_id
 
@@ -129,8 +117,7 @@ class FxRateProvider:
         except Exception:
             pass
 
-        # Fall back to live/hardcoded path
-        return self.get_rate(from_currency, to_currency)
+        return None
 
     def get_rate(
         self, from_currency: str, to_currency: str, try_live: bool = False,
@@ -150,19 +137,19 @@ class FxRateProvider:
         if from_currency == to_currency:
             return 1.0
 
-        cache_key = f"{from_currency}:{to_currency}"
+        cache_key = f"{from_currency}:{to_currency}:{as_of}"
 
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        # 0. Try dated repository lookup when as_of specified
-        if as_of is not None:
-            rate = self.get_rate_from_repository(from_currency, to_currency, as_of, max_lookback_days=3)
-            if rate is not None and rate > 0:
-                self._cache[cache_key] = rate
-                return rate
+        # 1. Try dated repository lookup
+        target_date = as_of or date.today()
+        rate = self.get_rate_from_repository(from_currency, to_currency, target_date, max_lookback_days=3)
+        if rate is not None and rate > 0:
+            self._cache[cache_key] = rate
+            return rate
 
-        # 1. (Optional) Try live fetcher
+        # 2. (Optional) Try live fetcher
         if try_live:
             try:
                 rate = self._get_live_rate(from_currency, to_currency)
@@ -172,7 +159,7 @@ class FxRateProvider:
             except Exception:
                 pass
 
-        # 2. Hardcoded fallback table (shared with findata via optifolio_contracts)
+        # 3. User-provided hardcoded fallback table (no global defaults)
         try:
             rate = self._hardcoded.get_rate(from_currency, to_currency)
             self._cache[cache_key] = rate
@@ -380,7 +367,7 @@ class ValuationEngine:
             rate = (
                 1.0
                 if curr == request.base_currency
-                else self.fx_provider.get_rate(curr, request.base_currency)
+                else self.fx_provider.get_rate(curr, request.base_currency, as_of=request.as_of)
             )
             val = amount * rate
             cash_breakdown[curr] = CashHolding(
@@ -497,7 +484,7 @@ class ValuationEngine:
             rate = (
                 1.0
                 if curr == request.base_currency
-                else self.fx_provider.get_rate(curr, request.base_currency)
+                else self.fx_provider.get_rate(curr, request.base_currency, as_of=request.as_of)
             )
             val = amount * rate
             breakdown[curr] = CashHolding(

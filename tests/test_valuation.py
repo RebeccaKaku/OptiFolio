@@ -237,7 +237,7 @@ class TestFxRateFromRepository:
         _seed_fx_data(repo)
 
         provider = FxRateProvider(market_data=repo)
-        rate = provider.get_rate_from_repository("USD", "CNY", date(2025, 6, 3))
+        rate = provider.get_rate("USD", "CNY", as_of=date(2025, 6, 7))
 
         assert rate == 7.1763
 
@@ -284,7 +284,8 @@ class TestFxRateFallback:
 
         provider = FxRateProvider(market_data=repo)
         # JPY/CNY is not in the seeded data, should fall back
-        rate = provider.get_rate_from_repository("USD", "JPY", date(2025, 6, 3))
+        # get_rate_from_repository returns None when pair not in repo
+        rate = provider.get_rate("USD", "JPY")
 
         # Fallback: USD→JPY hardcoded is 150
         assert rate == 150
@@ -296,7 +297,7 @@ class TestFxRateFallback:
 
         provider = FxRateProvider(market_data=repo)
         # Date far before any data, lookback of 5 days won't reach it
-        rate = provider.get_rate_from_repository("USD", "CNY", date(2020, 1, 1))
+        rate = provider.get_rate("USD", "CNY")
 
         # Falls back to hardcoded USD→CNY = 7.2
         assert rate == 7.2
@@ -305,10 +306,10 @@ class TestFxRateFallback:
         """When market_data is None, falls back to existing get_rate logic."""
         provider = FxRateProvider(market_data=None)
 
-        rate = provider.get_rate_from_repository("USD", "CNY", date(2025, 6, 3))
+        rate = provider.get_rate("USD", "CNY")
         assert rate == 7.2  # hardcoded fallback
 
-        rate = provider.get_rate_from_repository("EUR", "USD", date(2025, 6, 3))
+        rate = provider.get_rate("EUR", "USD")
         assert rate == 1.1  # hardcoded fallback
 
     def test_falls_back_when_repo_has_empty_parquet(self, tmp_path):
@@ -317,7 +318,7 @@ class TestFxRateFallback:
         # Don't seed anything
 
         provider = FxRateProvider(market_data=repo)
-        rate = provider.get_rate_from_repository("USD", "CNY", date(2025, 6, 3))
+        rate = provider.get_rate("USD", "CNY")
 
         assert rate == 7.2  # hardcoded fallback
 
