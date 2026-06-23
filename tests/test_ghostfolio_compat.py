@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from src.api.fastapi_app import app
 from src.services import get_application_services
-from FinData.store.portfolio_ledger import PortfolioLedgerStore, PortfolioLedger
+from src.core.portfolio_ledger import PortfolioLedgerStore, PortfolioLedger
 
 client = TestClient(app)
 

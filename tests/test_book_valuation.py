@@ -3,11 +3,10 @@ from datetime import date, timedelta
 import pandas as pd
 from unittest.mock import MagicMock
 
+from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
 from src.core.book_valuation import (
     ValuationCandidate,
     ValuationEngine,
-    ValuationQuality,
-    ValuationFreshness,
 )
 from src.services.book_valuation_service import BookValuationService
 from src.core.portfolio_book_db import PortfolioBookDatabase

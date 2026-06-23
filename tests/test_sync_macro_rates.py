@@ -94,7 +94,7 @@ def test_normalize_fred_rate_frame_percent_to_decimal():
 def test_macro_series_catalog_contains_replacement_rates():
     records = {row["series_id"]: row for row in macro_series_catalog()}
 
-    assert records["RATE_SOFR_USD_ON"]["fred_id"] == "SOFR"
-    assert records["RATE_SONIA_GBP_ON"]["fred_id"] == "IUDSOIA"
-    assert records["RATE_ESTR_EUR_ON"]["fred_id"] == "ECBESTRVOLWGTTRMDMNRT"
-    assert records["RATE_SONIA_GBP_ON"]["fallback_note"]
+    assert records["rate.us.sofr.on"]["fred_id"] == "SOFR"
+    assert records["rate.uk.sonia.on"]["fred_id"] == "IUDSOIA"
+    assert records["rate.eu.estr.on"]["fred_id"] == "ECBESTRVOLWGTTRMDMNRT"
+    assert records["rate.uk.sonia.on"]["fallback_note"]

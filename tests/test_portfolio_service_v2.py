@@ -12,7 +12,7 @@ from src.core.corporate_actions import CorporateActionProcessor
 from src.core.fees import FeeProcessor
 from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import FxRateProvider, ValuationEngine
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 from src.services.portfolio_service_v2 import PortfolioServiceV2
 
 
@@ -21,12 +21,12 @@ def _seed_repo(repo: MarketDataRepository):
     dates = pd.date_range("2025-01-01", "2025-06-15", freq="B")
     prices = 100.0 + pd.Series(range(len(dates)), index=dates) * 0.5
 
-    for symbol in ["AAPL", "QQQ", "510300"]:
-        offset = 0
-        if symbol == "QQQ":
-            offset = 200
-        elif symbol == "510300":
-            offset = 1
+    datasets = {
+        "equity.us.aapl": ("USD", 0),
+        "equity.us.qqq":  ("USD", 200),
+        "fund.cn.510300": ("CNY", 1),
+    }
+    for symbol, (currency, offset) in datasets.items():
         frame = pd.DataFrame({
             "close": [p + offset for p in prices],
             "open": [p + offset for p in prices],
@@ -35,14 +35,14 @@ def _seed_repo(repo: MarketDataRepository):
             "volume": [10000] * len(prices),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_canonical(frame, asset_id=symbol, source="test", currency="USD" if symbol != "510300" else "CNY")
+        repo.save_canonical(frame, asset_id=symbol, source="test", currency=currency)
 
 
 def _make_temp_portfolio(tmp_path: Path) -> Path:
     """Write a minimal portfolio YAML to a temp directory."""
     portfolio = {
         "cash": {"USD": 5000.0, "CNY": 10000.0},
-        "positions": {"AAPL": 100, "QQQ": 50},
+        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50},
     }
     portfolio_path = tmp_path / "portfolio.yaml"
     with open(portfolio_path, "w") as f:
@@ -90,8 +90,8 @@ class TestPortfolioServiceV2:
         assert data["base_currency"] == "USD"
         assert data["total_value"] > 5000  # AAPL + QQQ + cash
         assert len(data["positions"]) == 2
-        assert "AAPL" in data["positions"]
-        assert "QQQ" in data["positions"]
+        assert "equity.us.aapl" in data["positions"]
+        assert "equity.us.qqq" in data["positions"]
         assert "USD" in data["cash_breakdown"]
         assert "CNY" in data["cash_breakdown"]
 
@@ -117,8 +117,8 @@ class TestPortfolioServiceV2:
         svc = _make_service(tmp_path)
         result = svc.get_current_holdings()
         assert result["success"]
-        assert result["data"]["holdings"]["AAPL"] == 100
-        assert result["data"]["holdings"]["QQQ"] == 50
+        assert result["data"]["holdings"]["equity.us.aapl"] == 100
+        assert result["data"]["holdings"]["equity.us.qqq"] == 50
         assert result["data"]["cash"]["USD"] == 5000
 
     def test_cash_balances(self, tmp_path):
@@ -130,14 +130,14 @@ class TestPortfolioServiceV2:
     def test_record_and_apply_dividend(self, tmp_path):
         svc = _make_service(tmp_path)
         div_result = svc.record_dividend(
-            "AAPL", date(2025, 6, 10), amount_per_share=1.0, currency="USD",
+            "equity.us.aapl", date(2025, 6, 10), amount_per_share=1.0, currency="USD",
         )
         assert div_result["success"]
 
         # Value after dividend ex-date — holdings unchanged in PortfolioServiceV2
         # because corporate actions are only applied in get_value_history()
         holdings = svc.get_current_holdings()
-        assert holdings["data"]["holdings"]["AAPL"] == 100  # holdings unchanged
+        assert holdings["data"]["holdings"]["equity.us.aapl"] == 100  # holdings unchanged
 
     def test_metrics_computed(self, tmp_path):
         svc = _make_service(tmp_path)

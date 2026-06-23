@@ -10,7 +10,7 @@ import yaml
 
 from src.analytics.fx_exposure import FxExposureAnalyzer, FxExposureItem, FxExposureReport
 from src.core.valuation import FxRateProvider, ValuationEngine
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 from src.domain import CashHolding, PositionValue, ValuationRequest
 from src.services.portfolio_service_v2 import PortfolioServiceV2
 
@@ -23,9 +23,9 @@ def _seed_repo(repo: MarketDataRepository):
     base = pd.Series(range(len(dates)), index=dates) * 0.5
 
     datasets = {
-        "AAPL":  ("USD", 100.0),
-        "QQQ":   ("USD", 200.0),
-        "510300": ("CNY", 1.0),
+        "equity.us.aapl": ("USD", 100.0),
+        "equity.us.qqq":  ("USD", 200.0),
+        "fund.cn.510300": ("CNY", 1.0),
     }
     for symbol, (currency, offset) in datasets.items():
         prices = offset + base
@@ -61,7 +61,7 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
     local_dir.mkdir()
     portfolio = {
         "cash": {"USD": 5000.0, "CNY": 10000.0},
-        "positions": {"AAPL": 100, "QQQ": 50, "510300": 1000},
+        "positions": {"equity.us.aapl": 100, "equity.us.qqq": 50, "fund.cn.510300": 1000},
     }
     portfolio_path = local_dir / "portfolio.yaml"
     with open(portfolio_path, "w") as f:
@@ -105,8 +105,8 @@ class TestFxExposureAnalyzer:
     def test_single_currency_all_base(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "510300": PositionValue(
-                asset_id="510300", quantity=1000, price=4.0,
+            "fund.cn.510300": PositionValue(
+                asset_id="fund.cn.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=4000.0,
             ),
         }
@@ -128,12 +128,12 @@ class TestFxExposureAnalyzer:
     def test_mixed_currencies(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
-            "510300": PositionValue(
-                asset_id="510300", quantity=1000, price=4.0,
+            "fund.cn.510300": PositionValue(
+                asset_id="fund.cn.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=4000.0,
             ),
         }
@@ -155,7 +155,7 @@ class TestFxExposureAnalyzer:
         cny_item = next(e for e in report.exposures if e.currency == "CNY")
 
         assert usd_item.value_base == 144000.0
-        assert usd_item.asset_ids == ["AAPL"]
+        assert usd_item.asset_ids == ["equity.us.aapl"]
         assert round(usd_item.pct, 1) == 91.1
         assert "USD/CNY" in usd_item.sensitivity_note
 
@@ -169,12 +169,12 @@ class TestFxExposureAnalyzer:
     def test_multiple_assets_same_currency(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
-            "QQQ": PositionValue(
-                asset_id="QQQ", quantity=50, price=300.0,
+            "equity.us.qqq": PositionValue(
+                asset_id="equity.us.qqq", quantity=50, price=300.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
         }
@@ -186,18 +186,18 @@ class TestFxExposureAnalyzer:
         assert len(report.exposures) == 1
         usd_item = report.exposures[0]
         assert usd_item.currency == "USD"
-        assert set(usd_item.asset_ids) == {"AAPL", "QQQ"}
+        assert set(usd_item.asset_ids) == {"equity.us.aapl", "equity.us.qqq"}
         assert usd_item.pct == 100.0
 
     def test_warnings_when_non_base_exceeds_threshold(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=54000.0,
             ),
-            "510300": PositionValue(
-                asset_id="510300", quantity=1000, price=4.0,
+            "fund.cn.510300": PositionValue(
+                asset_id="fund.cn.510300", quantity=1000, price=4.0,
                 currency="CNY", fx_rate=1.0, value_base=40000.0,
             ),
         }
@@ -229,8 +229,8 @@ class TestFxExposureAnalyzer:
     def test_sensitivity_note_contains_value(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=50000.0,
             ),
         }
@@ -245,8 +245,8 @@ class TestFxExposureAnalyzer:
     def test_to_dict_serializable(self):
         analyzer = FxExposureAnalyzer()
         positions = {
-            "AAPL": PositionValue(
-                asset_id="AAPL", quantity=100, price=150.0,
+            "equity.us.aapl": PositionValue(
+                asset_id="equity.us.aapl", quantity=100, price=150.0,
                 currency="USD", fx_rate=7.2, value_base=108000.0,
             ),
         }
@@ -320,14 +320,14 @@ class TestFxExposureIntegration:
             "volume": [10000] * len(dates),
         }, index=dates)
         frame.index.name = "timestamp"
-        repo.save_canonical(frame, asset_id="510300", source="test", currency="CNY")
+        repo.save_canonical(frame, asset_id="fund.cn.510300", source="test", currency="CNY")
 
         fx = _make_fx_provider()
         engine = ValuationEngine(market_data=repo, fx_provider=fx)
 
         local_dir = tmp_path / "local"
         local_dir.mkdir()
-        portfolio = {"cash": {"CNY": 50000.0}, "positions": {"510300": 1000}}
+        portfolio = {"cash": {"CNY": 50000.0}, "positions": {"fund.cn.510300": 1000}}
         portfolio_path = local_dir / "portfolio.yaml"
         with open(portfolio_path, "w") as f:
             yaml.dump(portfolio, f)
