@@ -15,10 +15,8 @@ import pandas as pd
 
 _log = logging.getLogger(__name__)
 
-from .interfaces import IAssetManager
 
-
-class EnhancedAssetManager(IAssetManager):
+class EnhancedAssetManager:
     """资产管理器 — 委托层。
 
     数据访问 → FinData.fd / PortfolioBookDatabase / AssetImporter。
