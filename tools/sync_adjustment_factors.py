@@ -22,7 +22,7 @@ import pandas as pd
 # Ensure project root is on the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data_foundation.repository import MarketDataRepository
+from findata.store import MarketDataRepository
 
 
 def fetch_factor(symbol: str, factor_type: str = "qfq") -> pd.DataFrame | None:

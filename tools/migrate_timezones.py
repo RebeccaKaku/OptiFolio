@@ -9,8 +9,8 @@ import argparse
 # Ensure project root is on the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data_foundation.repository import MarketDataRepository
-from src.data_foundation.schemas import infer_market_timezone, validate_market_frame
+from findata.store import MarketDataRepository
+from findata.store.schemas import infer_market_timezone, validate_market_frame
 
 def migrate_timezones(dry_run=False):
     repo = MarketDataRepository()

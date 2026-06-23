@@ -4,7 +4,7 @@
 Fetches historical CNY central parity rates for major currency pairs from
 the Bank of China via Sina Finance (GFW-accessible), normalises them into
 the canonical market-data schema, and stores each pair as a separate
-asset_id (e.g. "FX_USDCNY").
+asset_id (e.g. "fx.usd_cny.spot").
 
 Usage:
     python tools/sync_fx_rates.py                          # sync all pairs, last 180 days
@@ -26,8 +26,9 @@ import pandas as pd
 # Ensure project root is on the path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data_foundation.repository import MarketDataRepository
-from src.data_foundation.schemas import CANONICAL_MARKET_COLUMNS
+from findata.store import MarketDataRepository
+from findata.store.schemas import CANONICAL_MARKET_COLUMNS
+from optifolio_contracts.identifiers import normalize_instrument_id
 
 # ── FX pair registry ─────────────────────────────────────────────────────
 # (akshare_boc_symbol, from_currency, to_currency)
@@ -121,7 +122,9 @@ def sync_pair(
         print(f"  {pair_id}: no data fetched")
         return 0
 
-    asset_id = f"FX_{from_curr}{to_curr}"
+    asset_id = normalize_instrument_id(
+        f"{from_curr}{to_curr}", asset_type="forex"
+    )
 
     if dry_run:
         print(f"  {pair_id} ({asset_id}): would save {len(df)} rows "

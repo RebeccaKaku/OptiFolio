@@ -1,5 +1,5 @@
 import pandas as pd
-from src.data_foundation.schemas import infer_market_timezone, normalize_market_frame
+from findata.store.schemas import infer_market_timezone, normalize_market_frame
 
 def test_inference():
     test_cases = [
