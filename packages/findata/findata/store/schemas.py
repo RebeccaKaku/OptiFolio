@@ -11,40 +11,11 @@ from optifolio_contracts.identifiers import (
     InvalidInstrumentIdError,
     normalize_instrument_id,
 )
-
-
-STORE_VERSION: str = "2.0"
-
-
-CANONICAL_MARKET_COLUMNS = [
-    "asset_id",
-    "date",
-    "open",
-    "high",
-    "low",
-    "close",
-    "adj_close",
-    "volume",
-    "currency",
-    "source",
-    "timezone",
-]
-
-
-
-CANONICAL_OBSERVATION_COLUMNS = [
-    "series_id",
-    "effective_date",
-    "value",
-    "known_at",
-    "released_at",
-    "observed_at",
-    "source",
-    "revision",
-    "quality_flags",
-    "unit",
-    "currency",
-]
+from optifolio_contracts.market_data import (
+    CANONICAL_MARKET_COLUMNS,
+    CANONICAL_OBSERVATION_COLUMNS,
+    STORE_VERSION,
+)
 
 
 _COLUMN_ALIASES = {
@@ -138,7 +109,7 @@ def normalize_market_frame(
         the UTC equivalent.
     """
     if frame is None or frame.empty:
-        return pd.DataFrame(columns=CANONICAL_MARKET_COLUMNS)
+        return pd.DataFrame(columns=list(CANONICAL_MARKET_COLUMNS))
 
     df = frame.copy()
     if isinstance(df.index, pd.DatetimeIndex) and "date" not in df.columns:
@@ -170,7 +141,7 @@ def normalize_market_frame(
     if "close" not in df.columns:
         df["close"] = df["adj_close"]
 
-    df = df[CANONICAL_MARKET_COLUMNS].copy()
+    df = df[list(CANONICAL_MARKET_COLUMNS)].copy()
 
     # Normalize asset identifiers to canonical form.
     def _normalize_asset_id(raw: str) -> str:
@@ -259,7 +230,7 @@ def _validate_market_frame_without_pandera(frame: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Missing canonical market data columns: {missing}")
 
-    df = frame[CANONICAL_MARKET_COLUMNS].copy()
+    df = frame[list(CANONICAL_MARKET_COLUMNS)].copy()
     df["date"] = pd.to_datetime(df["date"], errors="raise")
     for column in ["open", "high", "low", "close", "adj_close", "volume"]:
         df[column] = pd.to_numeric(df[column], errors="coerce")
@@ -290,7 +261,7 @@ def normalize_observation_frame(
     OHLCV/NAV price series.
     """
     if frame is None or frame.empty:
-        return pd.DataFrame(columns=CANONICAL_OBSERVATION_COLUMNS)
+        return pd.DataFrame(columns=list(CANONICAL_OBSERVATION_COLUMNS))
 
     df = frame.copy()
     if isinstance(df.index, pd.DatetimeIndex) and "effective_date" not in df.columns:
@@ -342,7 +313,7 @@ def normalize_observation_frame(
     df["revision"] = pd.to_numeric(df["revision"], errors="coerce").fillna(0).astype(int)
     df["quality_flags"] = df["quality_flags"].apply(_stringify_quality_flags)
 
-    df = df[CANONICAL_OBSERVATION_COLUMNS].copy()
+    df = df[list(CANONICAL_OBSERVATION_COLUMNS)].copy()
     return df.sort_values(["series_id", "effective_date", "source", "revision"]).reset_index(drop=True)
 
 
@@ -352,7 +323,7 @@ def validate_observation_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Missing canonical observation columns: {missing}")
 
-    df = frame[CANONICAL_OBSERVATION_COLUMNS].copy()
+    df = frame[list(CANONICAL_OBSERVATION_COLUMNS)].copy()
     df["effective_date"] = pd.to_datetime(df["effective_date"], errors="raise").dt.normalize()
     for column in ("known_at", "released_at", "observed_at"):
         df[column] = pd.to_datetime(df[column], errors="coerce")
