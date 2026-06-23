@@ -38,14 +38,6 @@ def resolve_private_file(
     return local_path
 
 
-def get_portfolio_config_path() -> Path:
-    return resolve_private_file(
-        "OPTIFOLIO_PORTFOLIO_PATH",
-        "portfolio.yaml",
-        "config/portfolio.yaml",
-    )
-
-
 def get_database_path() -> Path:
     return resolve_private_file(
         "OPTIFOLIO_DB_PATH",

@@ -236,22 +236,21 @@ class BocPdfPipeline:
 
     @staticmethod
     def _get_portfolio_boc_codes() -> List[str]:
-        """Find BOC product codes in portfolio YAML."""
-        import yaml
+        """Find BOC product codes from SQLite personal book."""
+        from src.core.portfolio_book_db import PortfolioBookDatabase
 
-        portfolio_path = PROJECT_ROOT / "local" / "portfolio.yaml"
-        if not portfolio_path.exists():
-            portfolio_path = PROJECT_ROOT / "config" / "portfolio.yaml"
-        if not portfolio_path.exists():
+        db = PortfolioBookDatabase()
+        if not db.path.exists():
             return []
 
-        with open(portfolio_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        latest = db.get_latest_confirmed_batch(__import__("datetime").date.today().isoformat())
+        if not latest or not latest.get("snapshots"):
+            return []
 
         # BOC codes are alphanumeric like "AMHQLXTTUSD01B"
         codes: List[str] = []
-        for symbol in data.get("positions", {}):
-            # BOC product codes: all uppercase alphanumeric, typically 6-15 chars
+        for snap in latest["snapshots"]:
+            symbol = snap["product_id"]
             if symbol.isupper() and any(c.isdigit() for c in symbol):
                 codes.append(symbol)
         return codes

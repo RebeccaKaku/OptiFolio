@@ -13,7 +13,6 @@ from src.core.paths import (
     PROJECT_ROOT,
     get_database_path,
     get_local_dir,
-    get_portfolio_config_path,
 )
 
 
@@ -23,30 +22,6 @@ def _copy_if_missing(source: Path, destination: Path) -> bool:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     return True
-
-
-def ensure_local_portfolio() -> Dict[str, Any]:
-    local_portfolio = get_local_dir() / "portfolio.yaml"
-    resolved_portfolio = get_portfolio_config_path()
-
-    if local_portfolio.exists():
-        return {"path": str(local_portfolio), "created": False, "source": "existing"}
-
-    if resolved_portfolio.exists() and resolved_portfolio != local_portfolio:
-        copied = _copy_if_missing(resolved_portfolio, local_portfolio)
-        return {
-            "path": str(local_portfolio),
-            "created": copied,
-            "source": str(resolved_portfolio),
-        }
-
-    example_path = PROJECT_ROOT / "config" / "portfolio.example.yaml"
-    copied = _copy_if_missing(example_path, local_portfolio)
-    return {
-        "path": str(local_portfolio),
-        "created": copied,
-        "source": str(example_path) if copied else "missing-template",
-    }
 
 
 def ensure_local_database() -> Dict[str, Any]:
@@ -72,7 +47,6 @@ def bootstrap_local_state() -> Dict[str, Any]:
     get_local_dir().mkdir(parents=True, exist_ok=True)
     return {
         "local_dir": str(get_local_dir()),
-        "portfolio": ensure_local_portfolio(),
         "database": ensure_local_database(),
     }
 
@@ -81,7 +55,6 @@ def main() -> int:
     result = bootstrap_local_state()
     _log.info("OptiFolio local runtime is ready:")
     _log.info(f"  local_dir: {result['local_dir']}")
-    _log.info(f"  portfolio: {result['portfolio']['path']} ({result['portfolio']['source']})")
     _log.info(f"  database: {result['database']['path']} ({result['database']['source']})")
     return 0
 

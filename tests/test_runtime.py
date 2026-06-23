@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from src.core.paths import get_database_path
 from src.runtime.bootstrap import bootstrap_local_state
 
 
@@ -11,18 +12,12 @@ def test_bootstrap_creates_local_runtime_files(monkeypatch, tmp_path):
 
     result = bootstrap_local_state()
 
-    portfolio_path = Path(result["portfolio"]["path"])
     database_path = Path(result["database"]["path"])
-    assert portfolio_path == local_dir / "portfolio.yaml"
     assert database_path == local_dir / "portfolio_book.sqlite"
-    assert portfolio_path.exists()
 
 
-from src.core.paths import get_portfolio_config_path
+def test_database_path_can_be_overridden(monkeypatch, tmp_path):
+    db_path = tmp_path / "my_book.sqlite"
+    monkeypatch.setenv("OPTIFOLIO_DB_PATH", str(db_path))
 
-
-def test_portfolio_path_can_be_overridden(monkeypatch, tmp_path):
-    portfolio_path = tmp_path / "portfolio.yaml"
-    monkeypatch.setenv("OPTIFOLIO_PORTFOLIO_PATH", str(portfolio_path))
-
-    assert get_portfolio_config_path() == portfolio_path.resolve()
+    assert get_database_path() == db_path.resolve()
