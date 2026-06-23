@@ -6,8 +6,14 @@ from typing import Optional
 
 import pandas as pd
 
+from optifolio_contracts.identifiers import (
+    AmbiguousInstrumentIdError,
+    InvalidInstrumentIdError,
+    normalize_instrument_id,
+)
 
-STORE_VERSION: str = "1.0"
+
+STORE_VERSION: str = "2.0"
 
 
 CANONICAL_MARKET_COLUMNS = [
@@ -23,6 +29,7 @@ CANONICAL_MARKET_COLUMNS = [
     "source",
     "timezone",
 ]
+
 
 
 CANONICAL_OBSERVATION_COLUMNS = [
@@ -59,38 +66,48 @@ def _canonical_column_name(name: object) -> str:
 
 
 def infer_market_timezone(asset_id: str) -> str:
-    """Infer exchange timezone from asset_id patterns.
+    """Infer exchange timezone from a canonical or raw asset_id.
 
-    - Namespaced IDs: US_EQ:AAPL -> America/New_York, CN_STOCK:600519 -> Asia/Shanghai
-    - CN 6-digit or CN_ prefix -> Asia/Shanghai
-    - US_ prefix or alphabetic (e.g. AAPL) -> America/New_York
-    - HK_ prefix -> Asia/Hong_Kong
-    - FX_, CRYPTO_ or 6-letter currency pairs -> UTC
+    - equity.us.* -> America/New_York
+    - equity.cn.* / fund.cn.* / wmp.cn.* -> Asia/Shanghai
+    - equity.hk.* -> Asia/Hong_Kong
+    - fx.* -> UTC
+    - rate.* -> UTC (default; country-specific when available)
     """
-    import re
-
-    aid = str(asset_id).upper().strip()
-
-    if ":" in aid:
-        namespace = aid.split(":")[0]
-        if namespace in ("US_EQ", "US_ETF"):
-            return "America/New_York"
-        if namespace in ("CN_STOCK", "CN_FUND", "ICBC_WM", "BOC_WM", "BOSC_WM"):
-            return "Asia/Shanghai"
-        if namespace == "HK_EQ":
-            return "Asia/Hong_Kong"
-        if namespace in ("CRYPTO", "FOREX", "FX"):
-            return "UTC"
-
-    # Fallback to pattern matching
-    if aid.startswith("FX_") or aid.startswith("CRYPTO_") or re.match(r"^[A-Z]{6}$", aid):
+    if not asset_id:
         return "UTC"
-    if aid.startswith("CN_") or re.match(r"^\d{6}$", aid):
-        return "Asia/Shanghai"
-    if aid.startswith("HK_"):
-        return "Asia/Hong_Kong"
-    if aid.startswith("US_") or re.match(r"^[A-Z.]+$", aid):
-        return "America/New_York"
+
+    lowered = str(asset_id).strip().lower()
+    try:
+        canonical = normalize_instrument_id(lowered)
+    except InvalidInstrumentIdError:
+        canonical = lowered
+
+    segments = canonical.split(".")
+    if not segments:
+        return "UTC"
+
+    asset_class = segments[0]
+    market = segments[1] if len(segments) > 1 else ""
+
+    if asset_class == "equity":
+        if market == "us":
+            return "America/New_York"
+        if market == "cn":
+            return "Asia/Shanghai"
+        if market == "hk":
+            return "Asia/Hong_Kong"
+    if asset_class in ("fund", "wmp"):
+        if market == "cn":
+            return "Asia/Shanghai"
+    if asset_class == "fx":
+        return "UTC"
+    if asset_class == "rate":
+        if market == "cn":
+            return "Asia/Shanghai"
+        if market == "us":
+            return "America/New_York"
+        return "UTC"
 
     return "UTC"
 
@@ -101,6 +118,7 @@ def normalize_market_frame(
     source: str = "manual",
     currency: Optional[str] = None,
     timezone: Optional[str] = None,
+    asset_type: Optional[str] = None,
 ) -> pd.DataFrame:
     """Convert provider output into the canonical market-data schema.
 
@@ -153,17 +171,24 @@ def normalize_market_frame(
         df["close"] = df["adj_close"]
 
     df = df[CANONICAL_MARKET_COLUMNS].copy()
-    df["asset_id"] = df["asset_id"].astype(str).str.strip()
-    # Normalize CN stock IDs: strip sh/sz prefix → bare 6-digit code (see naming conventions)
-    df["asset_id"] = df["asset_id"].str.replace(r"^(?:sh|sz)(\d{6})$", r"\1", regex=True)
+
+    # Normalize asset identifiers to canonical form.
+    def _normalize_asset_id(raw: str) -> str:
+        try:
+            return normalize_instrument_id(str(raw), asset_type=asset_type)
+        except AmbiguousInstrumentIdError:
+            raise
+        except InvalidInstrumentIdError as exc:
+            raise ValueError(f"Invalid asset_id {raw!r}: {exc}") from exc
+
+    df["asset_id"] = df["asset_id"].astype(str).str.strip().apply(_normalize_asset_id)
 
     # ── Date normalization: exchange-local calendar date ──────────────
     dates = pd.to_datetime(df["date"], errors="raise")
 
-    # If timezone is not provided, try to infer it from asset_id
+    # If timezone is not provided, try to infer it from a canonical asset_id
     effective_timezone = timezone
     if effective_timezone is None:
-        # Try to find an asset_id in the frame or use the passed one
         sample_asset_id = asset_id
         if sample_asset_id is None and "asset_id" in df.columns:
             sample_asset_id = df["asset_id"].iloc[0]

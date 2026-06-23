@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import date as date_t, timedelta
 from typing import TYPE_CHECKING
 
+from optifolio_contracts.identifiers import normalize_instrument_id
+
 if TYPE_CHECKING:
     from findata.store.market_repo import MarketDataRepository
 
@@ -43,10 +45,12 @@ class FindataFxProvider:
             return None
 
         target = as_of or date_t.today()
+        fx_id = normalize_instrument_id(
+            f"{from_currency}{to_currency}", asset_type="forex"
+        )
         for days_back in range(max_lookback_days + 3):
             d = target - timedelta(days=days_back)
             try:
-                fx_id = f"FX_{from_currency}{to_currency}"
                 prices = self._market_data.get_prices(
                     [fx_id], start=d.isoformat(), end=target.isoformat()
                 )

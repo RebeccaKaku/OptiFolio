@@ -10,6 +10,8 @@ import pandas as pd
 
 from findata.config import get_default_config
 
+from optifolio_contracts.identifiers import normalize_instrument_id
+
 from .schemas import (
     CANONICAL_MARKET_COLUMNS,
     CANONICAL_OBSERVATION_COLUMNS,
@@ -103,9 +105,7 @@ class MarketDataRepository:
         """
         ingest_date = pd.Timestamp.now().strftime("%Y-%m-%d")
         path = (
-            PROJECT_ROOT
-            / "FinData"
-            / "data"
+            self.root_dir
             / "bronze"
             / f"provider={provider}"
             / f"entity={entity}"
@@ -123,12 +123,19 @@ class MarketDataRepository:
         source: str = "manual",
         currency: str | None = None,
         timezone: str | None = None,
+        asset_type: str | None = None,
     ) -> pd.DataFrame:
         """Normalize, validate, and persist data to the canonical store.
 
         Canonical data is the single source of truth for downstream consumers.
         """
-        canonical = normalize_market_frame(frame, asset_id=asset_id, source=source, currency=currency, timezone=timezone)
+        if asset_id is not None:
+            asset_id = normalize_instrument_id(asset_id, asset_type=asset_type)
+
+        canonical = normalize_market_frame(
+            frame, asset_id=asset_id, source=source, currency=currency,
+            timezone=timezone, asset_type=asset_type,
+        )
         canonical = validate_market_frame(canonical)
         lock_file, unlock = self._acquire_lock()
         try:
@@ -142,17 +149,6 @@ class MarketDataRepository:
             lock_file.close()
         return canonical
 
-    def save_raw(self, *args, **kwargs) -> pd.DataFrame:
-        """Deprecated — use save_canonical instead."""
-        import warnings
-
-        warnings.warn(
-            "save_raw is deprecated, use save_canonical instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.save_canonical(*args, **kwargs)
-
     def load_canonical(self) -> pd.DataFrame:
         if not self.price_path.exists():
             return pd.DataFrame(columns=CANONICAL_MARKET_COLUMNS)
@@ -165,6 +161,7 @@ class MarketDataRepository:
         source: str = "manual",
         unit: str | None = None,
         currency: str | None = None,
+        asset_type: str | None = "rate",
     ) -> pd.DataFrame:
         """Normalize, validate, and persist non-price observations.
 
@@ -174,6 +171,9 @@ class MarketDataRepository:
         table so downstream algorithms can distinguish tradable prices
         from informational series.
         """
+        if series_id is not None:
+            series_id = normalize_instrument_id(series_id, asset_type=asset_type)
+
         observations = normalize_observation_frame(
             frame,
             series_id=series_id,
@@ -181,6 +181,10 @@ class MarketDataRepository:
             unit=unit,
             currency=currency,
         )
+        if "series_id" in observations.columns:
+            observations["series_id"] = observations["series_id"].astype(str).apply(
+                lambda x: normalize_instrument_id(x, asset_type=asset_type)
+            )
         observations = validate_observation_frame(observations)
 
         self.observation_path.parent.mkdir(parents=True, exist_ok=True)
@@ -211,18 +215,20 @@ class MarketDataRepository:
         start: str | None = None,
         end: str | None = None,
         known_at: str | pd.Timestamp | None = None,
+        asset_type: str | None = "rate",
     ) -> pd.DataFrame:
         """Return canonical observations filtered by date and availability."""
         if not series_ids or not self.observation_path.exists():
             return pd.DataFrame(columns=CANONICAL_OBSERVATION_COLUMNS)
 
+        canonical_ids = [normalize_instrument_id(s, asset_type=asset_type) for s in series_ids]
         df = self.load_observations()
         if df.empty:
             return df
 
         df["effective_date"] = pd.to_datetime(df["effective_date"])
         df["known_at"] = pd.to_datetime(df["known_at"], errors="coerce")
-        mask = df["series_id"].isin(list(series_ids))
+        mask = df["series_id"].isin(canonical_ids)
         if start:
             mask &= df["effective_date"] >= pd.Timestamp(start)
         if end:
@@ -239,10 +245,12 @@ class MarketDataRepository:
         series_id: str,
         as_of: str | date | pd.Timestamp | None = None,
         known_at: str | pd.Timestamp | None = None,
+        asset_type: str | None = "rate",
     ) -> dict[str, object] | None:
         """Return the latest usable observation for one series."""
+        canonical_id = normalize_instrument_id(series_id, asset_type=asset_type)
         end = pd.Timestamp(as_of).date().isoformat() if as_of is not None else None
-        df = self.get_observations([series_id], end=end, known_at=known_at)
+        df = self.get_observations([canonical_id], end=end, known_at=known_at)
         if df.empty:
             return None
 
@@ -306,6 +314,7 @@ class MarketDataRepository:
         series_ids: Sequence[str] | None = None,
         expected_stale_days: int | None = None,
         as_of: str | date | pd.Timestamp | None = None,
+        asset_type: str | None = "rate",
     ) -> pd.DataFrame:
         """Return coverage/staleness summary for non-price series."""
         summary = self.list_observation_series()
@@ -323,7 +332,9 @@ class MarketDataRepository:
             "missing",
         ]
         if series_ids is not None:
-            requested = list(series_ids)
+            requested = [
+                normalize_instrument_id(s, asset_type=asset_type) for s in series_ids
+            ]
             if summary.empty:
                 summary = pd.DataFrame({"series_id": requested})
             else:
@@ -358,17 +369,6 @@ class MarketDataRepository:
                 summary[column] = pd.NA
         return summary[columns].sort_values("series_id").reset_index(drop=True)
 
-    @staticmethod
-    def _expand_asset_forms(asset_id: str) -> list[str]:
-        """Return candidate forms for *asset_id* (bare + prefixed CN stock).
-
-        CN stock symbols may be stored bare (600519) or prefixed (sh600519).
-        Query both so lookups don't fail on format mismatches.
-        """
-        from optifolio_contracts.symbols import normalize_cn_symbol
-
-        return normalize_cn_symbol(asset_id)
-
     def get_prices(
         self,
         assets: Sequence[str],
@@ -383,18 +383,11 @@ class MarketDataRepository:
             if f not in CANONICAL_MARKET_COLUMNS:
                 raise ValueError(f"Unknown market data field: {f}")
 
-        # Build expanded asset list with normalized forms (bare + prefixed)
-        expanded_assets: list[str] = []
-        form_to_original: dict[str, str] = {}  # alternate form → original asset_id
-        for a in assets:
-            forms = self._expand_asset_forms(a)
-            expanded_assets.extend(forms)
-            for frm in forms:
-                if frm != a:
-                    form_to_original[frm] = a
+        # Normalize display symbols to canonical IDs once at the API boundary.
+        canonical_assets = [normalize_instrument_id(a) for a in assets]
 
         where_parts = ["asset_id IN $assets"]
-        params: dict[str, object] = {"assets": expanded_assets, "path": str(self.price_path)}
+        params: dict[str, object] = {"assets": canonical_assets, "path": str(self.price_path)}
         if start:
             where_parts.append("date >= $start")
             params["start"] = pd.Timestamp(start).to_pydatetime()
@@ -413,23 +406,11 @@ class MarketDataRepository:
         if rows.empty:
             return pd.DataFrame()
 
-        # Deduplicate: expanded forms may return same (date, normalized_id) twice
-        rows["asset_id"] = rows["asset_id"].replace(form_to_original)
-        rows = rows.drop_duplicates(subset=["date", "asset_id"])
-
         if len(fields) == 1:
-            # Single field: return pivoted date × asset_id matrix (backwards compatible)
             matrix = rows.pivot(index="date", columns="asset_id", values=fields[0])
             matrix.index = pd.to_datetime(matrix.index)
-            # Rename alternate forms back to original asset_ids
-            rename = {k: v for k, v in form_to_original.items() if k in matrix.columns}
-            if rename:
-                matrix = matrix.rename(columns=rename)
-            return matrix.reindex(columns=list(assets)).sort_index()
+            return matrix.reindex(columns=canonical_assets).sort_index()
         else:
-            # Multiple fields: return flat (date, asset_id, field1, field2, ...) DataFrame
-            # Map alternate forms back to originals
-            rows["asset_id"] = rows["asset_id"].replace(form_to_original)
             rows["date"] = pd.to_datetime(rows["date"])
             return rows.set_index("date").sort_index()
 
