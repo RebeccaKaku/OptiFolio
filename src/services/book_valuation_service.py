@@ -13,11 +13,8 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from optifolio_contracts.quality import ValuationQuality
-from src.core.book_valuation import (
-    ValuationCandidate,
-    ValuationEngine,
-    ValuationResult,
-)
+from src.core.valuation import ValuationCandidate, ValuationEngine
+from src.domain import ValuationResult
 from src.core.portfolio_book_db import PortfolioBookDatabase
 from src.services.response import success, failure
 

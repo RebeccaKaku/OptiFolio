@@ -110,9 +110,9 @@ def _to_ghostfolio_sub_class(optifolio_class: str, asset_type: str) -> str:
 
 def _resolve_asset_info(symbol: str) -> Dict[str, Any]:
     """Fetch asset info and enrich with canonical classification."""
-    services = get_application_services()
-    asset_res = services.assets.get_asset_info(symbol)
-    asset_data = (asset_res.get("data") or {}) if isinstance(asset_res, dict) else {}
+    from src.services.portfolio_service import _AssetTypeResolver
+    resolver = _AssetTypeResolver()
+    asset_data = resolver.get_asset_info(symbol)
 
     asset_type = asset_data.get("asset_type", "")
     optifolio_class = _EXPOSURE_ANALYZER.classify(

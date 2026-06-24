@@ -143,7 +143,20 @@ def create_app() -> FastAPI:
 
     @app.get("/api/assets/overview", tags=["assets"])
     def asset_overview() -> JSONResponse:
-        return _json_response(get_application_services().assets.get_overview())
+        try:
+            import pandas as pd
+            from findata import fd
+            assets = fd.list_assets()
+            data = {
+                "asset_count": len(assets),
+                "recent_assets": [{"symbol": a} for a in (assets[:20] if assets else [])],
+                "by_type": {},
+                "total_types": 0,
+                "last_updated": pd.Timestamp.now().isoformat(),
+            }
+            return _json_response({"success": True, "data": data, "message": "Asset overview loaded"})
+        except Exception as exc:
+            return _json_response({"success": False, "message": str(exc), "error_code": "ASSET_OVERVIEW_ERROR"})
 
     @app.get("/api/assets", tags=["assets"])
     def list_assets(
@@ -151,22 +164,53 @@ def create_app() -> FastAPI:
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=50, ge=1, le=200),
     ) -> JSONResponse:
-        return _json_response(
-            get_application_services().assets.list_assets(filter_type, page, page_size)
-        )
+        try:
+            from findata import fd
+            assets = fd.list_assets()
+            result = [{"symbol": a, "type": "unknown"} for a in assets]
+            if filter_type:
+                result = [r for r in result if r.get("type") == filter_type]
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            paginated = result[start_idx:end_idx]
+            data = {
+                "assets": paginated,
+                "total": len(result),
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (len(result) + page_size - 1) // page_size,
+            }
+            return _json_response({"success": True, "data": data, "message": "Assets loaded"})
+        except Exception as exc:
+            return _json_response({"success": False, "message": str(exc), "error_code": "ASSET_LIST_ERROR"})
 
     @app.get("/api/assets/search", tags=["assets"])
     def search_assets(
         query: str = Query(min_length=1),
         limit: int = Query(default=50, ge=1, le=200),
     ) -> JSONResponse:
-        return _json_response(
-            get_application_services().assets.search_assets(query, limit)
-        )
+        try:
+            from findata import fd
+            assets = fd.list_assets()
+            q = query.lower()
+            results = [{"symbol": a, "type": "unknown"} for a in assets if q in a.lower()][:limit]
+            data = {"assets": results, "query": query, "count": len(results)}
+            return _json_response({"success": True, "data": data, "message": "Asset search completed"})
+        except Exception as exc:
+            return _json_response({"success": False, "message": str(exc), "error_code": "ASSET_SEARCH_ERROR"})
 
     @app.get("/api/assets/{symbol}", tags=["assets"])
     def asset_info(symbol: str) -> JSONResponse:
-        return _json_response(get_application_services().assets.get_asset_info(symbol))
+        try:
+            from src.services.portfolio_service import _AssetTypeResolver
+            resolver = _AssetTypeResolver()
+            info = resolver.get_asset_info(symbol)
+            info["symbol"] = symbol
+            if info.get("exists"):
+                return _json_response({"success": True, "data": info, "message": "Asset info loaded"})
+            return _json_response({"success": False, "message": "Asset not found", "error_code": "ASSET_INFO_ERROR", "data": {"symbol": symbol}})
+        except Exception as exc:
+            return _json_response({"success": False, "message": str(exc), "error_code": "ASSET_INFO_ERROR"})
 
     @app.get("/api/market/assets", tags=["market"])
     def market_assets() -> JSONResponse:

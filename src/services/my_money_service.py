@@ -73,11 +73,16 @@ class MyMoneyService:
             fx_quotes = self._get_fx_quotes(currencies, reporting_currency, target_date)
 
             # Map valuations to ValuationResult objects for the aggregator
-            from src.core.book_valuation import ValuationResult
+            from src.domain import ValuationResult as SingleAssetValuationResult
             from optifolio_contracts.quality import ValuationFreshness
             val_objs = []
             for v in valuations:
-                val_objs.append(ValuationResult(
+                val_objs.append(SingleAssetValuationResult(
+                    as_of=target_date,
+                    total_value=0.0,
+                    holdings_value=0.0,
+                    cash_value=0.0,
+                    base_currency=reporting_currency,
                     amount=v["amount"],
                     currency=v["currency"],
                     valuation_date=date.fromisoformat(v["valuation_date"]) if v["valuation_date"] else None,

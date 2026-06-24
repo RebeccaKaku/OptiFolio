@@ -4,10 +4,7 @@ import pandas as pd
 from unittest.mock import MagicMock
 
 from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
-from src.core.book_valuation import (
-    ValuationCandidate,
-    ValuationEngine,
-)
+from src.core.valuation import ValuationCandidate, ValuationEngine
 from src.services.book_valuation_service import BookValuationService
 from src.core.portfolio_book_db import PortfolioBookDatabase
 from src.domain.products import ProductDefinition

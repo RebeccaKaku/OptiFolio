@@ -2,12 +2,17 @@ import pytest
 from datetime import date, timedelta
 from decimal import Decimal
 from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
-from src.core.book_valuation import ValuationResult
+from src.domain import ValuationResult
 from src.analytics.currency_aggregation import FxQuote, CurrencyAggregator, CurrencyAggregationResult
 
 
 def create_val(amount, currency, quality=ValuationQuality.CONFIRMED, is_estimate=False):
     return ValuationResult(
+        as_of=date(2026, 6, 1),
+        total_value=0.0,
+        holdings_value=0.0,
+        cash_value=0.0,
+        base_currency=currency,
         amount=amount,
         currency=currency,
         valuation_date=date(2026, 6, 1),
@@ -17,7 +22,7 @@ def create_val(amount, currency, quality=ValuationQuality.CONFIRMED, is_estimate
         quality=quality,
         freshness=ValuationFreshness.CURRENT,
         is_estimate=is_estimate,
-        age_days=0
+        age_days=0,
     )
 
 

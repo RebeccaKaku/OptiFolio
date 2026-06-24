@@ -9,16 +9,21 @@ rather than ad-hoc "latest price" fetcher calls.
 Convention: ``value_on(T)`` uses the last close price with date <= T.
 If no price exists on T, walks backward up to 5 business days.
 Raises NoPriceDataError if no price is found.
+
+Also implements single-asset priority-based valuation:
+manual confirmed > public market_price / NAV > carried_forward > unknown.
 """
 
+from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any, Dict, Optional, Sequence, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
 
 import pandas as pd
 
 if TYPE_CHECKING:
     from findata.store import MarketDataRepository
 
+from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
 from src.domain import (
     CashHolding,
     PositionValue,
@@ -249,6 +254,36 @@ def _resolve_currency(asset_id: str) -> str:
 
     _currency_cache[asset_id] = result
     return result
+
+
+# ── Valuation candidate ──────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ValuationCandidate:
+    """A potential value for a position from a specific source.
+
+    Used by the single-asset priority-based valuation path (select_best /
+    value_single). The portfolio-level value() method does NOT use this class.
+    """
+
+    amount: Optional[float] = None
+    price: Optional[float] = None
+    quantity: Optional[float] = None
+    currency: str = "CNY"
+    effective_date: Optional[date] = None
+    known_at: Optional[date] = None
+    source_id: str = "unknown"
+    source_type: str = "unknown"  # manual, public, etc.
+    quality: ValuationQuality = ValuationQuality.UNKNOWN
+
+    def get_amount(self) -> Optional[float]:
+        """Calculate amount from price and quantity if direct amount is missing."""
+        if self.amount is not None:
+            return self.amount
+        if self.price is not None and self.quantity is not None:
+            return self.price * self.quantity
+        return None
 
 
 # ── Valuation engine ───────────────────────────────────────────────────
@@ -503,3 +538,144 @@ class ValuationEngine:
             fx_rates={},
             price_date=request.as_of,
         )
+
+    # ── Single-asset valuation methods ─────────────────────────────────
+
+    @staticmethod
+    def select_best(
+        candidates: List[ValuationCandidate],
+        as_of: date,
+        target_currency: str = "CNY",
+        freshness_thresholds: Optional[Dict[str, int]] = None,
+    ) -> ValuationResult:
+        """Select the best valuation candidate based on priority rules.
+
+        Priority:
+        1. Manual confirmed (effective_date == as_of)
+        2. Public NAV/Price (effective_date <= as_of, within threshold)
+        3. Last known (stale carry-forward, effective_date < as_of)
+        4. Unknown
+
+        Rules:
+        - Future dates are rejected.
+        - Quantity is required for public price candidates.
+        - Zero amount is a valid value, None is unknown.
+        - Currency mismatch returns unknown with a warning.
+        """
+        thresholds = freshness_thresholds or {}
+        # Default threshold is 3 days unless specified
+        default_threshold = thresholds.get("default", 3)
+
+        # 1. Filter usable candidates (no future dates)
+        usable = [c for c in candidates if c.effective_date and c.effective_date <= as_of]
+
+        best_candidate: Optional[ValuationCandidate] = None
+        best_priority = 99
+
+        for c in usable:
+            amount = c.get_amount()
+            if amount is None:
+                continue
+
+            # Check currency mismatch
+            if c.currency != target_currency:
+                continue
+
+            priority = 99
+            if c.source_type == "manual" and c.quality == ValuationQuality.CONFIRMED and c.effective_date == as_of:
+                priority = 1
+            elif c.source_type == "public":
+                # Check freshness
+                age = (as_of - c.effective_date).days
+                threshold = thresholds.get(c.source_id, default_threshold)
+                if age <= threshold:
+                    priority = 2
+            elif c.source_type == "manual" and c.effective_date < as_of:
+                priority = 3
+            elif c.source_type == "manual" and c.quality == ValuationQuality.REPORTED and c.effective_date == as_of:
+                priority = 3
+
+            if priority < best_priority:
+                best_priority = priority
+                best_candidate = c
+            elif priority == best_priority and best_candidate:
+                # Tie-break: latest effective date, then latest known_at, then source_id
+                if c.effective_date > best_candidate.effective_date:
+                    best_candidate = c
+                elif c.effective_date == best_candidate.effective_date:
+                    c_known = c.known_at or date.min
+                    b_known = best_candidate.known_at or date.min
+                    if c_known > b_known:
+                        best_candidate = c
+                    elif c_known == b_known:
+                        if c.source_id < best_candidate.source_id:
+                            best_candidate = c
+
+        if best_candidate is None:
+            # Fallback to unknown
+            mismatched = [c for c in usable if c.currency != target_currency]
+            warnings = []
+            if mismatched:
+                warnings.append(f"Excluded {len(mismatched)} candidates due to currency mismatch")
+
+            return ValuationResult(
+                as_of=as_of,
+                total_value=0.0,
+                holdings_value=0.0,
+                cash_value=0.0,
+                base_currency=target_currency,
+                amount=None,
+                quality=ValuationQuality.UNKNOWN,
+                freshness=ValuationFreshness.UNKNOWN,
+                is_estimate=True,
+                age_days=0,
+                warnings=warnings,
+            )
+
+        # 2. Build result from best candidate
+        amount = best_candidate.get_amount()
+        age = (as_of - best_candidate.effective_date).days
+
+        freshness = ValuationFreshness.CURRENT if age == 0 else ValuationFreshness.STALE
+
+        # is_estimate logic: True if stale or quality is estimated
+        is_estimate = (freshness == ValuationFreshness.STALE) or (best_candidate.quality == ValuationQuality.ESTIMATED)
+
+        # If it was a carry-forward, ensure quality reflects that
+        quality = best_candidate.quality
+        if freshness == ValuationFreshness.STALE and quality == ValuationQuality.CONFIRMED:
+            quality = ValuationQuality.ESTIMATED
+
+        return ValuationResult(
+            as_of=as_of,
+            total_value=0.0,
+            holdings_value=0.0,
+            cash_value=0.0,
+            base_currency=target_currency,
+            amount=amount,
+            currency=best_candidate.currency,
+            valuation_date=best_candidate.effective_date,
+            known_at=best_candidate.known_at,
+            source_type=best_candidate.source_type,
+            source_id=best_candidate.source_id,
+            quality=quality,
+            freshness=freshness,
+            is_estimate=is_estimate,
+            age_days=age,
+            warnings=[],
+        )
+
+    def value_single(
+        self,
+        candidates: List[ValuationCandidate],
+        as_of: date,
+        target_currency: str = "CNY",
+        freshness_thresholds: Optional[Dict[str, int]] = None,
+    ) -> ValuationResult:
+        """Select the best single-asset valuation from candidates.
+
+        Convenience instance method — delegates to select_best().
+        Implements the priority chain:
+        manual confirmed > market_price > public_nav > carried_forward > unknown.
+        """
+        return self.select_best(candidates, as_of, target_currency, freshness_thresholds)

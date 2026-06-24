@@ -158,8 +158,14 @@ class ValuationResult:
 
     Financial semantics: see docs/GLOSSARY.md#asset-valuation
     Data contract: see docs/CONTRACTS.md#valuationresult-domain-version
+
+    This dataclass serves dual purpose:
+    - Portfolio-level: total_value, holdings_value, cash_value, positions, etc.
+    - Single-asset: amount, currency, valuation_date, source_type, quality, etc.
+      (single-asset fields are Optional, default None)
     """
 
+    # ── Portfolio-level fields (always populated for portfolio valuation) ──
     as_of: date
     total_value: float
     holdings_value: float
@@ -174,8 +180,21 @@ class ValuationResult:
     corporate_action_adjustments: float = 0.0
     fee_adjustments: float = 0.0
 
+    # ── Single-asset fields (populated for per-position valuation) ──
+    amount: Optional[float] = None  # position market value
+    currency: Optional[str] = None  # position currency (distinct from base_currency)
+    valuation_date: Optional[date] = None  # date of the selected valuation
+    known_at: Optional[date] = None  # when the valuation was recorded
+    source_type: Optional[str] = None  # "manual", "public", "none", etc.
+    source_id: Optional[str] = None  # batch id, product id, etc.
+    quality: Optional[Any] = None  # ValuationQuality enum value
+    freshness: Optional[Any] = None  # ValuationFreshness enum value
+    is_estimate: Optional[bool] = None
+    age_days: Optional[int] = None
+    warnings: List[str] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "as_of": self.as_of.isoformat(),
             "total_value": self.total_value,
             "holdings_value": self.holdings_value,
@@ -195,6 +214,28 @@ class ValuationResult:
             "corporate_action_adjustments": self.corporate_action_adjustments,
             "fee_adjustments": self.fee_adjustments,
         }
+        # Include single-asset fields when present
+        if self.amount is not None:
+            result["amount"] = self.amount
+        if self.valuation_date is not None:
+            result["valuation_date"] = self.valuation_date.isoformat()
+        if self.known_at is not None:
+            result["known_at"] = self.known_at.isoformat() if self.known_at else None
+        if self.source_type is not None:
+            result["source_type"] = self.source_type
+        if self.source_id is not None:
+            result["source_id"] = self.source_id
+        if self.quality is not None:
+            result["quality"] = self.quality.value if hasattr(self.quality, 'value') else self.quality
+        if self.freshness is not None:
+            result["freshness"] = self.freshness.value if hasattr(self.freshness, 'value') else self.freshness
+        if self.is_estimate is not None:
+            result["is_estimate"] = self.is_estimate
+        if self.age_days is not None:
+            result["age_days"] = self.age_days
+        if self.warnings:
+            result["warnings"] = list(self.warnings)
+        return result
 
 
 @dataclass(frozen=True)

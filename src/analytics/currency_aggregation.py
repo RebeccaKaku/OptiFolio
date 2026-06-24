@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Dict, List, Optional, Set
-from src.core.book_valuation import ValuationResult
+from src.domain import ValuationResult
 from optifolio_contracts.quality import ValuationQuality
 
 

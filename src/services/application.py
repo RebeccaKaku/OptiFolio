@@ -6,7 +6,6 @@ from typing import Any, Dict
 
 from src.analytics.alerts import AlertEngine
 
-from .asset_service import AssetService
 from .research_service import ResearchService
 from .system_service import SystemService
 
@@ -21,7 +20,6 @@ class IngestionService:
 @dataclass(frozen=True)
 class ApplicationServices:
     system: SystemService
-    assets: AssetService
     research: ResearchService
     ingestion: IngestionService
     alerts: AlertEngine              # risk alert checks
@@ -40,7 +38,6 @@ def get_application_services() -> ApplicationServices:
     from src.services.my_money_service import MyMoneyService
     from src.services.portfolio_service import PortfolioService
     from src.services.decision_journal_service import DecisionJournalService
-    from src.core.enhanced_asset_manager import get_enhanced_asset_manager
     from findata.serving.provider import DataProvider
 
     portfolio_book_db = PortfolioBookDatabase()
@@ -48,11 +45,8 @@ def get_application_services() -> ApplicationServices:
 
     data_provider = DataProvider()
     book_val_svc = BookValuationService(portfolio_book_db, data_provider)
-    asset_manager = get_enhanced_asset_manager()
-
     return ApplicationServices(
         system=SystemService(),
-        assets=AssetService(asset_manager),
         research=ResearchService(),
         ingestion=IngestionService(),
         alerts=AlertEngine(),
