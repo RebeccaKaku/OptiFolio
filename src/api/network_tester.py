@@ -298,69 +298,18 @@ class NetworkTester:
             return False
     
     async def _test_akshare_function(self, function_name: str) -> bool:
-        """测试AkShare函数"""
-        try:
-            # 动态导入akshare函数
-            import akshare as ak
-            
-            if hasattr(ak, function_name):
-                func = getattr(ak, function_name)
-                
-                # 根据函数类型测试不同的参数
-                if function_name == 'stock_zh_a_spot_em':
-                    # 测试获取A股实时行情
-                    df = func()
-                    return not df.empty
-                elif function_name == 'stock_zh_a_hist':
-                    # 测试获取历史行情
-                    df = func(
-                        symbol="600519",
-                        period="daily", 
-                        start_date="20240101",
-                        end_date="20240102"
-                    )
-                    return not df.empty
-                elif function_name == 'fund_em':
-                    # 测试基金数据
-                    df = func()
-                    return not df.empty
-                else:
-                    # 通用测试：尝试调用函数
-                    try:
-                        result = func()
-                        return result is not None
-                    except:
-                        return False
-            else:
-                return False
-                
-        except Exception as e:
-            logger.error(f"AkShare函数 {function_name} 测试失败: {e}")
-            return False
+        """测试AkShare函数 — STUB (akshare import removed)."""
+        # TODO: wire via findata adapter — test findata public facade (fd.prices,
+        # fd.ohlcv, etc.) instead of calling akshare directly.
+        logger.warning(f"AkShare函数 {function_name} 测试已弃用 (akshare导入已移除)")
+        return False
     
     async def _test_yfinance_function(self, function_name: str) -> bool:
-        """测试yfinance函数"""
-        try:
-            import yfinance as yf
-            
-            if function_name == 'Ticker':
-                # 测试股票信息获取
-                ticker = yf.Ticker("AAPL")
-                info = ticker.info
-                return bool(info) and len(info) > 0
-                
-            elif function_name == 'download':
-                # 测试历史数据下载
-                data = yf.download("AAPL", start="2024-01-01", end="2024-01-02", progress=False)
-                return not data.empty
-                
-            else:
-                # 通用测试
-                return True
-                
-        except Exception as e:
-            logger.error(f"yfinance函数 {function_name} 测试失败: {e}")
-            return False
+        """测试yfinance函数 — STUB (yfinance import removed)."""
+        # TODO: wire via findata adapter — test findata public facade (fd.prices,
+        # fd.ohlcv, etc.) instead of calling yfinance directly.
+        logger.warning(f"yfinance函数 {function_name} 测试已弃用 (yfinance导入已移除)")
+        return False
     
     async def _test_symbols(self, symbols: List[str]) -> bool:
         """测试股票代码的可用性"""
@@ -381,79 +330,25 @@ class NetworkTester:
             return False
     
     async def _test_cn_symbols(self, symbols: List[str]) -> bool:
-        """测试中国股票代码的可用性"""
-        try:
-            import akshare as ak
-            
-            # 获取实时行情数据
-            df = ak.stock_zh_a_spot_em()
-            if df.empty:
-                return False
-            
-            success_count = 0
-            for symbol in symbols:
-                # 提取纯数字代码
-                code = symbol[2:] if symbol.startswith(('sh', 'sz')) else symbol
-                
-                # 检查代码是否存在于数据中
-                if not df[df['代码'] == code].empty:
-                    success_count += 1
-            
-            # 至少70%的代码可用即认为成功
-            return success_count >= len(symbols) * 0.7
-            
-        except Exception as e:
-            logger.error(f"中国股票代码测试失败: {e}")
-            return False
+        """测试中国股票代码的可用性 — STUB (akshare import removed)."""
+        # TODO: wire via findata adapter — test CN stock symbols via fd.prices()
+        # or fd.missing_report() instead of calling akshare directly.
+        logger.warning("中国股票代码测试已弃用 (akshare导入已移除)")
+        return False
     
     async def _test_us_symbols(self, symbols: List[str]) -> bool:
-        """测试美股代码的可用性"""
-        try:
-            import yfinance as yf
-            
-            success_count = 0
-            for symbol in symbols:
-                try:
-                    # 尝试获取股票信息
-                    ticker = yf.Ticker(symbol)
-                    info = ticker.info
-                    if info and len(info) > 0:
-                        success_count += 1
-                except:
-                    continue
-            
-            # 至少70%的代码可用即认为成功
-            return success_count >= len(symbols) * 0.7
-            
-        except Exception as e:
-            logger.error(f"美股代码测试失败: {e}")
-            return False
+        """测试美股代码的可用性 — STUB (yfinance import removed)."""
+        # TODO: wire via findata adapter — test US stock symbols via fd.prices()
+        # or fd.missing_report() instead of calling yfinance directly.
+        logger.warning("美股代码测试已弃用 (yfinance导入已移除)")
+        return False
     
     async def _test_generic_symbols(self, symbols: List[str]) -> bool:
-        """测试通用基金代码的可用性"""
-        try:
-            import akshare as ak
-            
-            # 获取基金数据
-            try:
-                df = ak.fund_name_em()
-                if df.empty:
-                    return False
-                
-                success_count = 0
-                for symbol in symbols:
-                    if not df[df['基金代码'] == symbol].empty:
-                        success_count += 1
-                
-                return success_count >= len(symbols) * 0.7
-                
-            except:
-                # 如果基金数据获取失败，尝试其他方法
-                return await self._test_cn_symbols(symbols)
-                
-        except Exception as e:
-            logger.error(f"通用代码测试失败: {e}")
-            return False
+        """测试通用基金代码的可用性 — STUB (akshare import removed)."""
+        # TODO: wire via findata adapter — test fund symbols via fd.prices()
+        # or fd.missing_report() instead of calling akshare directly.
+        logger.warning("通用代码测试已弃用 (akshare导入已移除)")
+        return False
     
     def _generate_report(self, total_time: float) -> Dict:
         """生成测试报告"""

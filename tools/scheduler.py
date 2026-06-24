@@ -9,9 +9,9 @@ Usage::
 The ``DailyRunner`` class can also be used programmatically::
 
     from tools.scheduler import DailyRunner
-    from src.services.portfolio_service_v2 import PortfolioServiceV2
+    from src.services.portfolio_service import PortfolioService
 
-    svc = PortfolioServiceV2()
+    svc = PortfolioService()
     result = DailyRunner().run(svc)
     print(result["valuation"]["total_value"])
 """
@@ -72,7 +72,7 @@ class DailyRunner:
 
         Parameters:
             portfolio_svc:
-                A ``PortfolioServiceV2`` instance.  Created automatically
+                A ``PortfolioService`` instance.  Created automatically
                 when ``None``.
             history_tracker:
                 Reserved.  History recording is handled inside
@@ -129,8 +129,8 @@ class DailyRunner:
         valuation_data: Optional[Dict[str, Any]] = None
 
         if portfolio_svc is None:
-            from src.services.portfolio_service_v2 import PortfolioServiceV2
-            portfolio_svc = PortfolioServiceV2()
+            from src.services.portfolio_service import PortfolioService
+            portfolio_svc = PortfolioService()
 
         if dry_run:
             logger.info("  Would call portfolio_svc.get_value(as_of=%s)", today.isoformat())

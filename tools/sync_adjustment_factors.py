@@ -26,7 +26,7 @@ from findata.store import MarketDataRepository
 
 
 def fetch_factor(symbol: str, factor_type: str = "qfq") -> pd.DataFrame | None:
-    """Fetch adjustment factor for a single A-share symbol.
+    """Fetch adjustment factor for a single A-share symbol — STUB (akshare import removed).
 
     Args:
         symbol: 6-digit A-share code (e.g. '600519').
@@ -35,31 +35,10 @@ def fetch_factor(symbol: str, factor_type: str = "qfq") -> pd.DataFrame | None:
     Returns:
         DataFrame with columns [date, qfq_factor] or None on failure.
     """
-    import akshare as ak
-
-    # Determine exchange prefix
-    if symbol.startswith("6") or symbol.startswith("9"):
-        full_symbol = f"sh{symbol}"
-    elif symbol.startswith("0") or symbol.startswith("3"):
-        full_symbol = f"sz{symbol}"
-    else:
-        full_symbol = symbol
-
-    try:
-        df = ak.stock_zh_a_daily(
-            symbol=full_symbol,
-            start_date="19900101",
-            end_date="20991231",
-            adjust=f"{factor_type}-factor",
-        )
-        if df.empty:
-            return None
-        df["asset_id"] = symbol
-        df["source"] = f"akshare-{factor_type}-factor"
-        return df
-    except Exception as exc:
-        print(f"  [ERROR] {symbol}: {exc}")
-        return None
+    # TODO: wire via findata adapter — akshare's stock_zh_a_daily qfq-factor
+    # mode needs a dedicated findata adapter (e.g. AdjustmentFactorFetcher).
+    # The cn_stock adapter currently only handles price data.
+    return None
 
 
 def main():

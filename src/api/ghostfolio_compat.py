@@ -135,7 +135,7 @@ async def ghostfolio_portfolio_details():
     try:
         services = get_application_services()
         value_res = await asyncio.to_thread(
-            services.portfolio_v2.get_value, base_currency="CNY"
+            services.portfolio.get_value, base_currency="CNY"
         )
     except Exception as exc:
         logger.warning("Ghostfolio details failed: %s", exc)
@@ -215,10 +215,10 @@ async def ghostfolio_portfolio_performance():
     try:
         services = get_application_services()
         value_res = await asyncio.to_thread(
-            services.portfolio_v2.get_value, base_currency="CNY"
+            services.portfolio.get_value, base_currency="CNY"
         )
         chart_res = await asyncio.to_thread(
-            services.portfolio_v2.get_value_history,
+            services.portfolio.get_value_history,
             start=(__import__("datetime").date.today() - __import__("datetime").timedelta(days=365)),
             end=__import__("datetime").date.today(),
             base_currency="CNY"
@@ -293,7 +293,7 @@ async def ghostfolio_portfolio_holdings(
     try:
         services = get_application_services()
         value_res = await asyncio.to_thread(
-            services.portfolio_v2.get_value, base_currency="CNY"
+            services.portfolio.get_value, base_currency="CNY"
         )
     except Exception as exc:
         logger.warning("Ghostfolio holdings failed: %s", exc)
@@ -347,7 +347,7 @@ async def ghostfolio_portfolio_dividends():
     """Dividends list for Ghostfolio."""
     try:
         services = get_application_services()
-        res = services.portfolio_v2.get_corporate_actions()
+        res = services.portfolio.get_corporate_actions()
         if not res.get("success"):
             return []
 
@@ -449,7 +449,7 @@ async def ghostfolio_portfolio_report():
     """Report stub for Ghostfolio."""
     try:
         services = get_application_services()
-        res = services.portfolio_v2.get_exposure_report()
+        res = services.portfolio.get_exposure_report()
         if not res.get("success"):
             return {"xRay": {"categories": [], "statistics": {"totalCount": 0}}}
 

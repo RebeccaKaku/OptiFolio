@@ -9,7 +9,7 @@ The data layer is in `packages/findata/` (formerly `FinData/`); shared types liv
 
 ## Critical Rules
 
-1. **`findata` is the ONLY data path.** `from findata import fd` — never import adapters directly.
+1. **`findata` is the ONLY data path.** `from findata import fd` — never import adapters directly.  Callers do NOT decide where data comes from: `fd.prices("AAPL")` is all they write.  findata internally resolves the source (cache → yfinance → akshare → bank scraper) and `mode="live"` triggers a refresh when data is missing or stale.  No module outside `packages/findata/` may import `yfinance`, `akshare`, or any fetcher directly.
 2. **Private data stays out of git.** `local/`, `config/secrets.yaml`, `.parquet`, `.db`, `.csv` are all git-ignored.
 3. **Use `logging`**, not `print()`. `import logging; _log = logging.getLogger(__name__)`.
 4. **Services use `success()` / `failure()`** from `src/services/response.py`. API uses `_json_response()`.

@@ -17,7 +17,7 @@ from tools.scheduler import DailyRunner, main
 
 
 def _mock_portfolio_svc(*, value_success=True, rules_success=True):
-    """Build a mock PortfolioServiceV2 with canned responses."""
+    """Build a mock PortfolioService with canned responses."""
     svc = MagicMock()
     svc.get_value.return_value = {
         "success": value_success,

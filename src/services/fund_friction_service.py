@@ -111,68 +111,9 @@ class FundFrictionService:
             if now - ts < self._cache_ttl:
                 return info
 
-        try:
-            import akshare as ak
-            detail = ak.fund_individual_detail_info_xq(symbol=fund_code)
-        except Exception:
-            return FundFeeInfo(fund_code=fund_code, fund_name="")
-
-        try:
-            basic = ak.fund_individual_basic_info_xq(symbol=fund_code)
-            # Xueqiu uses '基金名称' (基金名称) not '基金简称'
-            name = self._extract_value(basic, "基金名称")
-        except Exception:
-            name = ""
-
-        info = FundFeeInfo(fund_code=fund_code, fund_name=name)
-
-        # Parse fee tiers from the detail DataFrame.
-        # Xueqiu returns columns: ['费用名称', '费用详细信息', '数值']
-        # Category names (vary by API version):
-        #   买入规则 / 申购费 → subscription tiers
-        #   卖出规则 / 赎回费 → redemption tiers
-        #   其他费用 → management + custody fee
-        # We match by Unicode substring to be API-version-robust.
-        # Also use the detail column to distinguish sub-types
-        # (detail contains '管理费' or '托管费' for the last two rows).
-        for _, row in detail.iterrows():
-            cat_name = str(row.iloc[0])
-            detail_str = str(row.iloc[1])
-            value_str = str(row.iloc[2])
-
-            # Detect management / custody fee from detail column
-            if "管理费" in detail_str:  # 管理费
-                info.management_fee = self._parse_pct(value_str)
-                continue
-            if "托管费" in detail_str:  # 托管费
-                info.custody_fee = self._parse_pct(value_str)
-                continue
-            if "销售服务费" in detail_str:  # 销售服务费
-                info.sales_service_fee = self._parse_pct(value_str)
-                continue
-
-            # Distinguish subscription vs redemption by category name
-            is_sub = (
-                "买入" in cat_name       # 买入
-                or "申购" in cat_name    # 申购
-                or "认购" in cat_name    # 认购
-            )
-            is_redeem = (
-                "卖出" in cat_name       # 卖出
-                or "赎回" in cat_name    # 赎回
-            )
-
-            if is_sub:
-                info.subscription_tiers.append({
-                    "condition": detail_str,
-                    "rate_or_amount": value_str,
-                })
-            elif is_redeem:
-                info.redemption_tiers.append({
-                    "condition": detail_str,
-                    "rate": value_str,
-                })
-            # Ignore rows we can't classify (they shouldn't exist)
+        # TODO: wire via findata adapter — akshare's fund_individual_detail_info_xq
+        # and fund_individual_basic_info_xq need dedicated findata adapters.
+        info = FundFeeInfo(fund_code=fund_code, fund_name="")
 
         self._fee_cache[fund_code] = (now, info)
         return info
@@ -200,12 +141,10 @@ class FundFrictionService:
 
     def _ensure_status_loaded(self):
         """Lazy-load the full fund status table (cached)."""
+        # TODO: wire via findata adapter — akshare's fund_purchase_em needs
+        # a dedicated findata adapter.
         now = time.time()
-        if self._status_df is not None and (now - self._status_ts) < self._cache_ttl:
-            return
-
-        import akshare as ak
-        self._status_df = ak.fund_purchase_em()
+        self._status_df = pd.DataFrame()
         self._status_ts = now
 
     def get_fund_status(self, fund_code: str) -> FundStatusInfo:

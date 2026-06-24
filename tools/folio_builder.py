@@ -108,23 +108,41 @@ RISK_FREE_RATE = 0.045  # ~current SOFR
 # ── Data ────────────────────────────────────────────────────────────────
 
 def pull_prices(assets: List[str], years: int = 2) -> pd.DataFrame:
-    """Pull daily adjusted close for *assets* from findata."""
+    """Pull daily adjusted close for *assets* via findata.
+
+    findata handles all sourcing internally (cache -> live fetcher).
+    Callers never decide *where* data comes from.
+    """
     end = date.today().isoformat()
     start = (date.today() - timedelta(days=years * 365)).isoformat()
 
-    frames, missing = [], []
+    frames, missing, live = [], [], 0
     for asset in assets:
+        # Try cache first
         try:
             series = fd.prices(asset, start=start, end=end)
             if not series.empty and len(series) > 60:
                 frames.append(series.rename(asset))
-            else:
-                missing.append(asset)
+                continue
         except Exception:
-            missing.append(asset)
+            pass
 
+        # Ask findata to fetch live
+        try:
+            series = fd.prices(asset, start=start, end=end, mode="live")
+            if not series.empty:
+                frames.append(series.rename(asset))
+                live += 1
+                continue
+        except Exception:
+            pass
+
+        missing.append(asset)
+
+    if live:
+        print(f"  Live-fetched via findata: {live} assets")
     if missing:
-        print(f"  Missing/insufficient data: {len(missing)} assets")
+        print(f"  Unavailable: {len(missing)} assets")
 
     df = pd.concat(frames, axis=1).dropna(how="all")
     df.index = pd.to_datetime(df.index)

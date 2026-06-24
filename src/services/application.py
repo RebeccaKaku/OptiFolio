@@ -28,7 +28,7 @@ class ApplicationServices:
     portfolio_book: "PortfolioBookService"  # DS-007 — personal book CRUD
     book_valuation: "BookValuationService"  # DS-012
     my_money: "MyMoneyService"              # DS-015
-    portfolio_v2: "PortfolioServiceV2"      # NEW — date-aware valuation
+    portfolio: "PortfolioService"      # date-aware valuation
     decision_journal: "DecisionJournalService"  # DS-024
 
 
@@ -38,7 +38,7 @@ def get_application_services() -> ApplicationServices:
     from src.services.portfolio_book_service import PortfolioBookService
     from src.services.book_valuation_service import BookValuationService
     from src.services.my_money_service import MyMoneyService
-    from src.services.portfolio_service_v2 import PortfolioServiceV2
+    from src.services.portfolio_service import PortfolioService
     from src.services.decision_journal_service import DecisionJournalService
     from src.core.enhanced_asset_manager import get_enhanced_asset_manager
     from findata.serving.provider import DataProvider
@@ -59,6 +59,6 @@ def get_application_services() -> ApplicationServices:
         portfolio_book=PortfolioBookService(portfolio_book_db, data_provider),
         book_valuation=book_val_svc,
         my_money=MyMoneyService(portfolio_book_db, book_val_svc, data_provider),
-        portfolio_v2=PortfolioServiceV2(),
+        portfolio=PortfolioService(),
         decision_journal=DecisionJournalService(portfolio_book_db),
     )

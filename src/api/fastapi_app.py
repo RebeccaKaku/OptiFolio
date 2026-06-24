@@ -72,12 +72,12 @@ def create_app() -> FastAPI:
     async def _lifespan(app: FastAPI):
         """Pre-warm the portfolio price cache on server startup.
 
-        Calls PortfolioServiceV2.warmup() to trigger background price
+        Calls PortfolioService.warmup() to trigger background price
         refreshes for all holdings. Does NOT block startup if it fails.
         """
         try:
             _log.info("Startup warmup: pre-fetching portfolio prices...")
-            get_application_services().portfolio_v2.warmup()
+            get_application_services().portfolio.warmup()
             _log.info("Startup warmup: complete")
         except Exception as exc:
             _log.warning("Startup warmup failed (non-blocking): %s", exc)
@@ -123,7 +123,7 @@ def create_app() -> FastAPI:
     def system_status() -> JSONResponse:
         return _json_response(get_application_services().system.get_status())
 
-    @app.get("/api/portfolio/v2/performance/fx-decomposition", tags=["portfolio"])
+    @app.get("/api/portfolio/performance/fx-decomposition", tags=["portfolio"])
     def fx_decomposition(
         start: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
         end: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
@@ -134,7 +134,7 @@ def create_app() -> FastAPI:
             start_date = datetime.strptime(start, "%Y-%m-%d").date()
             end_date = datetime.strptime(end, "%Y-%m-%d").date()
             return _json_response(
-                get_application_services().portfolio_v2.get_fx_decomposition(
+                get_application_services().portfolio.get_fx_decomposition(
                     start_date, end_date, base_currency
                 )
             )
@@ -256,7 +256,7 @@ def create_app() -> FastAPI:
             )
         )
 
-    # ── Portfolio V2 routes (date-aware valuation) ────────────────────
+    # ── Portfolio routes (date-aware valuation) ────────────────────
 
     class DividendPayload(BaseModel):
         """Request payload for recording a dividend corporate action."""
@@ -289,7 +289,7 @@ def create_app() -> FastAPI:
         account_currency: Optional[str] = Field(default="USD", description="Ghostfolio account currency")
         date: Optional[str] = Field(default=None, description="Date for activities in YYYY-MM-DD (default: today)")
 
-    @app.post("/api/portfolio/v2/export/ghostfolio", tags=["portfolio"])
+    @app.post("/api/portfolio/export/ghostfolio", tags=["portfolio"])
     def export_to_ghostfolio(payload: GhostfolioExportPayload) -> JSONResponse:
         """Export current portfolio holdings to Ghostfolio as BUY activities.
 
@@ -345,8 +345,8 @@ def create_app() -> FastAPI:
             "message": f"{count} activities exported to Ghostfolio",
         })
 
-    @app.get("/api/portfolio/v2/value", tags=["portfolio"])
-    def portfolio_v2_value(
+    @app.get("/api/portfolio/value", tags=["portfolio"])
+    def portfolio_value(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
     ) -> JSONResponse:
@@ -367,13 +367,13 @@ def create_app() -> FastAPI:
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
-            get_application_services().portfolio_v2.get_value(
+            get_application_services().portfolio.get_value(
                 as_of=as_of_date, base_currency=base_currency,
             )
         )
 
-    @app.get("/api/portfolio/v2/history", tags=["portfolio"])
-    def portfolio_v2_history(
+    @app.get("/api/portfolio/history", tags=["portfolio"])
+    def portfolio_history(
         start: str = Query(pattern=r"^\d{4}-\d{2}-\d{2}$"),
         end: str = Query(pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
@@ -381,37 +381,37 @@ def create_app() -> FastAPI:
         """Daily portfolio valuation over a date range."""
         from datetime import date as date_cls
         return _json_response(
-            get_application_services().portfolio_v2.get_value_history(
+            get_application_services().portfolio.get_value_history(
                 start=date_cls.fromisoformat(start),
                 end=date_cls.fromisoformat(end),
                 base_currency=base_currency,
             )
         )
 
-    @app.get("/api/portfolio/v2/holdings", tags=["portfolio"])
-    def portfolio_v2_holdings() -> JSONResponse:
+    @app.get("/api/portfolio/holdings", tags=["portfolio"])
+    def portfolio_holdings() -> JSONResponse:
         return _json_response(
-            get_application_services().portfolio_v2.get_current_holdings()
+            get_application_services().portfolio.get_current_holdings()
         )
 
-    @app.get("/api/portfolio/v2/cash", tags=["portfolio"])
-    def portfolio_v2_cash() -> JSONResponse:
+    @app.get("/api/portfolio/cash", tags=["portfolio"])
+    def portfolio_cash() -> JSONResponse:
         return _json_response(
-            get_application_services().portfolio_v2.get_cash_balances()
+            get_application_services().portfolio.get_cash_balances()
         )
 
-    @app.get("/api/portfolio/v2/corporate-actions", tags=["portfolio"])
-    def portfolio_v2_corporate_actions(
+    @app.get("/api/portfolio/corporate-actions", tags=["portfolio"])
+    def portfolio_corporate_actions(
         asset_id: Optional[str] = None,
     ) -> JSONResponse:
         return _json_response(
-            get_application_services().portfolio_v2.get_corporate_actions(
+            get_application_services().portfolio.get_corporate_actions(
                 asset_id=asset_id,
             )
         )
 
-    @app.post("/api/portfolio/v2/corporate-actions/dividend", tags=["portfolio"])
-    def portfolio_v2_record_dividend(payload: DividendPayload) -> JSONResponse:
+    @app.post("/api/portfolio/corporate-actions/dividend", tags=["portfolio"])
+    def portfolio_record_dividend(payload: DividendPayload) -> JSONResponse:
         """Record a dividend corporate action.
 
         Example success response:
@@ -420,7 +420,7 @@ def create_app() -> FastAPI:
         """
         from datetime import date as date_cls
         return _json_response(
-            get_application_services().portfolio_v2.record_dividend(
+            get_application_services().portfolio.record_dividend(
                 asset_id=payload.asset_id,
                 ex_date=date_cls.fromisoformat(payload.ex_date),
                 amount_per_share=payload.amount_per_share,
@@ -430,8 +430,8 @@ def create_app() -> FastAPI:
             )
         )
 
-    @app.post("/api/portfolio/v2/corporate-actions/split", tags=["portfolio"])
-    def portfolio_v2_record_split(payload: SplitPayload) -> JSONResponse:
+    @app.post("/api/portfolio/corporate-actions/split", tags=["portfolio"])
+    def portfolio_record_split(payload: SplitPayload) -> JSONResponse:
         """Record a stock split corporate action.
 
         Example success response:
@@ -440,7 +440,7 @@ def create_app() -> FastAPI:
         """
         from datetime import date as date_cls
         return _json_response(
-            get_application_services().portfolio_v2.record_split(
+            get_application_services().portfolio.record_split(
                 asset_id=payload.asset_id,
                 ex_date=date_cls.fromisoformat(payload.ex_date),
                 ratio=payload.ratio,
@@ -448,8 +448,8 @@ def create_app() -> FastAPI:
             )
         )
 
-    @app.post("/api/portfolio/v2/corporate-actions/merger", tags=["portfolio"])
-    def portfolio_v2_record_merger(payload: MergerPayload) -> JSONResponse:
+    @app.post("/api/portfolio/corporate-actions/merger", tags=["portfolio"])
+    def portfolio_record_merger(payload: MergerPayload) -> JSONResponse:
         """Record a merger corporate action.
 
         Example success response:
@@ -459,7 +459,7 @@ def create_app() -> FastAPI:
         """
         from datetime import date as date_cls
         return _json_response(
-            get_application_services().portfolio_v2.record_merger(
+            get_application_services().portfolio.record_merger(
                 asset_id=payload.asset_id,
                 target_asset_id=payload.target_asset_id,
                 ex_date=date_cls.fromisoformat(payload.ex_date),
@@ -470,14 +470,14 @@ def create_app() -> FastAPI:
             )
         )
 
-    @app.get("/api/portfolio/v2/metrics", tags=["portfolio"])
-    def portfolio_v2_metrics() -> JSONResponse:
+    @app.get("/api/portfolio/metrics", tags=["portfolio"])
+    def portfolio_metrics() -> JSONResponse:
         return _json_response(
-            get_application_services().portfolio_v2.compute_metrics()
+            get_application_services().portfolio.compute_metrics()
         )
 
-    @app.get("/api/portfolio/v2/risk/fx-exposure", tags=["portfolio"])
-    def portfolio_v2_fx_exposure(
+    @app.get("/api/portfolio/risk/fx-exposure", tags=["portfolio"])
+    def portfolio_fx_exposure(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
     ) -> JSONResponse:
@@ -491,13 +491,13 @@ def create_app() -> FastAPI:
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
-            get_application_services().portfolio_v2.get_fx_exposure_report(
+            get_application_services().portfolio.get_fx_exposure_report(
                 as_of=as_of_date, base_currency=base_currency,
             )
         )
 
-    @app.get("/api/portfolio/v2/risk/exposure", tags=["portfolio"])
-    def portfolio_v2_exposure(
+    @app.get("/api/portfolio/risk/exposure", tags=["portfolio"])
+    def portfolio_exposure(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
     ) -> JSONResponse:
@@ -505,13 +505,13 @@ def create_app() -> FastAPI:
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
-            get_application_services().portfolio_v2.get_exposure_report(
+            get_application_services().portfolio.get_exposure_report(
                 as_of=as_of_date, base_currency=base_currency,
             )
         )
 
-    @app.get("/api/portfolio/v2/risk/concentration", tags=["portfolio"])
-    def portfolio_v2_concentration(
+    @app.get("/api/portfolio/risk/concentration", tags=["portfolio"])
+    def portfolio_concentration(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
     ) -> JSONResponse:
@@ -530,13 +530,13 @@ def create_app() -> FastAPI:
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
-            get_application_services().portfolio_v2.get_concentration_report(
+            get_application_services().portfolio.get_concentration_report(
                 as_of=as_of_date, base_currency=base_currency,
             )
         )
 
-    @app.get("/api/portfolio/v2/risk/liquidity", tags=["portfolio"])
-    def portfolio_v2_liquidity(
+    @app.get("/api/portfolio/risk/liquidity", tags=["portfolio"])
+    def portfolio_liquidity(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
     ) -> JSONResponse:
@@ -554,7 +554,7 @@ def create_app() -> FastAPI:
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
-            get_application_services().portfolio_v2.get_liquidity_report(
+            get_application_services().portfolio.get_liquidity_report(
                 as_of=as_of_date, base_currency=base_currency,
             )
         )
@@ -566,8 +566,8 @@ def create_app() -> FastAPI:
             description="User-configured thresholds. Keys: emergency_months, monthly_spending, fx_target_pct",
         )
 
-    @app.post("/api/portfolio/v2/risk/rules", tags=["portfolio"])
-    def portfolio_v2_risk_rules(
+    @app.post("/api/portfolio/risk/rules", tags=["portfolio"])
+    def portfolio_risk_rules(
         payload: RiskRulesPayload = RiskRulesPayload(),
     ) -> JSONResponse:
         """Run the risk rule engine across all dimensions.
@@ -581,19 +581,19 @@ def create_app() -> FastAPI:
         an aggregate summary with counts by severity and category.
         """
         return _json_response(
-            get_application_services().portfolio_v2.get_risk_rules(
+            get_application_services().portfolio.get_risk_rules(
                 user_targets=payload.user_targets,
             )
         )
 
-    @app.get("/api/portfolio/v2/history-entries", tags=["portfolio"])
-    def portfolio_v2_history_entries(
+    @app.get("/api/portfolio/history-entries", tags=["portfolio"])
+    def portfolio_history_entries(
         start: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         end: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     ) -> JSONResponse:
         from datetime import date as date_cls
         return _json_response(
-            get_application_services().portfolio_v2.get_history(
+            get_application_services().portfolio.get_history(
                 start=date_cls.fromisoformat(start) if start else None,
                 end=date_cls.fromisoformat(end) if end else None,
             )

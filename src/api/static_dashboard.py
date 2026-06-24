@@ -58,7 +58,7 @@ HTML = r"""<!DOCTYPE html>
 
 <div class="grid">
   <div class="card">
-    <h2>Portfolio (V2 Engine)</h2>
+    <h2>Portfolio</h2>
     <div id="port-summary" class="loading">Loading...</div>
   </div>
   <div class="card">
@@ -137,7 +137,7 @@ function badge(t) {
 async function loadPortfolio() {
   const el = document.getElementById('port-summary');
   const today = new Date().toISOString().slice(0, 10);
-  const res = await get(`/api/portfolio/v2/risk/exposure?as_of=${today}`);
+  const res = await get(`/api/portfolio/risk/exposure?as_of=${today}`);
   if (!res.success) {
     const errMsg = res.message || res.error || 'Unknown error';
     const errCode = res.error_code || '';

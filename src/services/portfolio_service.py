@@ -1,4 +1,4 @@
-"""PortfolioServiceV2 — date-aware portfolio management.
+"""PortfolioService — date-aware portfolio management.
 
 Integrates ValuationEngine, CorporateActionProcessor, FeeProcessor,
 and PortfolioHistoryTracker into a single service facade.
@@ -165,12 +165,12 @@ class _AssetTypeResolver:
         return {"exists": False}
 
 
-class PortfolioServiceV2:
+class PortfolioService:
     """Date-aware portfolio management service.
 
     Usage::
 
-        svc = PortfolioServiceV2()
+        svc = PortfolioService()
         result = svc.get_value(as_of=date(2025, 6, 15))  # next-day NAV
         history = svc.get_value_history(start=date(2025, 1, 1), end=date(2025, 6, 15))
         svc.record_dividend("AAPL", date(2025, 6, 15), amount_per_share=0.50)

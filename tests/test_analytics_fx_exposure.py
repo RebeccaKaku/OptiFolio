@@ -10,7 +10,7 @@ from src.analytics.fx_exposure import FxExposureAnalyzer, FxExposureItem, FxExpo
 from src.core.valuation import FxRateProvider, ValuationEngine
 from findata.store import MarketDataRepository
 from src.domain import CashHolding, PositionValue, ValuationRequest
-from src.services.portfolio_service_v2 import PortfolioServiceV2
+from src.services.portfolio_service import PortfolioService
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -49,8 +49,8 @@ def _make_fx_provider() -> FxRateProvider:
     })
 
 
-def _make_service(tmp_path: Path) -> PortfolioServiceV2:
-    """Create a PortfolioServiceV2 with test holdings via SQLite book.
+def _make_service(tmp_path: Path) -> PortfolioService:
+    """Create a PortfolioService with test holdings via SQLite book.
 
     Portfolio data is loaded exclusively from SQLite.  We create an
     isolated database in *tmp_path*, seed it with the test positions,
@@ -105,7 +105,7 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
 
     db.confirm_batch(batch_id)
 
-    return PortfolioServiceV2(
+    return PortfolioService(
         valuation_engine=engine,
         db=db,
         base_currency="CNY",
@@ -306,10 +306,10 @@ class TestFxExposureAnalyzer:
             assert isinstance(e["asset_ids"], list)
 
 
-# ── integration tests: PortfolioServiceV2 ────────────────────────────
+# ── integration tests: PortfolioService ────────────────────────────
 
 class TestFxExposureIntegration:
-    """Integration tests for FX exposure through PortfolioServiceV2."""
+    """Integration tests for FX exposure through PortfolioService."""
 
     def test_get_fx_exposure_report_via_service(self, tmp_path):
         svc = _make_service(tmp_path)
@@ -342,7 +342,7 @@ class TestFxExposureIntegration:
         repo = MarketDataRepository(tmp_path / "foundation")
         # No seed — empty repo
         engine = ValuationEngine(market_data=repo)
-        svc = PortfolioServiceV2(valuation_engine=engine, base_currency="CNY")
+        svc = PortfolioService(valuation_engine=engine, base_currency="CNY")
         svc._holdings = {"UNKNOWN": 100}
         result = svc.get_fx_exposure_report(as_of=date(2020, 1, 1), base_currency="CNY")
         assert not result["success"]
@@ -397,7 +397,7 @@ class TestFxExposureIntegration:
 
         db.confirm_batch(batch_id)
 
-        svc = PortfolioServiceV2(
+        svc = PortfolioService(
             valuation_engine=engine, db=db, base_currency="CNY",
         )
         result = svc.get_fx_exposure_report(as_of=date(2025, 6, 15), base_currency="CNY")

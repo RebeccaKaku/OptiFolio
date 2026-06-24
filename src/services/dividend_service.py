@@ -92,24 +92,10 @@ class DividendDetectionService:
         Returns:
             List of all DividendEvent objects found.
         """
-        import akshare as ak
-
-        date_str = f"{report_year}1231"
-        try:
-            df = ak.stock_fhps_em(date=date_str)
-        except Exception:
-            return []
-
-        events: List[DividendEvent] = []
-        for _, row in df.iterrows():
-            try:
-                event = self._parse_row(row)
-                if event:
-                    events.append(event)
-            except Exception:
-                continue
-
-        return events
+        # TODO: wire via findata adapter — akshare's stock_fhps_em (dividend
+        # distribution plans) needs a dedicated findata adapter.  Until then,
+        # this method returns an empty list.
+        return []
 
     def detect_for_portfolio(
         self,

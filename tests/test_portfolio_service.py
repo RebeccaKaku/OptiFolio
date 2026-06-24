@@ -1,4 +1,4 @@
-"""Integration tests for PortfolioServiceV2."""
+"""Integration tests for PortfolioService."""
 
 import tempfile
 from datetime import date
@@ -13,7 +13,7 @@ from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import FxRateProvider, ValuationEngine
 from src.domain.products import ProductDefinition
 from findata.store import MarketDataRepository
-from src.services.portfolio_service_v2 import PortfolioServiceV2
+from src.services.portfolio_service import PortfolioService
 
 
 def _seed_repo(repo: MarketDataRepository):
@@ -69,7 +69,7 @@ def _make_book(tmp_path: Path) -> PortfolioBookDatabase:
     return db
 
 
-def _make_service(tmp_path: Path) -> PortfolioServiceV2:
+def _make_service(tmp_path: Path) -> PortfolioService:
     repo = MarketDataRepository(tmp_path / "foundation")
     _seed_repo(repo)
 
@@ -88,7 +88,7 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
     fee = FeeProcessor()
     hist = PortfolioHistoryTracker(local_dir / "portfolio_history.parquet")
 
-    return PortfolioServiceV2(
+    return PortfolioService(
         valuation_engine=engine,
         corp_action_processor=cap,
         fee_processor=fee,
@@ -98,7 +98,7 @@ def _make_service(tmp_path: Path) -> PortfolioServiceV2:
     )
 
 
-class TestPortfolioServiceV2:
+class TestPortfolioService:
     """Integration tests for the full portfolio service."""
 
     def test_get_value_returns_nav(self, tmp_path):
@@ -154,7 +154,7 @@ class TestPortfolioServiceV2:
         )
         assert div_result["success"]
 
-        # Value after dividend ex-date — holdings unchanged in PortfolioServiceV2
+        # Value after dividend ex-date — holdings unchanged in PortfolioService
         # because corporate actions are only applied in get_value_history()
         holdings = svc.get_current_holdings()
         assert holdings["data"]["holdings"]["equity.us.aapl"] == 100  # holdings unchanged
@@ -181,11 +181,11 @@ class TestPortfolioServiceV2:
         assert result["data"]["count"] >= 2
 
     def test_service_initializes_with_default_db(self, tmp_path):
-        """PortfolioServiceV2 should initialize from the default SQLite book."""
+        """PortfolioService should initialize from the default SQLite book."""
         repo = MarketDataRepository(tmp_path / "foundation")
         engine = ValuationEngine(market_data=repo)
         # No config_path — uses default PortfolioBookDatabase (only SQLite)
-        svc = PortfolioServiceV2(valuation_engine=engine)
+        svc = PortfolioService(valuation_engine=engine)
         holdings = svc.get_current_holdings()
         assert holdings["success"]
 
@@ -321,7 +321,7 @@ class TestPortfolioServiceV2:
         assert set(result.columns) == expected_cols
 
     def test_get_exposure_report(self, tmp_path):
-        """End-to-end exposure report through PortfolioServiceV2."""
+        """End-to-end exposure report through PortfolioService."""
         svc = _make_service(tmp_path)
         result = svc.get_exposure_report(as_of=date(2025, 6, 15), base_currency="CNY")
 

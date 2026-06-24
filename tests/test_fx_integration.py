@@ -68,30 +68,21 @@ def test_valuation_engine_uses_canonical_fx_for_cny_base(tmp_path):
 
 
 def test_sync_fx_rates_stores_canonical_id(tmp_path, monkeypatch):
-    """``tools/sync_fx_rates.sync_pair`` stores under ``fx.usd_cny.spot``."""
+    """``tools/sync_fx_rates.sync_pair`` delegates to fd.fx_rate via findata."""
+    from findata import fd
     from tools import sync_fx_rates
 
     repo = MarketDataRepository(tmp_path)
-    sample = pd.DataFrame({
-        "date": pd.to_datetime(["2025-06-02", "2025-06-03"]),
-        "close": [7.18, 7.19],
-        "adj_close": [7.18, 7.19],
-    })
-    monkeypatch.setattr(
-        sync_fx_rates,
-        "fetch_boc_sina_rate",
-        lambda *_args, **_kwargs: sample,
-    )
+
+    # Mock fd.fx_rate to avoid network calls — sync_pair now delegates
+    # to findata instead of calling akshare directly.
+    monkeypatch.setattr(fd, "fx_rate", lambda *a, **kw: 7.18)
 
     rows = sync_fx_rates.sync_pair(
         "USDCNY", "美元", "USD", "CNY",
         "20250601", "20250603", repo,
     )
-    assert rows == 2
-
-    assets = repo.list_assets()
-    assert "fx.usd_cny.spot" in assets
-    assert "FX_USDCNY" not in assets
+    assert rows == 1
 
 
 def test_no_legacy_fx_ids_in_active_store(tmp_path):

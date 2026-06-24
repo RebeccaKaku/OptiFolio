@@ -49,57 +49,20 @@ _RATE_COLUMN_PRIMARY = "央行中间价"
 _RATE_COLUMN_FALLBACK = "中行折算价"
 
 
+# TODO: wire via findata adapter — the CurrencyFetcher in findata.adapters.forex
+# provides FX history via yfinance.  For BOC central parity specifically, we
+# need an akshare-backed adapter inside findata.  Until then, the sync_pair()
+# function below delegates to fd.fx_rate(mode="live") which syncs via yfinance.
 def fetch_boc_sina_rate(
     symbol: str,
     start_date: str,
     end_date: str,
 ) -> pd.DataFrame | None:
-    """Fetch daily BOC benchmark rate for a single currency via akshare.
+    """Fetch daily BOC benchmark rate — STUB (akshare import removed).
 
-    Args:
-        symbol: Chinese currency name (e.g. '美元', '欧元').
-        start_date: YYYYMMDD start.
-        end_date: YYYYMMDD end.
-
-    Returns:
-        DataFrame with columns [date, close, adj_close] or None on failure.
-        The rate is already divided by BOC_UNITS_DENOMINATOR to give
-        CNY per 1 unit of foreign currency.
+    Use fd.fx_rate(mode="live") to sync live FX rates through findata instead.
     """
-    import akshare as ak
-
-    try:
-        raw = ak.currency_boc_sina(symbol=symbol, start_date=start_date, end_date=end_date)
-    except Exception:
-        return None
-
-    if raw is None or raw.empty:
-        return None
-
-    # Pick the benchmark rate column
-    rate_col: str | None = None
-    for col in (_RATE_COLUMN_PRIMARY, _RATE_COLUMN_FALLBACK):
-        if col in raw.columns:
-            rate_col = col
-            break
-
-    if rate_col is None:
-        return None
-
-    df = pd.DataFrame()
-    df["date"] = pd.to_datetime(raw["日期"], errors="coerce")
-    # Convert from "per 100 units" to "per 1 unit"
-    df["close"] = pd.to_numeric(raw[rate_col], errors="coerce") / BOC_UNITS_DENOMINATOR
-    df["adj_close"] = df["close"]
-
-    # Drop rows with missing dates or non-positive rates
-    df = df.dropna(subset=["date", "close"])
-    df = df[df["close"] > 0]
-
-    if df.empty:
-        return None
-
-    return df.sort_values("date").reset_index(drop=True)
+    return None
 
 
 def sync_pair(
@@ -113,37 +76,26 @@ def sync_pair(
     *,
     dry_run: bool = False,
 ) -> int:
-    """Sync a single FX pair into the repository.
+    """Sync a single FX pair into the repository via findata.
 
-    Returns the number of rows saved.
+    Returns the number of pairs synced (1 on success, 0 on failure).
     """
-    df = fetch_boc_sina_rate(boc_symbol, start_date, end_date)
-    if df is None or df.empty:
-        print(f"  {pair_id}: no data fetched")
-        return 0
+    from findata import fd
 
     asset_id = normalize_instrument_id(
         f"{from_curr}{to_curr}", asset_type="forex"
     )
 
     if dry_run:
-        print(f"  {pair_id} ({asset_id}): would save {len(df)} rows "
-              f"[{df['date'].min().date()} .. {df['date'].max().date()}]")
-        return len(df)
+        print(f"  {pair_id} ({asset_id}): would sync via findata (dry-run)")
+        return 1
 
     try:
-        repo.save_canonical(
-            df,
-            asset_id=asset_id,
-            source="akshare-boc-sina",
-            currency="CNY",
-            timezone="UTC",
-        )
-        print(f"  {pair_id} ({asset_id}): saved {len(df)} rows "
-              f"[{df['date'].min().date()} .. {df['date'].max().date()}]")
-        return len(df)
+        fd.fx_rate(from_curr, to_curr, mode="live")
+        print(f"  {pair_id} ({asset_id}): synced via findata")
+        return 1
     except Exception as exc:
-        print(f"  {pair_id} ({asset_id}): save error: {exc}")
+        print(f"  {pair_id} ({asset_id}): error: {exc}")
         return 0
 
 
