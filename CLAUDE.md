@@ -38,7 +38,7 @@ python tools/privacy_scan.py --strict --with-detect-secrets
 | File | Purpose |
 |------|---------|
 | `packages/findata/findata/__init__.py` | `fd` singleton — THE public data API |
-| `packages/findata/findata/adapters/` | 10 provider fetchers + FetcherProtocol + registry |
+| `packages/findata/findata/adapters/` | 12 provider fetchers + FetcherProtocol + registry |
 | `packages/findata/findata/store/` | CanonicalStore, QualityGate, MarketDataRepository, schemas |
 | `packages/findata/findata/serving/provider.py` | DataProvider — prices, ohlcv, returns, metrics, fx |
 | `packages/findata/findata/orchestration/orchestrator.py` | Orchestrator — schedule + dispatch |
@@ -48,7 +48,7 @@ python tools/privacy_scan.py --strict --with-detect-secrets
 | `src/services/portfolio_service_v2.py` | Canonical portfolio service |
 | `src/analytics/alerts.py` | AlertEngine — wired, exposed at `/api/alerts` |
 | `src/core/valuation.py` | ValuationEngine |
-| `src/core/portfolio_book_db.py` | Personal book SQLite database (v8 schema) |
+| `src/core/portfolio_book_db.py` | Personal book SQLite database (v11 schema) |
 | `src/domain/` | Domain models — products, positions, exposures, cashflows, instruments |
 | `src/runtime/bootstrap.py` | Local state initialization (DB, portfolio config) |
 | `config/asset_registry.yaml` | Flat asset registry v2.0 |

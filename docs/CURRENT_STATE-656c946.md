@@ -10,7 +10,7 @@
 
 ## One-Line Status
 
-Major refactoring complete: `FinData/` monolith → `packages/findata/` + `packages/optifolio_contracts/`. All 27 DeepSeek tasks implemented. 3 Jules PRs merged (dead code removal, DB naming, YAML fallback removal — partially reverted). Fund identifiers now carry akshare-derived subtype (`fund.cn.money.000198`). **Next: complete TODO.md P0 tasks — remove YAML fallback and hardcoded data.**
+Major refactoring complete: `FinData/` monolith → `packages/findata/` + `packages/optifolio_contracts/`. All 27 DeepSeek tasks implemented. 3 Jules PRs merged (dead code removal, DB naming, portfolio-file fallback removal — partially reverted). Fund identifiers now carry akshare-derived subtype (`fund.cn.money.000198`). **Next: keep SQLite-only portfolio loading and remove remaining hardcoded data.**
 
 ---
 

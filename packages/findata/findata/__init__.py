@@ -38,6 +38,10 @@ _PUBLIC_FACADE_METHODS = frozenset({
     "observation_series",
     "observation_coverage",
     "export",
+    "get_metadata",
+    "dividends",
+    "fund_fees",
+    "fund_status",
 })
 
 

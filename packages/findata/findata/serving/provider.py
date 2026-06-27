@@ -72,6 +72,31 @@ class DataProvider:
         rename = {c: s for c, s in zip(canonicals, symbols) if c in panel.columns}
         return panel.rename(columns=rename).reindex(columns=symbols)
 
+    def dividends(self, report_year: int = 2025) -> List[Dict[str, Any]]:
+        """Fetch dividend distribution events for CN A-share stocks.
+
+        Uses akshare's stock_fhps_em (EastMoney dividend distribution plans).
+        Returns a list of dicts with parsed fields.
+        """
+        from findata.adapters.dividend import DividendFetcher
+
+        fetcher = DividendFetcher()
+        return fetcher.get_dividends_for_year(report_year)
+
+    def fund_fees(self, fund_code: str) -> Dict[str, Any]:
+        """Get fee structure for a CN fund (management, custody, subscription/redemption)."""
+        from findata.adapters.fund_fee import FundFeeFetcher
+
+        fetcher = FundFeeFetcher()
+        return fetcher.get_fees(fund_code)
+
+    def fund_status(self, fund_code: str) -> Dict[str, Any]:
+        """Get subscription/redemption status for a CN fund."""
+        from findata.adapters.fund_fee import FundFeeFetcher
+
+        fetcher = FundFeeFetcher()
+        return fetcher.get_status(fund_code)
+
     def get_metadata(self, symbol: str, asset_type: str = None) -> Optional[Dict[str, Any]]:
         """Return metadata for an asset from its designated fetcher."""
         from findata.adapters import get_fetcher

@@ -14,8 +14,9 @@ class UsEquityFetcher(FetcherProtocol):
         t0 = time.time()
         try:
             canonical = normalize_instrument_id(symbol, asset_type="us_equity")
+            ticker = canonical.split(".")[-1]
             import akshare as ak
-            df = ak.stock_us_daily(symbol=symbol, adjust="qfq")
+            df = ak.stock_us_daily(symbol=ticker, adjust="qfq")
             # Filter date range
             df["date"] = pd.to_datetime(df["date"])
             mask = (df["date"] >= pd.Timestamp(start_date)) & (df["date"] <= pd.Timestamp(end_date))

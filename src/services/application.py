@@ -44,6 +44,7 @@ def get_application_services() -> ApplicationServices:
     portfolio_book_db.initialize()
 
     data_provider = DataProvider()
+    portfolio_svc = PortfolioService(db=portfolio_book_db)
     book_val_svc = BookValuationService(portfolio_book_db, data_provider)
     return ApplicationServices(
         system=SystemService(),
@@ -52,7 +53,10 @@ def get_application_services() -> ApplicationServices:
         alerts=AlertEngine(),
         portfolio_book=PortfolioBookService(portfolio_book_db, data_provider),
         book_valuation=book_val_svc,
-        my_money=MyMoneyService(portfolio_book_db, book_val_svc, data_provider),
-        portfolio=PortfolioService(),
+        my_money=MyMoneyService(
+            portfolio_book_db, book_val_svc, data_provider,
+            portfolio_service=portfolio_svc,
+        ),
+        portfolio=portfolio_svc,
         decision_journal=DecisionJournalService(portfolio_book_db),
     )

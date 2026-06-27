@@ -81,6 +81,7 @@ class TestRegistry:
             "cn_fund_qdii", "cn_money_market_fund",
             "currency", "forex",
             "bank_wmp", "bank_wm_bosc", "bank_wm_boc", "bank_wm_icbc",
+            "cn_dividend", "cn_fund_fee",
             "crypto", "hk_equity",
         }
         assert set(FETCHER_REGISTRY.keys()) == expected
@@ -96,9 +97,12 @@ class TestProtocolConformance:
         from findata.adapters.cn_fund import CnFundFetcherAdapter
         from findata.adapters.forex import ForexFetcher
         from findata.adapters.bank_wmp import BankWmpFetcher
+        from findata.adapters.dividend import DividendFetcher
+        from findata.adapters.fund_fee import FundFeeFetcher
 
         for cls in [UsEquityFetcher, CnStockFetcher,
-                    CnFundFetcherAdapter, ForexFetcher, BankWmpFetcher]:
+                    CnFundFetcherAdapter, ForexFetcher, BankWmpFetcher,
+                    DividendFetcher, FundFeeFetcher]:
             assert issubclass(cls, FetcherProtocol), f"{cls.__name__} must subclass FetcherProtocol"
 
     def test_all_registry_instances_match_protocol(self):

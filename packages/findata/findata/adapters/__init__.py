@@ -56,10 +56,12 @@ from .cn_stock import CnStockFetcher
 from .cn_fund import CnFundFetcherAdapter
 from .forex import CurrencyFetcher, ForexFetcher
 from .bank_wmp import BankWmpFetcher
+from .dividend import DividendFetcher
+from .fund_fee import FundFeeFetcher
 
 FETCHER_REGISTRY = {
     "us_equity": UsEquityFetcher(),
-    "us_etf": UsEquityFetcher(),                   # US ETFs use same fetcher as US equities
+    "us_etf": UsEquityFetcher(),
     "cn_stock": CnStockFetcher(),
     "cn_stock_sh": CnStockFetcher(),
     "cn_stock_sz": CnStockFetcher(),
@@ -67,16 +69,18 @@ FETCHER_REGISTRY = {
     "cn_fund_open": CnFundFetcherAdapter(),
     "cn_fund_etf": CnFundFetcherAdapter(),
     "cn_fund_money": CnFundFetcherAdapter(),
-    "cn_fund_qdii": CnFundFetcherAdapter(),        # QDII → same as cn_fund
-    "cn_money_market_fund": CnFundFetcherAdapter(), # Money market → same as cn_fund
+    "cn_fund_qdii": CnFundFetcherAdapter(),
+    "cn_money_market_fund": CnFundFetcherAdapter(),
     "currency": ForexFetcher(),
     "forex": ForexFetcher(),
-    "bank_wmp": BankWmpFetcher(),                  # Generic bank WMP entry
+    "bank_wmp": BankWmpFetcher(),
     "bank_wm_bosc": BankWmpFetcher(),
     "bank_wm_boc": BankWmpFetcher(),
     "bank_wm_icbc": BankWmpFetcher(),
-    "crypto": None,                                # Not yet adapted
-    "hk_equity": None,                             # Not yet adapted
+    "cn_dividend": DividendFetcher(),
+    "cn_fund_fee": FundFeeFetcher(),
+    "crypto": None,
+    "hk_equity": None,
 }
 
 

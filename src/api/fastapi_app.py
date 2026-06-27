@@ -85,7 +85,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="OptiFolio API",
-        version="0.1.0",
+        version="0.2.0",
         description="HTTP API for OptiFolio portfolio and asset services.",
         lifespan=_lifespan,
     )
@@ -249,10 +249,18 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/alerts", tags=["alerts"])
-    def list_alerts() -> JSONResponse:
-        """Run all risk checks and return any triggered alerts."""
-        alerts = get_application_services().alerts.run_all()
-        return _json_response(success([a.to_dict() for a in alerts]))
+    def list_alerts(
+        as_of: Optional[str] = Query(default=None),
+        base_currency: Optional[str] = Query(default=None),
+    ) -> JSONResponse:
+        """Run all risk checks with auto-populated portfolio context."""
+        from datetime import date as date_type
+
+        as_of_date = date_type.fromisoformat(as_of) if as_of else None
+        result = get_application_services().portfolio.get_alerts(
+            as_of=as_of_date, base_currency=base_currency,
+        )
+        return _json_response(result)
 
     @app.post("/api/alerts/run", tags=["alerts"])
     def run_alerts(ctx: Optional[Dict[str, Any]] = Body(None)) -> JSONResponse:
@@ -393,26 +401,24 @@ def create_app() -> FastAPI:
     def portfolio_value(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+        strict: bool = Query(default=True),
     ) -> JSONResponse:
         """Date-aware portfolio valuation (next-day NAV).
 
         Returns the total portfolio value as of the requested date, along with
         per-position and per-currency breakdowns.
 
-        Metadata in the response:
-        - ``price_date``: the actual date of the prices used for valuation (the most
-          recent available price on or before ``as_of``). This may differ from ``as_of``
-          when the latest market data is not yet available.
-        - ``stale_days``: the number of days between ``as_of`` and ``price_date``
-          (computed as ``as_of - price_date``). A value of 0 means prices are
-          up-to-date; larger values indicate stale data that the frontend should
-          surface to the user.
+        Args:
+            strict: If True (default), valuation fails when any position lacks
+                price data. If False, unpriced positions are skipped and
+                ``stale_days`` is set on positions using older prices — the
+                frontend should display these as estimates.
         """
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
             get_application_services().portfolio.get_value(
-                as_of=as_of_date, base_currency=base_currency,
+                as_of=as_of_date, base_currency=base_currency, strict=strict,
             )
         )
 

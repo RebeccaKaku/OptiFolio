@@ -27,7 +27,12 @@ class BankWmpFetcher(FetcherProtocol):
     _RE_BOC  = re.compile(r"^[A-Z]{5,}[A-Z0-9]{5,}$")                 # 5+ leading letters + 5+ alnum = 10+ total, digits delayed
 
     @staticmethod
+    def _bare_code(symbol: str) -> str:
+        return symbol.split(".")[-1].upper()
+
+    @staticmethod
     def _classify(symbol: str) -> str:
+        symbol = BankWmpFetcher._bare_code(symbol)
         if BankWmpFetcher._RE_ICBC.match(symbol):
             return "icbc"
         if BankWmpFetcher._RE_BOC.match(symbol):
@@ -68,34 +73,36 @@ class BankWmpFetcher(FetcherProtocol):
         return self._boc_structured
 
     def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
-        kind = self._classify(symbol)
+        code = self._bare_code(symbol)
+        kind = self._classify(code)
         if kind == "boc":
             # Try structured first, then wealth management
-            if symbol.startswith(("GRSDR", "CSDPY")):
-                return self._get_boc_structured().get_metadata(symbol)
-            return self._get_boc().get_metadata(symbol)
+            if code.startswith(("GRSDR", "CSDPY")):
+                return self._get_boc_structured().get_metadata(code)
+            return self._get_boc().get_metadata(code)
         elif kind == "icbc":
-            return self._get_icbc().get_metadata(symbol)
+            return self._get_icbc().get_metadata(code)
         elif kind == "bosc":
-            return self._get_bosc().get_metadata(symbol)
+            return self._get_bosc().get_metadata(code)
         return None
 
     # ── fetch ───────────────────────────────────────────────────────
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
         t0 = time.time()
+        code = self._bare_code(symbol)
         try:
-            canonical = normalize_instrument_id(symbol, asset_type="bank_wmp")
+            canonical = normalize_instrument_id(code, asset_type="bank_wmp")
         except Exception:
             canonical = symbol
-        kind = kwargs.pop("kind", None) or self._classify(symbol)
+        kind = kwargs.pop("kind", None) or self._classify(code)
 
         try:
             if kind == "boc":
-                df = _run_async(self._get_boc().fetch(symbol, start_date, end_date, **kwargs))
+                df = _run_async(self._get_boc().fetch(code, start_date, end_date, **kwargs))
             elif kind == "icbc":
-                df = _run_async(self._get_icbc().fetch(symbol, start_date, end_date, **kwargs))
+                df = _run_async(self._get_icbc().fetch(code, start_date, end_date, **kwargs))
             elif kind == "bosc":
-                df = _run_async(self._get_bosc().fetch(symbol, start_date, end_date, **kwargs))
+                df = _run_async(self._get_bosc().fetch(code, start_date, end_date, **kwargs))
             else:
                 return FetchResult(
                     symbol=canonical, provider=self.PROVIDER, data=None,

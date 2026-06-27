@@ -175,11 +175,10 @@ class FxRateProvider:
             )
 
     def _get_live_rate(self, from_curr: str, to_curr: str) -> float:
-        """Fetch live rate from CurrencyFetcher (blocking, network I/O)."""
-        from findata.adapters.forex import CurrencyFetcher
+        """Fetch live rate via findata facade (blocking, network I/O)."""
+        from findata import fd
 
-        fetcher = CurrencyFetcher()
-        rate = fetcher.get_realtime_rate(from_curr, to_curr)
+        rate = fd.fx_rate(from_curr, to_curr, mode="live")
         return float(rate)
 
     def _is_suspicious(self, from_curr: str, to_curr: str, rate: float) -> bool:

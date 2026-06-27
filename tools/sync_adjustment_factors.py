@@ -6,9 +6,8 @@ rights issues) in a single time series. When applied to historical prices,
 it produces forward-adjusted (前复权) or backward-adjusted (后复权) data.
 
 Usage:
-    python tools/sync_adjustment_factors.py                    # sync all from portfolio
+    python tools/sync_adjustment_factors.py                    # sync CN stocks from SQLite book
     python tools/sync_adjustment_factors.py --symbols 600519,000002  # specific symbols
-    python tools/sync_adjustment_factors.py --source-file config/candidates.yaml
 """
 
 from __future__ import annotations
@@ -41,10 +40,16 @@ def fetch_factor(symbol: str, factor_type: str = "qfq") -> pd.DataFrame | None:
     return None
 
 
+def _bare_cn_code(symbol: str) -> str:
+    import re
+
+    match = re.search(r"(\d{6})$", symbol)
+    return match.group(1) if match else symbol.replace("sh", "").replace("sz", "")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Sync A-share adjustment factors")
     parser.add_argument("--symbols", help="Comma-separated stock codes")
-    parser.add_argument("--source-file", help="YAML file with asset list")
     parser.add_argument("--factor-type", default="qfq", choices=["qfq", "hfq"])
     args = parser.parse_args()
 
@@ -52,35 +57,21 @@ def main():
     symbols: list[str] = []
     if args.symbols:
         symbols = [s.strip() for s in args.symbols.split(",")]
-    elif args.source_file:
-        import yaml
-        with open(args.source_file, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        assets = data.get("assets", data.get("universe", {}).get("assets", []))
-        for a in assets:
-            sym = a.get("symbol", "") if isinstance(a, dict) else str(a)
-            if sym and any(sym.startswith(p) for p in ("6", "0", "3", "sh", "sz")):
-                symbols.append(sym)
     else:
-        # Default: load from portfolio
-        from src.core.paths import PROJECT_ROOT
-        import yaml
-        portfolio_path = PROJECT_ROOT / "local" / "portfolio.yaml"
-        if not portfolio_path.exists():
-            portfolio_path = PROJECT_ROOT / "config" / "portfolio.yaml"
-        if portfolio_path.exists():
-            with open(portfolio_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            for sym in data.get("positions", {}):
-                if any(sym.startswith(p) for p in ("6", "0", "3", "sh", "sz")):
-                    symbols.append(sym)
+        from findata.orchestration.ingest import load_portfolio
+
+        holdings, _ = load_portfolio()
+        for sym in holdings:
+            lowered = sym.lower()
+            if lowered.startswith("equity.cn.") or lowered.startswith(("sh", "sz")):
+                symbols.append(sym)
 
     if not symbols:
-        print("No A-share symbols found. Use --symbols or --source-file.")
+        print("No A-share symbols found. Use --symbols or create a confirmed SQLite batch.")
         return
 
     # Remove duplicates and prefixes for API calls
-    clean_symbols = [s.replace("sh", "").replace("sz", "") for s in symbols]
+    clean_symbols = [_bare_cn_code(s) for s in symbols]
     clean_symbols = list(dict.fromkeys(clean_symbols))  # dedup preserving order
 
     print(f"Syncing adjustment factors for {len(clean_symbols)} symbols: {clean_symbols}")

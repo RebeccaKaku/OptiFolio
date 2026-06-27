@@ -78,7 +78,7 @@ class DividendEvent:
 
 
 class DividendDetectionService:
-    """Scans akshare for dividend events matching portfolio holdings."""
+    """Scans dividend events via findata facade."""
 
     def __init__(self, processor: Optional[CorporateActionProcessor] = None):
         self.processor = processor or CorporateActionProcessor()
@@ -92,10 +92,34 @@ class DividendDetectionService:
         Returns:
             List of all DividendEvent objects found.
         """
-        # TODO: wire via findata adapter — akshare's stock_fhps_em (dividend
-        # distribution plans) needs a dedicated findata adapter.  Until then,
-        # this method returns an empty list.
-        return []
+        from findata import fd
+
+        try:
+            raw_events = fd.dividends(report_year)
+        except Exception:
+            _log.warning("Failed to fetch dividends for year %d", report_year)
+            return []
+
+        events = []
+        for r in raw_events:
+            try:
+                events.append(DividendEvent(
+                    stock_code=r["stock_code"],
+                    stock_name=r["stock_name"],
+                    report_date=r.get("report_date") or date.today(),
+                    ex_rights_date=r.get("ex_rights_date"),
+                    record_date=r.get("record_date"),
+                    cash_per_10=r.get("cash_per_10", 0),
+                    stock_div_per_10=r.get("stock_div_per_10", 0),
+                    transfer_per_10=r.get("transfer_per_10", 0),
+                    dividend_yield=r.get("dividend_yield", 0),
+                    progress=r.get("progress", ""),
+                    eps=r.get("eps", 0),
+                    nav_per_share=r.get("nav_per_share", 0),
+                ))
+            except Exception:
+                continue
+        return events
 
     def detect_for_portfolio(
         self,

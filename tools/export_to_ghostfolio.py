@@ -24,8 +24,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
-import yaml
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from findata.store import MarketDataRepository
@@ -146,8 +144,8 @@ class GhostfolioExporter:
         """Convert holdings to Ghostfolio BUY activities and POST them.
 
         Args:
-            holdings: {asset_id: quantity} from portfolio.yaml positions.
-            cash: {currency: amount} from portfolio.yaml cash (not exported).
+            holdings: {asset_id: quantity} from the SQLite portfolio book.
+            cash: {currency: amount} from the SQLite portfolio book (not exported).
             prices: {asset_id: unit_price} — current price per share.
             date_str: ISO date string (e.g. ``"2026-06-03"``) for the activity date.
             account_id: Ghostfolio account UUID. If None, auto-resolved.
@@ -247,34 +245,10 @@ class GhostfolioExporter:
 
 
 def load_portfolio() -> tuple[Dict[str, float], Dict[str, float]]:
-    """Load portfolio holdings and cash from YAML.
+    """Load current portfolio holdings and cash from SQLite only."""
+    from findata.orchestration.ingest import load_portfolio as load_book_portfolio
 
-    Resolution order: OPTIFOLIO_PORTFOLIO_PATH env var → local/portfolio.yaml
-    → config/portfolio.yaml.
-    """
-    env_path = os.environ.get("OPTIFOLIO_PORTFOLIO_PATH")
-    if env_path:
-        path = Path(env_path)
-        if path.exists():
-            return _read_portfolio_yaml(path)
-
-    local_path = PROJECT_ROOT / "local" / "portfolio.yaml"
-    if local_path.exists():
-        return _read_portfolio_yaml(local_path)
-
-    legacy_path = PROJECT_ROOT / "config" / "portfolio.yaml"
-    if legacy_path.exists():
-        return _read_portfolio_yaml(legacy_path)
-
-    return {}, {}
-
-
-def _read_portfolio_yaml(path: Path) -> tuple[Dict[str, float], Dict[str, float]]:
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    holdings = {str(k): float(v) for k, v in data.get("positions", {}).items()}
-    cash = {str(k): float(v) for k, v in data.get("cash", {}).items()}
-    return holdings, cash
+    return load_book_portfolio(PROJECT_ROOT)
 
 
 def load_latest_prices(
@@ -369,7 +343,7 @@ def main() -> None:
     # Load portfolio
     holdings, cash = load_portfolio()
     if not holdings:
-        print("No holdings found in portfolio.yaml.")
+        print("No holdings found in SQLite portfolio book.")
         return
 
     # Load prices

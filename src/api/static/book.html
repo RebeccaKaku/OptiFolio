@@ -54,6 +54,10 @@
         .position-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 12px; }
         .position-table th { text-align: left; color: #94a3b8; padding: 8px; border-bottom: 1px solid #334155; }
         .position-table td { padding: 8px; border-bottom: 1px solid #1e293b; }
+        .valuation-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-bottom: 24px; table-layout: fixed; }
+        .valuation-table th { text-align: left; color: #94a3b8; padding: 8px; border-bottom: 1px solid #334155; font-weight: 600; }
+        .valuation-table td { padding: 9px 8px; border-bottom: 1px solid #1e293b; vertical-align: top; word-break: break-word; }
+        .valuation-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 
         .progress-indicator { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
         .dot { width: 8px; height: 8px; border-radius: 50%; }
@@ -113,6 +117,24 @@
 
                         <h3>币种分布</h3>
                         <div id="currency-breakdown" style="margin-bottom: 24px;"></div>
+
+                        <h3>持仓估值</h3>
+                        <div style="overflow-x:auto; margin-bottom: 24px;">
+                            <table class="valuation-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:26%">产品</th>
+                                        <th style="width:12%">类型</th>
+                                        <th style="width:13%" class="num">数量</th>
+                                        <th style="width:13%" class="num">净值/价格</th>
+                                        <th style="width:16%" class="num">估值</th>
+                                        <th style="width:11%">日期</th>
+                                        <th style="width:9%">状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="position-valuations"></tbody>
+                            </table>
+                        </div>
 
                         <h3>数据质量</h3>
                         <div id="quality-breakdown" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 24px;"></div>
@@ -492,6 +514,55 @@
             }
         }
 
+
+        function fmtNumber(value, digits = 2) {
+            if (value === null || value === undefined || isNaN(value)) return '-';
+            return Number(value).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+        }
+
+        function valuationBadge(row) {
+            if (row.market_value === null || row.market_value === undefined) {
+                return '<span class="badge badge-gray">缺价</span>';
+            }
+            if (row.is_estimate || row.freshness === 'stale') {
+                return '<span class="badge badge-yellow">估算</span>';
+            }
+            if (row.quality === 'confirmed') {
+                return '<span class="badge badge-green">确认</span>';
+            }
+            return '<span class="badge badge-blue">报价</span>';
+        }
+
+        function renderPositionValuations() {
+            const body = document.getElementById('position-valuations');
+            const rows = state.summary?.positions || [];
+            if (!rows.length) {
+                body.innerHTML = '<tr><td colspan="7" class="meta">暂无持仓估值</td></tr>';
+                return;
+            }
+            body.innerHTML = rows.map(row => {
+                const currency = row.currency || state.summary.reporting_currency || '';
+                const unitDigits = Math.abs(row.unit_price || 0) >= 100 ? 2 : 4;
+                const valueText = row.market_value === null || row.market_value === undefined
+                    ? '待估值'
+                    : `${currency} ${fmtNumber(row.market_value, 2)}`;
+                return `
+                    <tr>
+                        <td>
+                            <div style="font-weight:600; color:#e2e8f0">${row.name || row.product_id}</div>
+                            <div class="meta">${row.product_id}</div>
+                        </td>
+                        <td>${row.product_type || '-'}</td>
+                        <td class="num">${fmtNumber(row.quantity, 2)}</td>
+                        <td class="num">${fmtNumber(row.unit_price, unitDigits)}</td>
+                        <td class="num">${valueText}</td>
+                        <td>${row.valuation_date || '-'}</td>
+                        <td>${valuationBadge(row)}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
         function renderSummary() {
             const s = state.summary;
             document.getElementById('summary-loading').style.display = 'none';
@@ -568,6 +639,8 @@
             } else {
                 currContainer.innerHTML = '<p class="meta">无币种数据</p>';
             }
+
+            renderPositionValuations();
 
             const qualContainer = document.getElementById('quality-breakdown');
             const qEntries = Object.entries(s.quality_summary || {});

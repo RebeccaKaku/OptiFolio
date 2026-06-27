@@ -4,21 +4,15 @@ This directory is the preferred home for private business state.
 
 Keep real files here:
 
-- `portfolio.yaml` copied from `config/portfolio.example.yaml`
-- cash balances
+- `portfolio_book.sqlite` for accounts, products, snapshot batches, positions, and cash
 - broker/account settings
 - downloaded market data
 - SQLite databases
 - ad hoc exports
 
-The directory is ignored by Git. Commit only templates such as
-`config/portfolio.example.yaml` and `config/secrets.example.yaml`.
+The directory is ignored by Git. Commit only templates that do not contain holdings or private account state, such as `config/secrets.example.yaml`.
 
-Portfolio loading order:
-
-1. `OPTIFOLIO_PORTFOLIO_PATH`
-2. `local/portfolio.yaml`
-3. legacy `config/portfolio.yaml`
+Portfolio holdings are loaded from the latest confirmed batch in `local/portfolio_book.sqlite`. Portfolio YAML files are no longer supported.
 
 Bootstrap local runtime files:
 

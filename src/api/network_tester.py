@@ -298,57 +298,102 @@ class NetworkTester:
             return False
     
     async def _test_akshare_function(self, function_name: str) -> bool:
-        """测试AkShare函数 — STUB (akshare import removed)."""
-        # TODO: wire via findata adapter — test findata public facade (fd.prices,
-        # fd.ohlcv, etc.) instead of calling akshare directly.
-        logger.warning(f"AkShare函数 {function_name} 测试已弃用 (akshare导入已移除)")
-        return False
-    
-    async def _test_yfinance_function(self, function_name: str) -> bool:
-        """测试yfinance函数 — STUB (yfinance import removed)."""
-        # TODO: wire via findata adapter — test findata public facade (fd.prices,
-        # fd.ohlcv, etc.) instead of calling yfinance directly.
-        logger.warning(f"yfinance函数 {function_name} 测试已弃用 (yfinance导入已移除)")
-        return False
-    
-    async def _test_symbols(self, symbols: List[str]) -> bool:
-        """测试股票代码的可用性"""
+        """Test akshare-backed functionality via findata facade."""
+        from findata import fd
+
         try:
-            # 根据符号类型选择不同的测试方法
+            if function_name == "stock_zh_a_hist":
+                prices = fd.prices("sh600519", mode="fast")
+                return prices is not None and not prices.empty
+            elif function_name == "fund_open_fund_info_em":
+                prices = fd.prices("fund.cn.mixed.005827", mode="fast")
+                return prices is not None and not prices.empty
+            elif function_name == "stock_info_a_code_name":
+                meta = fd.get_metadata("sh600519", asset_type="cn_stock")
+                return meta is not None
+            elif function_name == "fund_individual_basic_info_xq":
+                fees = fd.fund_fees("005827")
+                return fees is not None and "management_fee" in fees
+            else:
+                return False
+        except Exception as e:
+            logger.warning(f"akshare function {function_name} test failed: {e}")
+            return False
+
+    async def _test_yfinance_function(self, function_name: str) -> bool:
+        """Test yfinance-backed functionality via findata facade."""
+        from findata import fd
+
+        try:
+            if function_name == "Ticker":
+                prices = fd.prices("AAPL", mode="fast")
+                return prices is not None and not prices.empty
+            elif function_name == "download":
+                panel = fd.panel(["AAPL", "GOOGL"], mode="fast")
+                return panel is not None and not panel.empty
+            else:
+                return False
+        except Exception as e:
+            logger.warning(f"yfinance function {function_name} test failed: {e}")
+            return False
+
+    async def _test_symbols(self, symbols: List[str]) -> bool:
+        """Test stock code availability via findata facade."""
+        from findata import fd
+
+        try:
             if any(symbol.startswith(('sh', 'sz')) for symbol in symbols):
-                # 中国股票
                 return await self._test_cn_symbols(symbols)
             elif any(symbol.isalpha() and len(symbol) <= 5 for symbol in symbols):
-                # 美股
                 return await self._test_us_symbols(symbols)
             else:
-                # 通用测试
                 return await self._test_generic_symbols(symbols)
-                
+
         except Exception as e:
             logger.error(f"股票代码测试失败: {e}")
             return False
-    
+
     async def _test_cn_symbols(self, symbols: List[str]) -> bool:
-        """测试中国股票代码的可用性 — STUB (akshare import removed)."""
-        # TODO: wire via findata adapter — test CN stock symbols via fd.prices()
-        # or fd.missing_report() instead of calling akshare directly.
-        logger.warning("中国股票代码测试已弃用 (akshare导入已移除)")
-        return False
-    
+        """Test CN stock symbols via findata facade."""
+        from findata import fd
+
+        try:
+            for s in symbols[:1]:
+                prices = fd.prices(s, mode="fast")
+                if prices is not None and not prices.empty:
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"CN symbols test failed: {e}")
+            return False
+
     async def _test_us_symbols(self, symbols: List[str]) -> bool:
-        """测试美股代码的可用性 — STUB (yfinance import removed)."""
-        # TODO: wire via findata adapter — test US stock symbols via fd.prices()
-        # or fd.missing_report() instead of calling yfinance directly.
-        logger.warning("美股代码测试已弃用 (yfinance导入已移除)")
-        return False
-    
+        """Test US stock symbols via findata facade."""
+        from findata import fd
+
+        try:
+            for s in symbols[:1]:
+                prices = fd.prices(s, mode="fast")
+                if prices is not None and not prices.empty:
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"US symbols test failed: {e}")
+            return False
+
     async def _test_generic_symbols(self, symbols: List[str]) -> bool:
-        """测试通用基金代码的可用性 — STUB (akshare import removed)."""
-        # TODO: wire via findata adapter — test fund symbols via fd.prices()
-        # or fd.missing_report() instead of calling akshare directly.
-        logger.warning("通用代码测试已弃用 (akshare导入已移除)")
-        return False
+        """Test fund/forex symbols via findata facade."""
+        from findata import fd
+
+        try:
+            for s in symbols[:1]:
+                prices = fd.prices(s, mode="fast")
+                if prices is not None and not prices.empty:
+                    return True
+            return False
+        except Exception as e:
+            logger.warning(f"Generic symbols test failed: {e}")
+            return False
     
     def _generate_report(self, total_time: float) -> Dict:
         """生成测试报告"""

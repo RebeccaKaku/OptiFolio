@@ -88,7 +88,7 @@ class FundStatusInfo:
 
 
 class FundFrictionService:
-    """Fetches fund fees and status from Xueqiu + East Money."""
+    """Fetches fund fees and status via findata facade."""
 
     def __init__(self, cache_ttl: int = 3600):
         self._cache_ttl = cache_ttl
@@ -99,21 +99,32 @@ class FundFrictionService:
     # ── Fund fees (Xueqiu) ─────────────────────────────────────────────
 
     def get_fund_fees(self, fund_code: str) -> FundFeeInfo:
-        """Get fee structure for a fund from Xueqiu.
+        """Get fee structure for a fund via findata facade.
 
         Returns management_fee, custody_fee, and tiered subscription/
         redemption fees.
         """
-        # Check cache
         now = time.time()
         if fund_code in self._fee_cache:
             ts, info = self._fee_cache[fund_code]
             if now - ts < self._cache_ttl:
                 return info
 
-        # TODO: wire via findata adapter — akshare's fund_individual_detail_info_xq
-        # and fund_individual_basic_info_xq need dedicated findata adapters.
-        info = FundFeeInfo(fund_code=fund_code, fund_name="")
+        from findata import fd
+
+        try:
+            fees_dict = fd.fund_fees(fund_code)
+            info = FundFeeInfo(
+                fund_code=fund_code,
+                fund_name=fees_dict.get("fund_name", ""),
+                subscription_tiers=fees_dict.get("subscription_tiers", []),
+                redemption_tiers=fees_dict.get("redemption_tiers", []),
+                management_fee=fees_dict.get("management_fee", 0.0),
+                custody_fee=fees_dict.get("custody_fee", 0.0),
+                sales_service_fee=fees_dict.get("sales_service_fee", 0.0),
+            )
+        except Exception:
+            info = FundFeeInfo(fund_code=fund_code, fund_name="")
 
         self._fee_cache[fund_code] = (now, info)
         return info
@@ -140,11 +151,18 @@ class FundFrictionService:
     # ── Fund status (East Money) ────────────────────────────────────────
 
     def _ensure_status_loaded(self):
-        """Lazy-load the full fund status table (cached)."""
-        # TODO: wire via findata adapter — akshare's fund_purchase_em needs
-        # a dedicated findata adapter.
+        """Lazy-load the full fund status table (cached) via findata facade."""
         now = time.time()
-        self._status_df = pd.DataFrame()
+        if self._status_df is not None and now - self._status_ts < self._cache_ttl:
+            return
+
+        from findata.adapters.fund_fee import FundFeeFetcher
+
+        try:
+            fetcher = FundFeeFetcher()
+            self._status_df = fetcher.get_all_status()
+        except Exception:
+            self._status_df = pd.DataFrame()
         self._status_ts = now
 
     def get_fund_status(self, fund_code: str) -> FundStatusInfo:

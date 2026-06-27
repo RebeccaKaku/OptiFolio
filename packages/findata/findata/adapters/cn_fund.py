@@ -283,25 +283,36 @@ class CnFundFetcherAdapter(FetcherProtocol):
     def __init__(self):
         self._fetcher = CnFundFetcher()
 
+    @staticmethod
+    def _bare_code(symbol: str) -> str:
+        """Extract 6-digit bare fund code from any symbol form.
+
+        Handles canonical IDs like 'fund.cn.mixed.005827' and bare '005827'.
+        """
+        import re
+        m = re.search(r"\d{6}", symbol)
+        return m.group(0) if m else symbol
+
     def get_metadata(self, symbol: str) -> Optional[Dict[str, Any]]:
-        info = self._fetcher.fund_map.get(symbol)
+        bare = self._bare_code(symbol)
+        info = self._fetcher.fund_map.get(bare)
         if not info:
             return None
         return {
             "symbol": symbol,
             "name": info.get("基金简称"),
             "product_type": info.get("基金类型"),
-            "currency": "CNY",  # Default for CN funds, unless it's QDII which might be USD but our current detector/registry handles it.
+            "currency": "CNY",
         }
 
     def fetch(self, symbol: str, start_date: str, end_date: str, **kwargs) -> FetchResult:
         t0 = time.time()
         try:
-            # Determine fund subtype from akshare metadata for canonical ID
-            fund_info = self._fetcher.fund_map.get(symbol, {})
+            bare = self._bare_code(symbol)
+            fund_info = self._fetcher.fund_map.get(bare, {})
             f_type_raw = fund_info.get("基金类型", "")
-            canonical = normalize_instrument_id(symbol, asset_type="cn_fund", fund_type_raw=f_type_raw)
-            df = _run_async(self._fetcher.fetch(symbol, start_date, end_date, **kwargs))
+            canonical = normalize_instrument_id(bare, asset_type="cn_fund", fund_type_raw=f_type_raw)
+            df = _run_async(self._fetcher.fetch(bare, start_date, end_date, **kwargs))
             return FetchResult(symbol=canonical, provider=self.PROVIDER, data=df,
                                success=True, latency_ms=(time.time() - t0) * 1000)
         except Exception as e:

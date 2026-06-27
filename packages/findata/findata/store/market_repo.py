@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 from typing import Sequence
+import re
 
 import pandas as pd
 
@@ -385,9 +386,18 @@ class MarketDataRepository:
 
         # Normalize display symbols to canonical IDs once at the API boundary.
         canonical_assets = [normalize_instrument_id(a) for a in assets]
+        aliases_by_asset = {
+            asset_id: _price_lookup_aliases(asset_id)
+            for asset_id in canonical_assets
+        }
+        query_assets = list(dict.fromkeys(
+            alias
+            for aliases in aliases_by_asset.values()
+            for alias in aliases
+        ))
 
         where_parts = ["asset_id IN $assets"]
-        params: dict[str, object] = {"assets": canonical_assets, "path": str(self.price_path)}
+        params: dict[str, object] = {"assets": query_assets, "path": str(self.price_path)}
         if start:
             where_parts.append("date >= $start")
             params["start"] = pd.Timestamp(start).to_pydatetime()
@@ -411,9 +421,22 @@ class MarketDataRepository:
             rows = rows.drop_duplicates(subset=["date", "asset_id"], keep="last")
             matrix = rows.pivot(index="date", columns="asset_id", values=fields[0])
             matrix.index = pd.to_datetime(matrix.index)
-            return matrix.reindex(columns=canonical_assets).sort_index()
+            resolved = pd.DataFrame(index=matrix.index)
+            for asset_id in canonical_assets:
+                for alias in aliases_by_asset[asset_id]:
+                    if alias in matrix.columns and not matrix[alias].dropna().empty:
+                        resolved[asset_id] = matrix[alias]
+                        break
+                else:
+                    resolved[asset_id] = pd.NA
+            return resolved.reindex(columns=canonical_assets).sort_index()
         else:
             rows["date"] = pd.to_datetime(rows["date"])
+            alias_to_asset = {}
+            for asset_id, aliases in aliases_by_asset.items():
+                for alias in aliases:
+                    alias_to_asset.setdefault(alias, asset_id)
+            rows["asset_id"] = rows["asset_id"].map(lambda x: alias_to_asset.get(x, x))
             return rows.set_index("date").sort_index()
 
     def get_returns(
@@ -470,3 +493,21 @@ class MarketDataRepository:
 
         with duckdb.connect(":memory:") as connection:
             return connection.execute(query, params).df()
+
+
+def _price_lookup_aliases(asset_id: str) -> list[str]:
+    """Return stored-price aliases for an instrument ID.
+
+    The contracts package now prefers rich CN fund IDs such as
+    ``fund.cn.money.000198`` and ``fund.cn.etf.sh.510300``. Older stored
+    price rows may still use the legacy bare form ``fund.cn.000198``.
+    Query both forms and expose results under the requested canonical ID.
+    """
+    aliases = [asset_id]
+    if asset_id.startswith("fund.cn."):
+        match = re.search(r"(\d{6})$", asset_id)
+        if match:
+            legacy = f"fund.cn.{match.group(1)}"
+            if legacy not in aliases:
+                aliases.append(legacy)
+    return aliases
