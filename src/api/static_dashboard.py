@@ -215,7 +215,7 @@ async function loadWMP() {
   const params = new URLSearchParams();
   wmps.forEach(code => params.append('assets', code));
   params.append('start', '2024-01-01');
-  params.append('end', '2026-06-05');
+  params.append('end', new Date().toISOString().slice(0, 10));
   const pr = await get('/api/market/prices?' + params.toString());
 
   const rows = wmps.map(code => {

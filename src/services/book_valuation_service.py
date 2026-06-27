@@ -41,15 +41,47 @@ class BookValuationService:
             product_ids = {pos["product_id"] for pos in batch["snapshots"]}
             products = {pid: self._db.get_product(pid) for pid in product_ids}
 
-            # TODO: Define thresholds based on product type if needed
             thresholds = {"default": 3}
+            for pid, product in products.items():
+                product_type = ((product.product_type if product else "") or "").lower()
+                if "fund" in product_type or pid.startswith("fund.cn."):
+                    thresholds[pid] = 10
+                elif "wmp" in product_type or pid.startswith("wmp.cn."):
+                    thresholds[pid] = 30
+
+            public_prices = pd.DataFrame()
+            public_product_ids = sorted(
+                pid
+                for pid, product in products.items()
+                if product
+                and not pid.endswith("_CASH")
+                and ((product.product_type or "").lower() != "deposit")
+            )
+            if public_product_ids:
+                try:
+                    public_prices = self._data_provider.get_prices(
+                        public_product_ids,
+                        end=as_of.isoformat(),
+                    )
+                except Exception:
+                    _log.debug("Failed to fetch batch public prices", exc_info=True)
 
             results = []
             for pos in batch["snapshots"]:
-                candidates = self._gather_candidates(pos, as_of, products.get(pos["product_id"]))
+                candidates = self._gather_candidates(
+                    pos,
+                    as_of,
+                    products.get(pos["product_id"]),
+                    public_prices,
+                )
 
-                # target_currency is the currency recorded in the position snapshot
-                target_currency = pos.get("currency", "CNY")
+                product = products.get(pos["product_id"])
+                # Value each position in its product/native currency. Snapshot
+                # currency can be a UI default and is not authoritative for
+                # priced securities such as USD equities.
+                target_currency = self._currency(
+                    (product.currency if product else None) or pos.get("currency")
+                )
 
                 val_result = ValuationEngine.select_best(
                     candidates,
@@ -75,54 +107,94 @@ class BookValuationService:
         self,
         pos: Dict[str, Any],
         as_of: date,
-        product: Optional[Any]
+        product: Optional[Any],
+        public_prices: pd.DataFrame,
     ) -> List[ValuationCandidate]:
-        """Gather all potential valuation candidates for a position."""
+        """Gather all potential valuation candidates for a position.
+
+        Priority:
+        1. Manual confirmed market_value from current snapshot
+        2. Public NAV/Price × Quantity (always attempted when product exists)
+        3. Public NAV as estimated amount (for WMP/funds with no quantity)
+        4. Historical manual values from previous confirmed snapshots
+        """
         candidates = []
         product_id = pos["product_id"]
         account_id = pos["account_id"]
 
-        # 1. Manual candidate from current snapshot
-        if pos.get("market_value") is not None:
-            # If the batch status is 'confirmed', we treat this as confirmed.
-            # Wait, better to look at the snapshot quality field.
-            quality_str = pos.get("quality") or "reported"
-            quality = ValuationQuality.CONFIRMED if quality_str == "confirmed" else ValuationQuality.REPORTED
+        product_type = (getattr(product, "product_type", "") or "").lower() if product else ""
+        currency = self._currency(
+            (getattr(product, "currency", None) if product else None) or pos.get("currency")
+        )
+        quality_str = pos.get("quality") or "reported"
+        quality = ValuationQuality.CONFIRMED if quality_str == "confirmed" else ValuationQuality.REPORTED
 
+        # 1. Cash/deposit amount from current snapshot
+        if product_id.endswith("_CASH") or product_type == "deposit":
+            amount = pos.get("quantity") if pos.get("quantity") is not None else pos.get("market_value")
+            if amount is not None:
+                candidates.append(ValuationCandidate(
+                    amount=amount,
+                    currency=currency,
+                    effective_date=as_of,
+                    source_id=pos["batch_id"],
+                    source_type="manual",
+                    quality=quality,
+                ))
+                return candidates
+
+        # 2. Manual candidate from current snapshot
+        if pos.get("market_value") is not None:
             candidates.append(ValuationCandidate(
                 amount=pos["market_value"],
-                currency=pos.get("currency", "CNY"),
+                currency=currency,
                 effective_date=as_of,
                 source_id=pos["batch_id"],
                 source_type="manual",
                 quality=quality
             ))
 
-        # 2. Public candidate (NAV/Price * Quantity)
-        if pos.get("quantity") is not None and product and product.data_source != "manual":
-            # Attempt to fetch price from DataProvider
-            # We use the product_id as the symbol
+        # 3 & 4. Public candidates — always attempted regardless of data_source
+        if product:
             try:
-                # Get price on or before as_of
-                price_series = self._data_provider.prices(product_id, end=as_of.isoformat())
+                price_series = (
+                    public_prices[product_id].dropna()
+                    if product_id in public_prices.columns
+                    else None
+                )
                 if price_series is not None and not price_series.empty:
                     latest_price = float(price_series.iloc[-1])
                     price_date = price_series.index[-1].date()
 
-                    candidates.append(ValuationCandidate(
-                        price=latest_price,
-                        quantity=pos["quantity"],
-                        currency=product.currency, # Product definition currency
-                        effective_date=price_date,
-                        source_id=product_id,
-                        source_type="public",
-                        quality=ValuationQuality.REPORTED # Public prices are reported
-                    ))
+                    # 2. Price × Quantity (for holdings with known shares)
+                    if pos.get("quantity") is not None:
+                        candidates.append(ValuationCandidate(
+                            price=latest_price,
+                            quantity=pos["quantity"],
+                            currency=currency,
+                            effective_date=price_date,
+                            source_id=product_id,
+                            source_type="public",
+                            quality=ValuationQuality.REPORTED
+                        ))
+
+                    # 3. Estimated amount via carry-forward NAV
+                    # For WMP/funds where we only have a prior market_value and
+                    # no current quantity, estimate: amount = old_amount × (new_NAV / old_NAV)
+                    elif pos.get("market_value") is not None and pos.get("quantity") is None:
+                        candidates.append(ValuationCandidate(
+                            price=latest_price,
+                            quantity=1.0,
+                            currency=currency,
+                            effective_date=price_date,
+                            source_id=product_id,
+                            source_type="public",
+                            quality=ValuationQuality.ESTIMATED
+                        ))
             except Exception:
                 _log.debug("Failed to fetch public price for %s", product_id)
 
-        # 3. Last known manual values (Historical)
-        # We need to query the database for previous confirmed snapshots
+        # 4. Historical manual values (carry-forward from previous snapshots)
         historical = self._get_historical_manual_values(product_id, account_id, as_of)
         for h in historical:
             candidates.append(ValuationCandidate(
@@ -135,6 +207,11 @@ class BookValuationService:
             ))
 
         return candidates
+
+    @staticmethod
+    def _currency(value: Any) -> str:
+        currency = str(value or "").strip().upper()
+        return currency if len(currency) == 3 and currency.isalpha() else "CNY"
 
     def _get_historical_manual_values(self, product_id: str, account_id: str, before_date: date) -> List[Dict[str, Any]]:
         """Query DB for previous manual valuations of this position."""
@@ -169,6 +246,7 @@ class BookValuationService:
         return {
             "account_id": pos["account_id"],
             "product_id": pos["product_id"],
+            "quantity": pos.get("quantity"),
             "amount": res.amount,
             "currency": res.currency,
             "valuation_date": res.valuation_date.isoformat() if res.valuation_date else None,

@@ -14,7 +14,7 @@
 - **公式**: `Holding(asset_id, quantity)`
 - **与 Position 的关系**: Holding × Price = Position value。Holding 是输入，Position 是估值输出。
 - **存储位置**: `PortfolioServiceV2._holdings: Dict[str, float]` (asset_id → quantity)
-- **来源**: `config/portfolio.yaml` 或 `PortfolioBookDatabase` (confirmed snapshot batch)
+- **来源**: `PortfolioBookDatabase` 的 confirmed snapshot batch
 
 ### Position (估值后持仓)
 
@@ -221,7 +221,7 @@ closing_value - opening_value =
 
 持仓加载的优先级链:
 1. `PortfolioBookDatabase` — 最新确认快照批次 (canonical)
-2. `config/portfolio.yaml` — 静态配置 (fallback)
+2. 无 confirmed SQLite batch 时必须显式报错，不再读取静态组合文件
 
 采用条件: book batch 中 >50% 的持仓有可用市价数据。否则回退 YAML（避免全部 WMP 导致 422）。
 

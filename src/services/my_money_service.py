@@ -1,7 +1,12 @@
 """Service for the "My Money" trusted home page.
 
-This service aggregates portfolio book data, values it using the prioritized
-valuation engine, and provides a trusted summary of assets and performance.
+This service aggregates portfolio book data, values it using the unified
+portfolio valuation engine, and provides a trusted summary of assets and
+performance.
+
+Valuation is unified with PortfolioService — both use ValuationEngine.value()
+for the canonical total. Per-asset quality/freshness labels come from
+BookValuationService for the "data quality" display.
 """
 
 from __future__ import annotations
@@ -36,10 +41,12 @@ class MyMoneyService:
         db: PortfolioBookDatabase,
         valuation_svc: BookValuationService,
         data_provider: Any,
+        portfolio_service: Any = None,
     ) -> None:
         self._db = db
         self._valuation_svc = valuation_svc
         self._data_provider = data_provider
+        self._portfolio_service = portfolio_service
         self._aggregator = CurrencyAggregator()
 
     def get_summary(
@@ -60,19 +67,36 @@ class MyMoneyService:
                     }
                 )
 
-            # 2. Value the batch using prioritized engine
+            # 2. Get per-asset quality labels from BookValuationService
             val_res = self._valuation_svc.value_batch(latest_batch["batch_id"])
             if not val_res["success"]:
                 return val_res
 
             valuations = val_res["data"]["valuations"]
 
-            # 3. Aggregate valuations
-            # We need FX rates for all currencies in the batch to reporting_currency
-            currencies = {v["currency"] for v in valuations} | {reporting_currency, "USD", "CNY"}
+            # 3. Get canonical total from PortfolioService (unified valuation path)
+            # Use strict=False so positions without today's price use the last
+            # available price with stale_days annotation — the overview should
+            # always show an estimated total rather than nothing.
+            portfolio_total = None
+            if self._portfolio_service is not None:
+                try:
+                    pv = self._portfolio_service.get_value(
+                        as_of=target_date, base_currency=reporting_currency, strict=False,
+                    )
+                    if pv.get("success"):
+                        portfolio_total = pv["data"].get("total_value")
+                except Exception:
+                    _log.debug("PortfolioService valuation failed; falling back to aggregator total")
+
+            # 4. Aggregate valuations for currency breakdown
+            currencies = {
+                str(v.get("currency") or "").strip().upper()
+                for v in valuations
+                if len(str(v.get("currency") or "").strip()) == 3
+            } | {reporting_currency, "USD", "CNY"}
             fx_quotes = self._get_fx_quotes(currencies, reporting_currency, target_date)
 
-            # Map valuations to ValuationResult objects for the aggregator
             from src.domain import ValuationResult as SingleAssetValuationResult
             from optifolio_contracts.quality import ValuationFreshness
             val_objs = []
@@ -100,7 +124,7 @@ class MyMoneyService:
                 val_objs, fx_quotes, reporting_currency, target_date
             )
 
-            # 4. Reconciliation for returns
+            # 5. Reconciliation for returns
             prev_batch = self._db.get_previous_confirmed_batch(latest_batch["as_of"])
             recon_data = None
             return_status = "unavailable"
@@ -120,23 +144,24 @@ class MyMoneyService:
                     if prev_val_res["success"]:
                         prev_vals = prev_val_res["data"]["valuations"]
 
-                        # For reconciliation, we must use a single base currency.
-                        # We'll use reporting_currency for reconciliation.
-                        # But wait, reconcile_snapshots expects a single currency in the inputs.
-                        # We should probably convert both batches to reporting_currency first.
-
                         recon_data, return_status, return_reason = self._perform_reconciliation(
                             prev_batch, prev_vals, latest_batch, valuations,
                             reporting_currency, fx_quotes
                         )
 
-            # 5. Build final response
+            positions = self._build_position_rows(latest_batch, valuations)
+
+            # 6. Build final response — use unified portfolio total when available
+            total_assets = portfolio_total if portfolio_total is not None else float(agg_res.reporting_total)
             summary = {
                 "has_data": True,
                 "as_of": latest_batch["as_of"],
+                "valuation_as_of": target_date.isoformat(),
                 "reporting_currency": reporting_currency,
-                "total_assets_reporting": float(agg_res.reporting_total),
+                "total_assets_reporting": total_assets,
                 "total_is_exact": agg_res.reporting_total_is_exact,
+                "valuation_source": "PortfolioService" if portfolio_total is not None else "Aggregator",
+                "positions": positions,
                 "by_currency": {
                     curr: {
                         "amount_original": float(sub.amount_original),
@@ -166,9 +191,61 @@ class MyMoneyService:
             _log.exception("Error generating my money summary")
             return failure(str(exc), error_code="INTERNAL_ERROR")
 
+
+    def _build_position_rows(
+        self, latest_batch: Dict[str, Any], valuations: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        products = {
+            p["product_id"]: p
+            for p in (latest_batch.get("products") or [])
+            if p.get("product_id")
+        }
+        if not products:
+            product_ids = {v["product_id"] for v in valuations}
+            products = {}
+            for product_id in product_ids:
+                product = self._db.get_product(product_id)
+                if product:
+                    products[product_id] = product.to_dict()
+
+        rows = []
+        for v in valuations:
+            product = products.get(v["product_id"], {})
+            quantity = v.get("quantity")
+            amount = v.get("amount")
+            unit_price = None
+            if quantity not in (None, 0) and amount is not None:
+                try:
+                    unit_price = float(amount) / float(quantity)
+                except (TypeError, ValueError, ZeroDivisionError):
+                    unit_price = None
+            rows.append({
+                "account_id": v.get("account_id"),
+                "product_id": v.get("product_id"),
+                "name": product.get("name") or v.get("product_id"),
+                "product_type": product.get("product_type") or "unknown",
+                "issuer": product.get("issuer") or "",
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "market_value": amount,
+                "currency": v.get("currency"),
+                "valuation_date": v.get("valuation_date"),
+                "source_type": v.get("source_type"),
+                "source_id": v.get("source_id"),
+                "quality": v.get("quality"),
+                "freshness": v.get("freshness"),
+                "is_estimate": v.get("is_estimate"),
+                "age_days": v.get("age_days"),
+                "warnings": v.get("warnings") or [],
+            })
+        return rows
+
     def _get_fx_quotes(self, currencies: set[str], reporting: str, as_of: date) -> List[FxQuote]:
         quotes = []
         for curr in currencies:
+            curr = str(curr or "").strip().upper()
+            if len(curr) != 3 or not curr.isalpha():
+                continue
             if curr == reporting:
                 continue
             try:

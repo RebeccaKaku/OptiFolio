@@ -10,12 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from findata.store import MarketDataRepository
+from src.infrastructure import HttpMarketDataClient, MarketDataGateway
 
 
 class QlibAdapter:
-    def __init__(self, market_data: MarketDataRepository | None = None) -> None:
-        self.market_data = market_data or MarketDataRepository()
+    def __init__(self, market_data: MarketDataGateway | None = None) -> None:
+        self.market_data = market_data or HttpMarketDataClient()
 
     def export(self, assets: Sequence[str], output_dir: str | Path) -> Path:
         raise NotImplementedError(

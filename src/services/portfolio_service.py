@@ -4,7 +4,7 @@ Integrates ValuationEngine, CorporateActionProcessor, FeeProcessor,
 and PortfolioHistoryTracker into a single service facade.
 
 Portfolio positions and cash are loaded exclusively from the SQLite personal
-book (``PortfolioBookDatabase``).  There is no YAML fallback — if no confirmed
+book (``PortfolioBookDatabase``).  If no confirmed
 batch exists the service raises ``PortfolioBookError``.
 """
 
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
@@ -35,34 +34,27 @@ from src.core.valuation import (
     NoPriceDataError,
     ValuationEngine,
 )
-from findata.store import MarketDataRepository
+from src.infrastructure import HttpMarketDataClient, MarketDataGateway
 from src.domain import ProductDefinition, ValuationRequest
 
 
-# ── Lazy fund metadata singleton (Task 2) ─────────────────────────────
-_fund_fetcher: object | None = None
-
-
 def _get_fund_metadata(code: str) -> dict | None:
-    """Return fund metadata for *code* from a lazily cached CnFundFetcher.
+    """Return fund metadata for *code* via findata facade.
 
-    The CnFundFetcher downloads 27k+ fund metadata on first call and
-    caches it for the lifetime of the process.  Subsequent calls are O(1).
+    Uses fd.get_metadata() instead of importing CnFundFetcher directly,
+    per the project rule that findata is the ONLY data path.
     """
-    global _fund_fetcher
-    if _fund_fetcher is None:
-        from findata.adapters.cn_fund import CnFundFetcher
+    client = HttpMarketDataClient()
 
-        _fund_fetcher = CnFundFetcher()
-    fund_info: dict | None = _fund_fetcher.fund_map.get(code)  # type: ignore[union-attr]
-    if not fund_info:
+    meta = client.get_metadata(code, asset_type="cn_fund")
+    if not meta:
         return None
-    fund_type_raw = fund_info.get("基金类型", "")
+    fund_type_raw = meta.get("product_type", "")
     return {
         "exists": True,
         "asset_type": "cn_fund",
-        "currency": "CNY",
-        "name": fund_info.get("基金简称", ""),
+        "currency": meta.get("currency", "CNY"),
+        "name": meta.get("name", ""),
         "fund_type_raw": fund_type_raw,
     }
 
@@ -183,12 +175,14 @@ class PortfolioService:
         fee_processor: Optional[FeeProcessor] = None,
         history_tracker: Optional[PortfolioHistoryTracker] = None,
         db: Optional[PortfolioBookDatabase] = None,
+        market_data: Optional[MarketDataGateway] = None,
         base_currency: str = "CNY",
         fx_exposure_analyzer: Optional[FxExposureAnalyzer] = None,
         concentration_analyzer: Optional[ConcentrationAnalyzer] = None,
         liquidity_analyzer: Optional[LiquidityAnalyzer] = None,
     ):
         self._db = db  # may be None; _load_portfolio creates default
+        self._market_data = market_data or HttpMarketDataClient()
         self.base_currency = base_currency
         self._fx_analyzer = fx_exposure_analyzer or FxExposureAnalyzer()
         self._concentration_analyzer = concentration_analyzer or ConcentrationAnalyzer()
@@ -209,10 +203,18 @@ class PortfolioService:
         self,
         as_of: Optional[date] = None,
         base_currency: Optional[str] = None,
+        strict: bool = True,
     ) -> Dict[str, Any]:
         """Value the portfolio as of a given date (next-day NAV).
 
         When ``as_of`` is None, defaults to today.
+
+        Args:
+            as_of: Valuation date (defaults to today).
+            base_currency: Reporting currency (defaults to service default).
+            strict: If True, raise on any missing price. If False, skip
+                unpriced assets and mark them with stale_days so the
+                frontend can display estimates honestly.
         """
         target_date = as_of or date.today()
         currency = base_currency or self.base_currency
@@ -221,6 +223,7 @@ class PortfolioService:
             result = self.valuation_engine.value(
                 self._holdings, self._cash,
                 ValuationRequest(as_of=target_date, base_currency=currency),
+                strict=strict,
             )
             self.history.record(result)
             return {"success": True, "data": result.to_dict(), "message": "Valuation complete"}
@@ -755,85 +758,108 @@ class PortfolioService:
             "message": "History retrieved",
         }
 
+    def get_alerts(
+        self,
+        as_of: Optional[date] = None,
+        base_currency: Optional[str] = None,
+        **overrides: Any,
+    ) -> Dict[str, Any]:
+        """Run all alert checks with auto-populated context from portfolio state.
+
+        Assembles equity_curve, FX exposure, concentration, quality_summary
+        and product data from the portfolio, then delegates to AlertEngine.
+        """
+        from src.analytics.alerts import AlertEngine
+
+        currency = base_currency or self.base_currency
+        target_date = as_of or date.today()
+
+        ctx: Dict[str, Any] = {"as_of": target_date}
+        try:
+            val_result = self.valuation_engine.value(
+                self._holdings, self._cash,
+                ValuationRequest(as_of=target_date, base_currency=currency),
+                strict=False,
+            )
+            ctx["quality_summary"] = {
+                "total_positions": len(val_result.positions),
+                "stale_positions": sum(1 for p in val_result.positions.values() if p.stale_days > 3),
+                "stale_pct": (
+                    sum(1 for p in val_result.positions.values() if p.stale_days > 3)
+                    / len(val_result.positions) * 100
+                    if val_result.positions else 0
+                ),
+            }
+        except Exception:
+            ctx["quality_summary"] = {"total_positions": 0, "stale_positions": 0, "stale_pct": 0}
+
+        try:
+            fx_report = self._fx_analyzer.analyze(
+                positions=val_result.positions,
+                cash_breakdown=val_result.cash_breakdown,
+                base_currency=currency,
+                total_value=val_result.total_value,
+                as_of=target_date,
+            )
+            ctx["fx_exposure_report"] = fx_report
+        except Exception:
+            pass
+
+        try:
+            asset_meta = self._load_asset_meta()
+            conc_report = self._concentration_analyzer.analyze(
+                positions=val_result.positions,
+                asset_meta=asset_meta,
+                as_of=target_date,
+            )
+            ctx["current_concentration"] = conc_report.to_dict()
+        except Exception:
+            pass
+
+        try:
+            products = self._load_product_registry()
+            products_list = []
+            for pid, pdef in products.items():
+                products_list.append({
+                    "product_id": pid,
+                    "name": pdef.name,
+                    "product_type": pdef.product_type,
+                    "currency": pdef.currency,
+                })
+            ctx["products"] = products_list
+        except Exception:
+            pass
+
+        try:
+            hist_df = self.history.get_history()
+            if not hist_df.empty:
+                ctx["equity_curve"] = hist_df
+        except Exception:
+            pass
+
+        ctx.update(overrides)
+
+        engine = AlertEngine()
+        alerts = engine.run_all(context=ctx)
+
+        return {
+            "success": True,
+            "data": [a.to_dict() for a in alerts],
+            "message": f"Alert checks completed ({len(alerts)} alerts triggered)",
+        }
+
     # ── internal ───────────────────────────────────────────────────────
 
     def _default_valuation_engine(self) -> ValuationEngine:
-        """Create valuation engine with pre-check for recent prices.
-
-        Before returning the engine, checks each holding via DataProvider.
-        If cached price data is missing for any holding, triggers a
-        background refresh via the Orchestrator pipeline. The engine is
-        returned immediately — background refreshes do not block.
-
-        This implements "tolerant" mode: the first request returns whatever
-        is cached (even if stale), and subsequent requests get fresh data.
-        """
-        if self._holdings:
-            self._prewarm_price_cache()
+        """Create a valuation engine backed only by FinDataProvider."""
         return ValuationEngine(
-            market_data=MarketDataRepository(),
-            fx_provider=FxRateProvider(),
+            market_data=self._market_data,
+            fx_provider=FxRateProvider(market_data=self._market_data),
         )
 
-    def _prewarm_price_cache(self) -> None:
-        """Check for recent prices via DataProvider; trigger background refresh if needed.
-
-        Iterates through all holdings, does a fast cache hit via ``fd.prices()``,
-        and launches a background thread to trigger live refresh for any symbol
-        where cached data is missing or stale.
-        """
-        from findata import fd
-
-        missing: List[str] = []
-        for symbol in self._holdings:
-            try:
-                prices = fd.prices(symbol, mode="fast")
-                if prices is None or prices.empty:
-                    missing.append(symbol)
-            except Exception:
-                missing.append(symbol)
-
-        if missing:
-            _log.info(
-                "Pre-warm: %d/%d holdings have missing or stale price data, "
-                "triggering background refresh",
-                len(missing), len(self._holdings),
-            )
-            for symbol in missing:
-                threading.Thread(
-                    target=lambda s=symbol: fd.prices(s, mode="live"),
-                    daemon=True,
-                ).start()
-
     def warmup(self) -> None:
-        """Pre-fetch prices for all holdings via DataProvider.
-
-        Triggers a background refresh for every holding so that the cache
-        is warm before the first user request. Safe to call multiple times;
-        subsequent calls are no-ops if the cache is already populated.
-
-        Non-blocking — returns immediately. Failures are logged and swallowed.
-        """
-        if not self._holdings:
-            _log.info("Portfolio warmup skipped: no holdings to pre-fetch")
-            return
-
-        from findata import fd
-
-        _log.info("Portfolio warmup: pre-fetching prices for %d holdings", len(self._holdings))
-        for symbol in list(self._holdings.keys()):
-            try:
-                # Fast cache hit first (returns cached data immediately)
-                fd.prices(symbol, mode="fast")
-                # Background refresh via Orchestrator pipeline
-                threading.Thread(
-                    target=lambda s=symbol: fd.prices(s, mode="live"),
-                    daemon=True,
-                ).start()
-            except Exception as exc:
-                _log.debug("Warmup fetch failed for %s: %s", symbol, exc)
-
-        _log.info("Portfolio warmup: background refresh threads launched")
+        """Compatibility no-op: remote reads must not delay app startup."""
+        _log.info("Portfolio warmup delegated to FinDataProvider")
 
     def _load_asset_meta(self) -> Dict[str, Dict[str, Any]]:
         """Load asset metadata from config/asset_registry.yaml.
@@ -939,7 +965,7 @@ class PortfolioService:
         if not latest or not latest.get("snapshots"):
             raise PortfolioBookError(
                 "No confirmed portfolio batch found in SQLite. "
-                "YAML fallback has been removed — create a snapshot batch first."
+                "Create and confirm a SQLite snapshot batch first."
             )
 
         holdings: Dict[str, float] = {}

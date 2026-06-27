@@ -6,13 +6,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     # 核心金融数据
-    "akshare>=1.18.0",
-    "yfinance>=1.4.0",
-    "ccxt>=4.5.0",
 
     # 数据科学和数学
     "numpy>=1.26.0",
     "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
     "scipy>=1.11.0",
     "cvxpy>=1.5.0",
 
@@ -28,9 +26,6 @@ dependencies = [
 
     # 配置和数据处理
     "pyyaml>=6.0",
-    "pyarrow>=14.0.0",
-    "duckdb>=1.4.0",
-    "pandera>=0.20.0",
     "vectorbt>=1.0.0",
     "PyPortfolioOpt>=1.6.0",
 

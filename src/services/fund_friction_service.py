@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from src.infrastructure import HttpMarketDataClient
+
 
 @dataclass
 class FundFeeInfo:
@@ -88,10 +90,11 @@ class FundStatusInfo:
 
 
 class FundFrictionService:
-    """Fetches fund fees and status from Xueqiu + East Money."""
+    """Fetches fund fees and status via findata facade."""
 
-    def __init__(self, cache_ttl: int = 3600):
+    def __init__(self, cache_ttl: int = 3600, data_provider: Any = None):
         self._cache_ttl = cache_ttl
+        self.data_provider = data_provider or HttpMarketDataClient()
         self._fee_cache: Dict[str, tuple[float, FundFeeInfo]] = {}
         self._status_df: Optional[pd.DataFrame] = None
         self._status_ts: float = 0.0
@@ -99,21 +102,31 @@ class FundFrictionService:
     # ── Fund fees (Xueqiu) ─────────────────────────────────────────────
 
     def get_fund_fees(self, fund_code: str) -> FundFeeInfo:
-        """Get fee structure for a fund from Xueqiu.
+        """Get fee structure for a fund via findata facade.
 
         Returns management_fee, custody_fee, and tiered subscription/
         redemption fees.
         """
-        # Check cache
         now = time.time()
         if fund_code in self._fee_cache:
             ts, info = self._fee_cache[fund_code]
             if now - ts < self._cache_ttl:
                 return info
 
-        # TODO: wire via findata adapter — akshare's fund_individual_detail_info_xq
-        # and fund_individual_basic_info_xq need dedicated findata adapters.
-        info = FundFeeInfo(fund_code=fund_code, fund_name="")
+
+        try:
+            fees_dict = self.data_provider.fund_fees(fund_code)
+            info = FundFeeInfo(
+                fund_code=fund_code,
+                fund_name=fees_dict.get("fund_name", ""),
+                subscription_tiers=fees_dict.get("subscription_tiers", []),
+                redemption_tiers=fees_dict.get("redemption_tiers", []),
+                management_fee=fees_dict.get("management_fee", 0.0),
+                custody_fee=fees_dict.get("custody_fee", 0.0),
+                sales_service_fee=fees_dict.get("sales_service_fee", 0.0),
+            )
+        except Exception:
+            info = FundFeeInfo(fund_code=fund_code, fund_name="")
 
         self._fee_cache[fund_code] = (now, info)
         return info
@@ -140,41 +153,28 @@ class FundFrictionService:
     # ── Fund status (East Money) ────────────────────────────────────────
 
     def _ensure_status_loaded(self):
-        """Lazy-load the full fund status table (cached)."""
-        # TODO: wire via findata adapter — akshare's fund_purchase_em needs
-        # a dedicated findata adapter.
-        now = time.time()
-        self._status_df = pd.DataFrame()
-        self._status_ts = now
+        """Status is served remotely; retained as a compatibility no-op."""
+        return None
 
     def get_fund_status(self, fund_code: str) -> FundStatusInfo:
-        """Get subscription/redemption status for a fund."""
-        self._ensure_status_loaded()
-
-        if self._status_df is None:
+        """Get subscription/redemption status from FinDataProvider."""
+        try:
+            data = self.data_provider.fund_status(fund_code)
+        except Exception:
             return FundStatusInfo(fund_code=fund_code)
-
-        row = self._status_df[self._status_df["基金代码"] == fund_code]
-        if row.empty:
-            return FundStatusInfo(fund_code=fund_code)
-
-        r = row.iloc[0]
-        purchase_status = str(r.get("申购状态", "开放申购"))
-        redeem_status = str(r.get("赎回状态", "开放赎回"))
-        next_open = r.get("下一开放日")
-
+        next_open = data.get("next_open_date")
         return FundStatusInfo(
             fund_code=fund_code,
-            fund_name=str(r.get("基金简称", "")),
-            fund_type=str(r.get("基金类型", "")),
-            nav=float(r.get("最新净值/万份收益", 0) or 0),
-            nav_date=str(r.get("最新净值/万份收益-公布时间", "")),
-            can_buy="开放" in purchase_status,
-            can_sell="开放" in redeem_status,
-            next_open_date=pd.Timestamp(next_open).date() if pd.notna(next_open) else None,
-            min_purchase_amount=float(r.get("起购金额", 0) or 0),
-            daily_limit=float(r.get("单日累计申购限额", float("inf")) or float("inf")),
-            purchase_fee_rate=float(r.get("手续费", 0) or 0),
+            fund_name=str(data.get("fund_name", "")),
+            fund_type=str(data.get("fund_type", "")),
+            nav=float(data.get("nav", 0) or 0),
+            nav_date=str(data.get("nav_date", "")),
+            can_buy=bool(data.get("can_buy", True)),
+            can_sell=bool(data.get("can_sell", True)),
+            next_open_date=pd.Timestamp(next_open).date() if next_open else None,
+            min_purchase_amount=float(data.get("min_purchase_amount", 0) or 0),
+            daily_limit=float(data.get("daily_limit", float("inf")) or float("inf")),
+            purchase_fee_rate=float(data.get("purchase_fee_rate", 0) or 0),
         )
 
     def get_all_fund_status(self) -> pd.DataFrame:

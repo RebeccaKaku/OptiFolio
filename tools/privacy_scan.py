@@ -13,7 +13,6 @@ from typing import Iterable, List
 
 
 BLOCKED_EXACT_PATHS = {
-    "config/portfolio.yaml",
     "config/secrets.yaml",
 }
 
@@ -55,7 +54,6 @@ CONTENT_RULES = [
 ]
 
 CONTENT_ALLOWLIST = (
-    "config/portfolio.example.yaml",
     "config/secrets.example.yaml",
     "docs/",
     "tests/",

@@ -12,7 +12,7 @@ from src.core.portfolio_book_db import PortfolioBookDatabase, PortfolioBookError
 from src.core.portfolio_history import PortfolioHistoryTracker
 from src.core.valuation import FxRateProvider, ValuationEngine
 from src.domain.products import ProductDefinition
-from findata.store import MarketDataRepository
+from tests.fakes import InMemoryMarketDataGateway as MarketDataRepository
 from src.services.portfolio_service import PortfolioService
 
 

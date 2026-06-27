@@ -1,73 +1,67 @@
 # OptiFolio — Personal Asset Risk & Allocation Engine
 
-Multi-asset portfolio management with a self-contained data department (`findata`),
-date-aware valuation, risk analytics, and a FastAPI service layer.
+Multi-asset portfolio management with date-aware valuation, risk analytics, and a FastAPI application layer.
 
 **Direction**: risk engine first, allocation advice second.
 
-## Quick Start
+## Runtime services
+
+OptiFolio owns the private portfolio book and analytics. Market-data ingestion and storage are provided by the independent private repository [`RebeccaKaku/FinDataProvider`](https://github.com/RebeccaKaku/FinDataProvider).
+
+```text
+FinDataProvider (remote)       OptiFolio (this repository)
+fetch -> quality -> store  ->  HTTP client -> valuation -> risk -> UI
+                               local/portfolio_book.sqlite
+```
+
+No OptiFolio process reads remote Parquet files or imports provider adapters. The only boundary is the versioned HTTP API.
+
+## Quick start
 
 ```bash
-conda activate optifolio313       # Python >=3.10
+conda activate optifolio313
 pip install -r requirements.txt
+
+# Required; alternatively use git-ignored local/findata_client.json
+set FINDATA_BASE_URL=http://127.0.0.1:8020
+set FINDATA_API_TOKEN=<provider-token>
+
 python tools/start_app.py          # FastAPI on port 8011
-python tools/scheduler.py          # daily pipeline
+python tools/scheduler.py          # valuation/risk/snapshot only
 ```
+
+`tools/scheduler.py` checks FinDataProvider availability but never performs ingestion. Data scheduling belongs to FinDataProvider's worker.
 
 ## Architecture
 
-```
-packages/
-  optifolio_contracts/   pure types (stdlib only) — identifiers, quality, sources
-  findata/               data department — adapters → store → serving + orchestration
-
-src/
-  domain/       dataclasses — products, positions, exposures, cashflows
-  core/         valuation, calendars, portfolio_book_db, fees, corporate actions
-  analytics/    alerts, exposure, concentration, liquidity, screening, attribution
-  services/     business orchestration (no quant math)
-  api/          FastAPI routes (no business logic)
-  research/     backtest engine, model registry
+```text
+packages/optifolio_contracts/  pure valuation and identifier contracts
+src/domain/                    portfolio dataclasses
+src/core/                      valuation, calendars, fees, corporate actions
+src/analytics/                 exposure, concentration, liquidity, attribution
+src/infrastructure/            FinDataProvider HTTP gateway
+src/services/                  business orchestration
+src/api/                       FastAPI routes and static UI
 ```
 
-**Dependency direction**: `contracts ← findata ← src`. Never reverse.
+Dependency direction: `contracts <- domain/core/analytics <- services <- api`; infrastructure implements service-facing protocols.
 
-## API
+## Important API routes
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Health check |
-| `GET /api/portfolio/v2/value?as_of=YYYY-MM-DD` | Date-aware portfolio NAV |
-| `GET /api/portfolio/v2/history?start=&end=` | Daily valuation history |
-| `GET /api/portfolio/v2/risk/liquidity` | Liquidity breakdown |
-| `GET /api/portfolio/v2/risk/concentration` | Concentration analysis |
-| `GET /api/portfolio/v2/risk/fx-exposure` | Currency exposure |
-| `GET /api/market/prices?assets=AAPL,QQQ` | Price matrix |
-| `GET /api/alerts` | Risk alerts |
+- `GET /health`
+- `GET /api/book/summary`
+- `GET /api/portfolio/v2/value?as_of=YYYY-MM-DD`
+- `GET /api/market/prices?assets=AAPL,QQQ`
+- `GET /api/market/returns`
+- `GET /api/data/quality`
 
-## Documentation
-
-| Document | Purpose |
-|----------|---------|
-| `CLAUDE.md` | AI assistant instructions — rules, architecture, migration traps |
-| `docs/CURRENT_STATE-656c946.md` | Live project map — test counts, bugs, next steps |
-| `docs/TODO-656c946.md` | Prioritized task queue |
-| `docs/AI_CONTEXT-656c946.md` | Full architecture reference |
-| `docs/PRODUCT_VISION_AND_EXECUTION_PLAN.md` | Product north star |
-| `docs/JULES-656c946.md` | How to dispatch work to Jules |
-| `docs/GLOSSARY-656c946.md` | Financial semantics dictionary |
+When FinDataProvider is unavailable, market-dependent routes return `503 DATA_SERVICE_UNAVAILABLE`; they never substitute zero or an embedded local cache.
 
 ## Development
 
 ```bash
-# Full test suite
 python -m pytest tests -q --basetemp .pytest_tmp -p no:cacheprovider
-
-# Privacy scan
 python tools/privacy_scan.py --strict --with-detect-secrets
 ```
 
-## Private Data
-
-Real portfolio data, secrets, and local state live in `local/` and are git-ignored.
-Templates in `config/*.example.yaml` are safe to commit.
+Real portfolio data, API tokens, and local state live in git-ignored `local/`. Market data does not live in this repository.

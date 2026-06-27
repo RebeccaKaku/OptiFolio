@@ -24,11 +24,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
-import yaml
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from findata.store import MarketDataRepository
+from src.infrastructure import HttpMarketDataClient, MarketDataGateway
 from src.core.paths import PROJECT_ROOT
 from src.core.valuation import _resolve_currency
 
@@ -146,8 +144,8 @@ class GhostfolioExporter:
         """Convert holdings to Ghostfolio BUY activities and POST them.
 
         Args:
-            holdings: {asset_id: quantity} from portfolio.yaml positions.
-            cash: {currency: amount} from portfolio.yaml cash (not exported).
+            holdings: {asset_id: quantity} from the SQLite portfolio book.
+            cash: {currency: amount} from the SQLite portfolio book (not exported).
             prices: {asset_id: unit_price} — current price per share.
             date_str: ISO date string (e.g. ``"2026-06-03"``) for the activity date.
             account_id: Ghostfolio account UUID. If None, auto-resolved.
@@ -247,47 +245,27 @@ class GhostfolioExporter:
 
 
 def load_portfolio() -> tuple[Dict[str, float], Dict[str, float]]:
-    """Load portfolio holdings and cash from YAML.
+    """Load current portfolio holdings and cash from SQLite only."""
+    from src.services.portfolio_service import PortfolioService
 
-    Resolution order: OPTIFOLIO_PORTFOLIO_PATH env var → local/portfolio.yaml
-    → config/portfolio.yaml.
-    """
-    env_path = os.environ.get("OPTIFOLIO_PORTFOLIO_PATH")
-    if env_path:
-        path = Path(env_path)
-        if path.exists():
-            return _read_portfolio_yaml(path)
-
-    local_path = PROJECT_ROOT / "local" / "portfolio.yaml"
-    if local_path.exists():
-        return _read_portfolio_yaml(local_path)
-
-    legacy_path = PROJECT_ROOT / "config" / "portfolio.yaml"
-    if legacy_path.exists():
-        return _read_portfolio_yaml(legacy_path)
-
-    return {}, {}
-
-
-def _read_portfolio_yaml(path: Path) -> tuple[Dict[str, float], Dict[str, float]]:
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    holdings = {str(k): float(v) for k, v in data.get("positions", {}).items()}
-    cash = {str(k): float(v) for k, v in data.get("cash", {}).items()}
-    return holdings, cash
+    result = PortfolioService().get_current_holdings()
+    if not result.get("success"):
+        return {}, {}
+    data = result.get("data") or {}
+    return dict(data.get("holdings") or {}), dict(data.get("cash") or {})
 
 
 def load_latest_prices(
     holdings: Dict[str, float],
-    repo: Optional[MarketDataRepository] = None,
+    repo: Optional[MarketDataGateway] = None,
 ) -> Dict[str, Optional[float]]:
-    """Get the latest available price for each holding from MarketDataRepository.
+    """Get the latest available price for each holding from FinDataProvider.
 
     Returns a dict mapping each asset_id to its most recent close price,
     or None if no price data is available.
     """
     if repo is None:
-        repo = MarketDataRepository()
+        repo = HttpMarketDataClient()
 
     prices: Dict[str, Optional[float]] = {}
     today = date.today()
@@ -369,11 +347,11 @@ def main() -> None:
     # Load portfolio
     holdings, cash = load_portfolio()
     if not holdings:
-        print("No holdings found in portfolio.yaml.")
+        print("No holdings found in SQLite portfolio book.")
         return
 
     # Load prices
-    repo = MarketDataRepository()
+    repo = HttpMarketDataClient()
     prices = load_latest_prices(holdings, repo)
 
     # Build exporter

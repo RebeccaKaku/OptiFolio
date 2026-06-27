@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Sequence
 
 import pandas as pd
 
-from findata.store import MarketDataRepository
+from src.infrastructure import HttpMarketDataClient, MarketDataGateway
 from src.research import BacktestEngine, BacktestRequest
 
 from .response import failure, success
@@ -15,10 +15,10 @@ from .response import failure, success
 class ResearchService:
     def __init__(
         self,
-        market_data: Optional[MarketDataRepository] = None,
+        market_data: Optional[MarketDataGateway] = None,
         backtest_engine: Optional[BacktestEngine] = None,
     ) -> None:
-        self.market_data = market_data or MarketDataRepository()
+        self.market_data = market_data or HttpMarketDataClient()
         self.backtest_engine = backtest_engine or BacktestEngine()
 
     def list_market_assets(self) -> Dict[str, Any]:
@@ -55,50 +55,16 @@ class ResearchService:
 
     def get_quality_reports(self, asset_id: Optional[str] = None) -> Dict[str, Any]:
         try:
-            from findata.store import QualityIssueStore
-
-            store = QualityIssueStore()
-            df = store.load()
-            if asset_id:
-                df = df[df["asset_id"] == asset_id]
-
-            if not df.empty and "timestamp" in df.columns:
-                df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-
-            return success({"reports": df.to_dict(orient="records")}, "Quality reports loaded")
+            reports = self.market_data.quality_reports(asset_id=asset_id)
+            return success({"reports": reports}, "Remote quality reports loaded")
         except Exception as exc:
             return failure(str(exc), "QUALITY_REPORT_ERROR")
 
     def run_stale_price_check(self, n_days: int = 3) -> Dict[str, Any]:
-        """Execute stale-price check and persist results.
-
-        Returns a summary dict with ``issues_found``, ``stale_assets``,
-        and ``threshold_pct`` (percentage of tracked assets that are stale).
-        """
+        """Delegate freshness evaluation to the authoritative data service."""
         try:
-            from findata.store import QualityGate, QualityIssueStore
-
-            gate = QualityGate(repository=self.market_data)
-            issues = gate.stale_price_check(n_days=n_days)
-
-            store = QualityIssueStore()
-            store.append(issues)
-
-            tracked = self.market_data.list_assets()
-            stale_count = len(issues)
-            threshold_pct = (stale_count / len(tracked) * 100) if tracked else 0.0
-
-            return success(
-                {
-                    "issues_found": stale_count,
-                    "stale_assets": issues["asset_id"].tolist() if not issues.empty else [],
-                    "threshold_pct": round(threshold_pct, 2),
-                    "n_days": n_days,
-                },
-                f"Stale-price check complete — {stale_count} stale asset(s)",
-            )
+            data = self.market_data.stale_price_check(n_days=n_days)
+            return success(data, "Remote stale-price check complete")
         except Exception as exc:
             return failure(str(exc), "STALE_PRICE_CHECK_ERROR")
 

@@ -1,9 +1,7 @@
 # Core dependencies from pyproject.toml
-akshare>=1.18.0
-yfinance>=1.4.0
-ccxt>=4.5.0
 numpy>=1.26.0
 pandas>=2.0.0
+pyarrow>=14.0.0
 scipy>=1.11.0
 cvxpy>=1.5.0
 matplotlib>=3.8.0
@@ -13,9 +11,6 @@ uvicorn>=0.30.0
 aiohttp>=3.9.0
 httpx>=0.27.0
 pyyaml>=6.0
-pyarrow>=14.0.0
-duckdb>=1.4.0
-pandera>=0.20.0
 vectorbt>=1.0.0
 PyPortfolioOpt>=1.6.0
 cachetools>=5.3.0

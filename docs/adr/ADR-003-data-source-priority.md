@@ -8,7 +8,7 @@
 Portfolio holdings can come from two sources:
 
 1. `PortfolioBookDatabase` (SQLite) — confirmed snapshot batches from the book wizard
-2. `config/portfolio.yaml` — static configuration file
+2. `PortfolioBookDatabase` confirmed snapshot batches — the portfolio source of truth
 
 The dashboard and book wizard were disconnected: the wizard wrote to SQLite, the dashboard read from YAML.
 
@@ -20,13 +20,13 @@ The dashboard and book wizard were disconnected: the wizard wrote to SQLite, the
 _load_portfolio():
   1. Query latest confirmed batch from PortfolioBookDatabase
   2. If found AND >50% of holdings have price data → use book data
-  3. Else → fall back to config/portfolio.yaml
+  3. Else → report that no confirmed SQLite portfolio batch exists
   4. If neither exists → empty portfolio
 ```
 
 **Viability gate**: Before adopting book data, check that a majority (>50%) of holdings have market prices available. This prevents the "all bank WMPs → 422" scenario.
 
-**Cash handling**: Cash always comes from `config/portfolio.yaml` (book DB tracks cashflows but doesn't compute current balance).
+**Cash handling**: Cash balances come from confirmed SQLite snapshot positions such as `USD_CASH` and `CNY_CASH`.
 
 ## Consequences
 

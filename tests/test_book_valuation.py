@@ -126,7 +126,10 @@ def test_service_value_batch(service, db, data_provider):
     db.confirm_batch(batch_id)
 
     # Mock data provider for public price
-    data_provider.prices.return_value = pd.Series({pd.Timestamp("2026-06-01"): 110.0})
+    data_provider.get_prices.return_value = pd.DataFrame(
+        {"PROD1": [110.0]},
+        index=pd.to_datetime(["2026-06-01"]),
+    )
 
     resp = service.value_batch(batch_id)
     assert resp["success"]
@@ -151,7 +154,10 @@ def test_service_falls_back_to_public(service, db, data_provider):
     db.confirm_batch(batch_id)
 
     # Mock data provider
-    data_provider.prices.return_value = pd.Series({pd.Timestamp("2026-06-01"): 110.0})
+    data_provider.get_prices.return_value = pd.DataFrame(
+        {"PROD1": [110.0]},
+        index=pd.to_datetime(["2026-06-01"]),
+    )
 
     resp = service.value_batch(batch_id)
     assert resp["success"]
@@ -176,7 +182,7 @@ def test_service_carry_forward(service, db, data_provider):
     db.add_snapshot("B1", "ACC1", "PROD1", quantity=10)
     db.confirm_batch("B1")
 
-    data_provider.prices.return_value = None
+    data_provider.get_prices.return_value = pd.DataFrame()
 
     resp = service.value_batch("B1")
     assert resp["success"]

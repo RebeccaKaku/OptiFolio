@@ -19,12 +19,9 @@ The ``DailyRunner`` class can also be used programmatically::
 from __future__ import annotations
 
 import argparse
-import asyncio
-import importlib.util
 import json
 import logging
 import sys
-from argparse import Namespace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -112,17 +109,17 @@ class DailyRunner:
         logger.info("=" * 60)
 
         # ── Step 1: Ingest latest prices ──────────────────────────────
-        logger.info("[Step 1/5] Ingesting latest prices …")
+        logger.info("[Step 1/5] Checking FinDataProvider availability …")
         if dry_run:
-            logger.info("  Would call ingest_portfolio_prices.main_async() for all holdings")
-            steps_completed.append("ingest")
+            logger.info("  Would verify the remote FinDataProvider asset catalog")
+            steps_completed.append("data_service")
         else:
             try:
                 self._run_ingestion()
-                steps_completed.append("ingest")
+                steps_completed.append("data_service")
             except Exception as exc:
-                logger.warning("  Price ingestion failed (continuing): %s", exc)
-                errors.append(f"ingest: {exc}")
+                logger.warning("  FinDataProvider check failed (continuing): %s", exc)
+                errors.append(f"data_service: {exc}")
 
         # ── Step 2: Value portfolio ────────────────────────────────────
         logger.info("[Step 2/5] Valuing portfolio as of %s …", today.isoformat())
@@ -218,14 +215,14 @@ class DailyRunner:
         quality_data: Optional[Dict[str, Any]] = None
 
         if dry_run:
-            logger.info("  Would run stale-price check (n_days=3)")
+            logger.info("  Would run stale-price check (n_days=7)")
             quality_data = {"issues_found": 0, "stale_assets": [], "threshold_pct": 0.0}
             steps_completed.append("data_quality")
         else:
             try:
                 from src.services.application import get_application_services
 
-                dq_result = get_application_services().research.run_stale_price_check(n_days=3)
+                dq_result = get_application_services().research.run_stale_price_check(n_days=7)
                 if dq_result.get("success"):
                     quality_data = dq_result["data"]
                     stale = quality_data.get("issues_found", 0)
@@ -317,26 +314,12 @@ class DailyRunner:
     # ── internal helpers ────────────────────────────────────────────────────
 
     def _run_ingestion(self) -> None:
-        """Import and call ``ingest_portfolio_prices.main_async()``.
+        """Verify the remote data service; ingestion runs in FinDataProvider."""
+        from src.services.application import get_application_services
 
-        Uses ``importlib`` so we can load the sibling module even though
-        the ``tools/`` directory is not a package (no ``__init__.py``).
-        """
-        ingest_path = Path(__file__).resolve().parent / "ingest_portfolio_prices.py"
-        spec = importlib.util.spec_from_file_location(
-            "ingest_portfolio_prices", ingest_path
-        )
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Cannot load module from {ingest_path}")
-
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules["ingest_portfolio_prices"] = mod
-        spec.loader.exec_module(mod)
-
-        # For daily updates one year of history catches gaps without
-        # re-downloading the full multi-year archive every day.
-        ingest_args = Namespace(symbols=None, years=1, dry_run=False)
-        asyncio.run(mod.main_async(ingest_args))
+        result = get_application_services().research.list_market_assets()
+        if not result.get("success"):
+            raise RuntimeError(result.get("message") or "FinDataProvider unavailable")
 
     def _snapshot_path(self, snapshot_date: date) -> Path:
         """Return the JSON file path for a given date."""

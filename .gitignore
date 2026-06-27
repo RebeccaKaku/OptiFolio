@@ -190,3 +190,8 @@ scratch/
 .pytest_tmp*/
 .pytest_tmp*/
 config/*.sqlite
+
+# Local migration/test staging
+.staging/
+.test-tmp/
+!config/*.example.json

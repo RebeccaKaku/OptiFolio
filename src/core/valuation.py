@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""ValuationEngine — date-aware portfolio valuation using MarketDataRepository.
+"""ValuationEngine — date-aware portfolio valuation using FinDataProvider.
 
 The ValuationEngine is the central innovation over the legacy PortfolioCore:
 it queries the canonical market data store for prices on a specific date
@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
 import pandas as pd
 
 if TYPE_CHECKING:
-    from findata.store import MarketDataRepository
+    from src.infrastructure import HttpMarketDataClient, MarketDataGateway
 
 from optifolio_contracts.quality import ValuationFreshness, ValuationQuality
 from src.domain import (
@@ -53,7 +53,7 @@ class FxRateProvider:
 
     Priority order:
     1. Same currency → 1.0
-    2. MarketDataRepository (dated historical FX rates)
+    2. FinDataProvider gateway (dated historical FX rates)
     3. Live CurrencyFetcher (yfinance)
     """
 
@@ -68,7 +68,7 @@ class FxRateProvider:
     def __init__(
         self,
         fallback_rates: Optional[Dict[tuple, float]] = None,
-        market_data: Optional["MarketDataRepository"] = None,
+        market_data: Optional["MarketDataGateway"] = None,
     ):
         self._hardcoded = HardcodedFxRateProvider(fallback_rates)
         self._cache: Dict[str, float] = {}
@@ -83,7 +83,7 @@ class FxRateProvider:
     ) -> Optional[float]:
         """Resolve the conversion rate using dated FX data from the repository.
 
-        Queries MarketDataRepository for canonical FX asset id on or
+        Queries the configured market-data gateway for canonical FX asset id on or
         before *as_of_date*, walking back up to *max_lookback_days*.
         Returns None when the repository is unavailable or no matching
         data exists.
@@ -175,12 +175,13 @@ class FxRateProvider:
             )
 
     def _get_live_rate(self, from_curr: str, to_curr: str) -> float:
-        """Fetch live rate from CurrencyFetcher (blocking, network I/O)."""
-        from findata.adapters.forex import CurrencyFetcher
-
-        fetcher = CurrencyFetcher()
-        rate = fetcher.get_realtime_rate(from_curr, to_curr)
-        return float(rate)
+        """Fetch via the configured remote data gateway."""
+        if self.market_data is None or not hasattr(self.market_data, "fx_rate"):
+            from src.infrastructure import HttpMarketDataClient
+            gateway = HttpMarketDataClient()
+        else:
+            gateway = self.market_data
+        return float(gateway.fx_rate(from_curr, to_curr, mode="fast"))
 
     def _is_suspicious(self, from_curr: str, to_curr: str, rate: float) -> bool:
         """Detect 1.0 fallback for different-currency pairs."""
@@ -292,19 +293,19 @@ class ValuationCandidate:
 class ValuationEngine:
     """Date-aware portfolio valuation.
 
-    Queries MarketDataRepository for prices; raises errors instead of
+    Queries the configured market-data gateway for prices; raises errors instead of
     silently falling back to 1.0.
     """
 
     def __init__(
         self,
-        market_data: Optional["MarketDataRepository"] = None,
+        market_data: Optional["MarketDataGateway"] = None,
         fx_provider: Optional[FxRateProvider] = None,
         max_lookback_days: int = 5,
     ):
         if market_data is None:
-            from findata.store import MarketDataRepository
-            market_data = MarketDataRepository()
+            from src.infrastructure import HttpMarketDataClient, MarketDataGateway
+            market_data = HttpMarketDataClient()
         self.market_data = market_data
         self.fx_provider = fx_provider or FxRateProvider(market_data=market_data)
         self.max_lookback_days = max_lookback_days

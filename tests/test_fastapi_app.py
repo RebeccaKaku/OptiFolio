@@ -17,7 +17,7 @@ def test_health_endpoint_does_not_require_services():
 
 def test_portfolio_value_route_uses_service_layer(monkeypatch):
     class FakePortfolioService:
-        def get_value(self, as_of=None, base_currency=None):
+        def get_value(self, as_of=None, base_currency=None, strict=True):
             return {
                 "success": True,
                 "data": {"base_currency": base_currency, "total_value": 123.45},

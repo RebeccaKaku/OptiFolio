@@ -43,6 +43,7 @@ class OptimizationPayload(BaseModel):
 
 _ERROR_CODE_STATUS = {
     "NO_PRICE_DATA": 422,
+    "DATA_SERVICE_UNAVAILABLE": 503,
     "INVALID_OPTIMIZATION_METHOD": 400,
     "INVALID_OPTIMIZATION_OBJECTIVE": 400,
     "OPTIMIZATION_NO_DATA": 422,
@@ -62,7 +63,17 @@ def _json_response(payload: dict) -> JSONResponse:
         status_code = 200
     else:
         error_code = payload.get("error_code", "")
-        status_code = _ERROR_CODE_STATUS.get(error_code, 400)
+        message = str(payload.get("message", ""))
+        remote_failure = (
+            "FinDataProvider" in message
+            or "FINDATA_API_TOKEN" in message
+            or "data service" in message.lower()
+        )
+        if remote_failure:
+            payload = {**payload, "error_code": "DATA_SERVICE_UNAVAILABLE"}
+            status_code = 503
+        else:
+            status_code = _ERROR_CODE_STATUS.get(error_code, 400)
     return JSONResponse(status_code=status_code, content=jsonable_encoder(payload))
 
 
@@ -70,22 +81,12 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
-        """Pre-warm the portfolio price cache on server startup.
-
-        Calls PortfolioService.warmup() to trigger background price
-        refreshes for all holdings. Does NOT block startup if it fails.
-        """
-        try:
-            _log.info("Startup warmup: pre-fetching portfolio prices...")
-            get_application_services().portfolio.warmup()
-            _log.info("Startup warmup: complete")
-        except Exception as exc:
-            _log.warning("Startup warmup failed (non-blocking): %s", exc)
+        """Keep application startup independent from remote-data latency."""
         yield
 
     app = FastAPI(
         title="OptiFolio API",
-        version="0.1.0",
+        version="0.2.0",
         description="HTTP API for OptiFolio portfolio and asset services.",
         lifespan=_lifespan,
     )
@@ -145,8 +146,7 @@ def create_app() -> FastAPI:
     def asset_overview() -> JSONResponse:
         try:
             import pandas as pd
-            from findata import fd
-            assets = fd.list_assets()
+            assets = get_application_services().research.market_data.list_assets()
             data = {
                 "asset_count": len(assets),
                 "recent_assets": [{"symbol": a} for a in (assets[:20] if assets else [])],
@@ -165,8 +165,7 @@ def create_app() -> FastAPI:
         page_size: int = Query(default=50, ge=1, le=200),
     ) -> JSONResponse:
         try:
-            from findata import fd
-            assets = fd.list_assets()
+            assets = get_application_services().research.market_data.list_assets()
             result = [{"symbol": a, "type": "unknown"} for a in assets]
             if filter_type:
                 result = [r for r in result if r.get("type") == filter_type]
@@ -190,8 +189,7 @@ def create_app() -> FastAPI:
         limit: int = Query(default=50, ge=1, le=200),
     ) -> JSONResponse:
         try:
-            from findata import fd
-            assets = fd.list_assets()
+            assets = get_application_services().research.market_data.list_assets()
             q = query.lower()
             results = [{"symbol": a, "type": "unknown"} for a in assets if q in a.lower()][:limit]
             data = {"assets": results, "query": query, "count": len(results)}
@@ -249,10 +247,18 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/api/alerts", tags=["alerts"])
-    def list_alerts() -> JSONResponse:
-        """Run all risk checks and return any triggered alerts."""
-        alerts = get_application_services().alerts.run_all()
-        return _json_response(success([a.to_dict() for a in alerts]))
+    def list_alerts(
+        as_of: Optional[str] = Query(default=None),
+        base_currency: Optional[str] = Query(default=None),
+    ) -> JSONResponse:
+        """Run all risk checks with auto-populated portfolio context."""
+        from datetime import date as date_type
+
+        as_of_date = date_type.fromisoformat(as_of) if as_of else None
+        result = get_application_services().portfolio.get_alerts(
+            as_of=as_of_date, base_currency=base_currency,
+        )
+        return _json_response(result)
 
     @app.post("/api/alerts/run", tags=["alerts"])
     def run_alerts(ctx: Optional[Dict[str, Any]] = Body(None)) -> JSONResponse:
@@ -348,7 +354,7 @@ def create_app() -> FastAPI:
             load_latest_prices,
             load_portfolio,
         )
-        from findata.store import MarketDataRepository
+        from src.infrastructure import HttpMarketDataClient
         from datetime import date
 
         holdings, cash = load_portfolio()
@@ -359,7 +365,7 @@ def create_app() -> FastAPI:
                 "message": "No holdings to export.",
             })
 
-        repo = MarketDataRepository()
+        repo = HttpMarketDataClient()
         prices = load_latest_prices(holdings, repo)
 
         exporter = GhostfolioExporter(payload.host, payload.token)
@@ -393,26 +399,24 @@ def create_app() -> FastAPI:
     def portfolio_value(
         as_of: Optional[str] = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         base_currency: Optional[str] = Query(default=None, min_length=3, max_length=3),
+        strict: bool = Query(default=True),
     ) -> JSONResponse:
         """Date-aware portfolio valuation (next-day NAV).
 
         Returns the total portfolio value as of the requested date, along with
         per-position and per-currency breakdowns.
 
-        Metadata in the response:
-        - ``price_date``: the actual date of the prices used for valuation (the most
-          recent available price on or before ``as_of``). This may differ from ``as_of``
-          when the latest market data is not yet available.
-        - ``stale_days``: the number of days between ``as_of`` and ``price_date``
-          (computed as ``as_of - price_date``). A value of 0 means prices are
-          up-to-date; larger values indicate stale data that the frontend should
-          surface to the user.
+        Args:
+            strict: If True (default), valuation fails when any position lacks
+                price data. If False, unpriced positions are skipped and
+                ``stale_days`` is set on positions using older prices — the
+                frontend should display these as estimates.
         """
         from datetime import date as date_cls
         as_of_date = date_cls.fromisoformat(as_of) if as_of else None
         return _json_response(
             get_application_services().portfolio.get_value(
-                as_of=as_of_date, base_currency=base_currency,
+                as_of=as_of_date, base_currency=base_currency, strict=strict,
             )
         )
 

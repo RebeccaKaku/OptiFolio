@@ -5,16 +5,23 @@ from functools import lru_cache
 from typing import Any, Dict
 
 from src.analytics.alerts import AlertEngine
+from src.infrastructure import HttpMarketDataClient
 
 from .research_service import ResearchService
 from .system_service import SystemService
 
 
 class IngestionService:
-    """Stub for ingestion metadata API."""
+    """Read-only view of remote ingestion jobs."""
+    def __init__(self, data_provider: HttpMarketDataClient) -> None:
+        self._data_provider = data_provider
+
     def get_runs(self) -> Dict[str, Any]:
-        from src.services.response import success
-        return success({"records": []}, "Ingestion pipeline not yet wired")
+        from src.services.response import failure, success
+        try:
+            return success({"records": self._data_provider.ingestion_runs()}, "Remote ingestion runs loaded")
+        except Exception as exc:
+            return failure(str(exc), "DATA_SERVICE_UNAVAILABLE")
 
 
 @dataclass(frozen=True)
@@ -38,21 +45,24 @@ def get_application_services() -> ApplicationServices:
     from src.services.my_money_service import MyMoneyService
     from src.services.portfolio_service import PortfolioService
     from src.services.decision_journal_service import DecisionJournalService
-    from findata.serving.provider import DataProvider
 
     portfolio_book_db = PortfolioBookDatabase()
     portfolio_book_db.initialize()
 
-    data_provider = DataProvider()
+    data_provider = HttpMarketDataClient()
+    portfolio_svc = PortfolioService(db=portfolio_book_db, market_data=data_provider)
     book_val_svc = BookValuationService(portfolio_book_db, data_provider)
     return ApplicationServices(
         system=SystemService(),
-        research=ResearchService(),
-        ingestion=IngestionService(),
+        research=ResearchService(market_data=data_provider),
+        ingestion=IngestionService(data_provider),
         alerts=AlertEngine(),
         portfolio_book=PortfolioBookService(portfolio_book_db, data_provider),
         book_valuation=book_val_svc,
-        my_money=MyMoneyService(portfolio_book_db, book_val_svc, data_provider),
-        portfolio=PortfolioService(),
+        my_money=MyMoneyService(
+            portfolio_book_db, book_val_svc, data_provider,
+            portfolio_service=portfolio_svc,
+        ),
+        portfolio=portfolio_svc,
         decision_journal=DecisionJournalService(portfolio_book_db),
     )
