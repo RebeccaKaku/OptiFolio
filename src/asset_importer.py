@@ -137,10 +137,7 @@ class AssetRegistry:
 class AssetImporter:
     def __init__(self, registry_path="config/asset_registry.yaml", candidates_path="config/candidates.yaml", **kwargs):
         self.registry, self.candidates_path = AssetRegistry(registry_path), candidates_path
-        try:
-            from findata.adapters import FETCHER_REGISTRY
-            self.valid_asset_types = list(FETCHER_REGISTRY.keys())
-        except: self.valid_asset_types = ['cn_stock', 'cn_fund', 'us_equity', 'currency', 'cn_stock_sh', 'cn_stock_sz', 'hk_stock', 'us_stock'] + [f'cn_fund_{x}' for x in ['qdii', 'etf', 'open', 'money', 'lof', 'index']]
+        self.valid_asset_types = ['cn_stock', 'cn_fund', 'us_equity', 'currency', 'cn_stock_sh', 'cn_stock_sz', 'hk_stock', 'us_stock'] + [f'cn_fund_{x}' for x in ['qdii', 'etf', 'open', 'money', 'lof', 'index']]
     def _infer_asset_type(self, s):
         s = str(s).strip().upper()
         if '/' in s or (len(s) == 6 and s.isalpha()): return 'currency'

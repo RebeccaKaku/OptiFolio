@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
@@ -35,7 +34,7 @@ from src.core.valuation import (
     NoPriceDataError,
     ValuationEngine,
 )
-from findata.store import MarketDataRepository
+from src.infrastructure import HttpMarketDataClient, MarketDataGateway
 from src.domain import ProductDefinition, ValuationRequest
 
 
@@ -45,9 +44,9 @@ def _get_fund_metadata(code: str) -> dict | None:
     Uses fd.get_metadata() instead of importing CnFundFetcher directly,
     per the project rule that findata is the ONLY data path.
     """
-    from findata import fd
+    client = HttpMarketDataClient()
 
-    meta = fd.get_metadata(code, asset_type="cn_fund")
+    meta = client.get_metadata(code, asset_type="cn_fund")
     if not meta:
         return None
     fund_type_raw = meta.get("product_type", "")
@@ -176,12 +175,14 @@ class PortfolioService:
         fee_processor: Optional[FeeProcessor] = None,
         history_tracker: Optional[PortfolioHistoryTracker] = None,
         db: Optional[PortfolioBookDatabase] = None,
+        market_data: Optional[MarketDataGateway] = None,
         base_currency: str = "CNY",
         fx_exposure_analyzer: Optional[FxExposureAnalyzer] = None,
         concentration_analyzer: Optional[ConcentrationAnalyzer] = None,
         liquidity_analyzer: Optional[LiquidityAnalyzer] = None,
     ):
         self._db = db  # may be None; _load_portfolio creates default
+        self._market_data = market_data or HttpMarketDataClient()
         self.base_currency = base_currency
         self._fx_analyzer = fx_exposure_analyzer or FxExposureAnalyzer()
         self._concentration_analyzer = concentration_analyzer or ConcentrationAnalyzer()
@@ -850,83 +851,15 @@ class PortfolioService:
     # ── internal ───────────────────────────────────────────────────────
 
     def _default_valuation_engine(self) -> ValuationEngine:
-        """Create valuation engine with pre-check for recent prices.
-
-        Before returning the engine, checks each holding via DataProvider.
-        If cached price data is missing for any holding, triggers a
-        background refresh via the Orchestrator pipeline. The engine is
-        returned immediately — background refreshes do not block.
-
-        This implements "tolerant" mode: the first request returns whatever
-        is cached (even if stale), and subsequent requests get fresh data.
-        """
-        if self._holdings:
-            self._prewarm_price_cache()
-        repo = MarketDataRepository()
+        """Create a valuation engine backed only by FinDataProvider."""
         return ValuationEngine(
-            market_data=repo,
-            fx_provider=FxRateProvider(market_data=repo),
+            market_data=self._market_data,
+            fx_provider=FxRateProvider(market_data=self._market_data),
         )
 
-    def _prewarm_price_cache(self) -> None:
-        """Check for recent prices via DataProvider; trigger background refresh if needed.
-
-        Iterates through all holdings, does a fast cache hit via ``fd.prices()``,
-        and launches a background thread to trigger live refresh for any symbol
-        where cached data is missing or stale.
-        """
-        from findata import fd
-
-        missing: List[str] = []
-        for symbol in self._holdings:
-            try:
-                prices = fd.prices(symbol, mode="fast")
-                if prices is None or prices.empty:
-                    missing.append(symbol)
-            except Exception:
-                missing.append(symbol)
-
-        if missing:
-            _log.info(
-                "Pre-warm: %d/%d holdings have missing or stale price data, "
-                "triggering background refresh",
-                len(missing), len(self._holdings),
-            )
-            for symbol in missing:
-                threading.Thread(
-                    target=lambda s=symbol: fd.prices(s, mode="live"),
-                    daemon=True,
-                ).start()
-
     def warmup(self) -> None:
-        """Pre-fetch prices for all holdings via DataProvider.
-
-        Triggers a background refresh for every holding so that the cache
-        is warm before the first user request. Safe to call multiple times;
-        subsequent calls are no-ops if the cache is already populated.
-
-        Non-blocking — returns immediately. Failures are logged and swallowed.
-        """
-        if not self._holdings:
-            _log.info("Portfolio warmup skipped: no holdings to pre-fetch")
-            return
-
-        from findata import fd
-
-        _log.info("Portfolio warmup: pre-fetching prices for %d holdings", len(self._holdings))
-        for symbol in list(self._holdings.keys()):
-            try:
-                # Fast cache hit first (returns cached data immediately)
-                fd.prices(symbol, mode="fast")
-                # Background refresh via Orchestrator pipeline
-                threading.Thread(
-                    target=lambda s=symbol: fd.prices(s, mode="live"),
-                    daemon=True,
-                ).start()
-            except Exception as exc:
-                _log.debug("Warmup fetch failed for %s: %s", symbol, exc)
-
-        _log.info("Portfolio warmup: background refresh threads launched")
+        """Compatibility no-op: remote reads must not delay app startup."""
+        _log.info("Portfolio warmup delegated to FinDataProvider")
 
     def _load_asset_meta(self) -> Dict[str, Dict[str, Any]]:
         """Load asset metadata from config/asset_registry.yaml.

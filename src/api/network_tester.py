@@ -299,7 +299,8 @@ class NetworkTester:
     
     async def _test_akshare_function(self, function_name: str) -> bool:
         """Test akshare-backed functionality via findata facade."""
-        from findata import fd
+        from src.infrastructure import HttpMarketDataClient
+        fd = HttpMarketDataClient()
 
         try:
             if function_name == "stock_zh_a_hist":
@@ -322,7 +323,8 @@ class NetworkTester:
 
     async def _test_yfinance_function(self, function_name: str) -> bool:
         """Test yfinance-backed functionality via findata facade."""
-        from findata import fd
+        from src.infrastructure import HttpMarketDataClient
+        fd = HttpMarketDataClient()
 
         try:
             if function_name == "Ticker":
@@ -339,7 +341,8 @@ class NetworkTester:
 
     async def _test_symbols(self, symbols: List[str]) -> bool:
         """Test stock code availability via findata facade."""
-        from findata import fd
+        from src.infrastructure import HttpMarketDataClient
+        fd = HttpMarketDataClient()
 
         try:
             if any(symbol.startswith(('sh', 'sz')) for symbol in symbols):
@@ -355,7 +358,8 @@ class NetworkTester:
 
     async def _test_cn_symbols(self, symbols: List[str]) -> bool:
         """Test CN stock symbols via findata facade."""
-        from findata import fd
+        from src.infrastructure import HttpMarketDataClient
+        fd = HttpMarketDataClient()
 
         try:
             for s in symbols[:1]:
@@ -369,7 +373,8 @@ class NetworkTester:
 
     async def _test_us_symbols(self, symbols: List[str]) -> bool:
         """Test US stock symbols via findata facade."""
-        from findata import fd
+        from src.infrastructure import HttpMarketDataClient
+        fd = HttpMarketDataClient()
 
         try:
             for s in symbols[:1]:
@@ -383,7 +388,8 @@ class NetworkTester:
 
     async def _test_generic_symbols(self, symbols: List[str]) -> bool:
         """Test fund/forex symbols via findata facade."""
-        from findata import fd
+        from src.infrastructure import HttpMarketDataClient
+        fd = HttpMarketDataClient()
 
         try:
             for s in symbols[:1]:

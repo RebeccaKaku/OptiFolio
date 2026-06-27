@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 import requests
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from findata.store import MarketDataRepository
+from src.infrastructure import HttpMarketDataClient, MarketDataGateway
 from src.core.paths import PROJECT_ROOT
 from src.core.valuation import _resolve_currency
 
@@ -246,22 +246,26 @@ class GhostfolioExporter:
 
 def load_portfolio() -> tuple[Dict[str, float], Dict[str, float]]:
     """Load current portfolio holdings and cash from SQLite only."""
-    from findata.orchestration.ingest import load_portfolio as load_book_portfolio
+    from src.services.portfolio_service import PortfolioService
 
-    return load_book_portfolio(PROJECT_ROOT)
+    result = PortfolioService().get_current_holdings()
+    if not result.get("success"):
+        return {}, {}
+    data = result.get("data") or {}
+    return dict(data.get("holdings") or {}), dict(data.get("cash") or {})
 
 
 def load_latest_prices(
     holdings: Dict[str, float],
-    repo: Optional[MarketDataRepository] = None,
+    repo: Optional[MarketDataGateway] = None,
 ) -> Dict[str, Optional[float]]:
-    """Get the latest available price for each holding from MarketDataRepository.
+    """Get the latest available price for each holding from FinDataProvider.
 
     Returns a dict mapping each asset_id to its most recent close price,
     or None if no price data is available.
     """
     if repo is None:
-        repo = MarketDataRepository()
+        repo = HttpMarketDataClient()
 
     prices: Dict[str, Optional[float]] = {}
     today = date.today()
@@ -347,7 +351,7 @@ def main() -> None:
         return
 
     # Load prices
-    repo = MarketDataRepository()
+    repo = HttpMarketDataClient()
     prices = load_latest_prices(holdings, repo)
 
     # Build exporter

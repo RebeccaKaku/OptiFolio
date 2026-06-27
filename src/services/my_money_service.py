@@ -90,7 +90,11 @@ class MyMoneyService:
                     _log.debug("PortfolioService valuation failed; falling back to aggregator total")
 
             # 4. Aggregate valuations for currency breakdown
-            currencies = {v["currency"] for v in valuations} | {reporting_currency, "USD", "CNY"}
+            currencies = {
+                str(v.get("currency") or "").strip().upper()
+                for v in valuations
+                if len(str(v.get("currency") or "").strip()) == 3
+            } | {reporting_currency, "USD", "CNY"}
             fx_quotes = self._get_fx_quotes(currencies, reporting_currency, target_date)
 
             from src.domain import ValuationResult as SingleAssetValuationResult
@@ -239,6 +243,9 @@ class MyMoneyService:
     def _get_fx_quotes(self, currencies: set[str], reporting: str, as_of: date) -> List[FxQuote]:
         quotes = []
         for curr in currencies:
+            curr = str(curr or "").strip().upper()
+            if len(curr) != 3 or not curr.isalpha():
+                continue
             if curr == reporting:
                 continue
             try:

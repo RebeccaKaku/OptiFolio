@@ -2,23 +2,27 @@
 
 > **Purpose**: Field-level specification for every core data structure.  
 > **Convention**: `T?` = nullable, `T[]` = list, `Dict[K,V]` = dict. All dates are ISO 8601 strings in transit, `date` objects in memory.
+>
+> **Architecture note (2026-06-28):** Fetcher and canonical-store contracts now
+> live in the independent `RebeccaKaku/FinDataProvider` repository. OptiFolio
+> consumes authenticated HTTP v1 envelopes through
+> `src/infrastructure/market_data_client.py`; it does not import provider code.
 
 ---
 
-## FetchResult
+## FinDataProvider response envelope
 
-**Location**: `packages/findata/findata/adapters/__init__.py`  
-**金融语义**: 一次数据抓取操作的结果。无论成功或失败都返回此结构，调用方不需单独处理异常。
+**Location**: external FinDataProvider `/v1/*`; decoded by
+`src/infrastructure/market_data_client.py`.
 
-| Field | Type | Nullable | Format | Meaning | Source | Consumer | Invariants | Example |
-|-------|------|----------|--------|---------|--------|----------|------------|---------|
-| `symbol` | `str` | no | asset_id 格式见 GLOSSARY | 被查询的资产标识符 | 调用方传入 | Orchestrator | 必须是合法 asset_id | `"510300"` |
-| `provider` | `str` | no | fetcher PROVIDER 常量 | 数据来源标识 | Fetcher 设定 | IngestionLog | 格式 `"{source}-{type}"` | `"akshare-cn-stock"` |
-| `data` | `pd.DataFrame \| None` | yes | OHLCV columns | 抓取到的价格数据 | Fetcher 产出 | CanonicalStore.accept() | success=True 时必不为 None | `DataFrame` |
-| `success` | `bool` | no | — | 抓取是否成功 | Fetcher 设定 | Orchestrator | True ⇒ data is not None | `True` |
-| `latency_ms` | `float` | no | milliseconds | 抓取耗时 | `time.time()` | 性能监控 | >= 0 | `1234.5` |
-| `errors` | `List[str]` | no | 错误消息列表 | 失败原因 (success=False 时) | Exception catch | 日志 | success=True ⇒ errors=[] | `["ConnectionError"]` |
-| `metadata` | `Dict` | no | 自由格式 | 额外元数据 (如基金类型) | Fetcher 可选填充 | 资产注册表 | — | `{"fund_type_raw":"指数型-股票"}` |
+| Field | Type | Nullable | Meaning | Invariants |
+|-------|------|----------|---------|------------|
+| `schema_version` | `str` | no | Provider API schema version | Currently `"1.0"` |
+| `request_id` | `str` | no | Request correlation ID | UUID |
+| `as_of` | `str` | no | Response production time | UTC ISO 8601 |
+| `freshness` | `str` | no | Stored/derived/provider status | Never inferred by OptiFolio |
+| `refresh_pending` | `bool` | no | Async ingestion was requested | Does not mean data is already available |
+| `data` | `Any` | yes | Endpoint payload | JSON contains `null`, never `NaN`/Infinity |
 
 ---
 

@@ -43,6 +43,7 @@ class OptimizationPayload(BaseModel):
 
 _ERROR_CODE_STATUS = {
     "NO_PRICE_DATA": 422,
+    "DATA_SERVICE_UNAVAILABLE": 503,
     "INVALID_OPTIMIZATION_METHOD": 400,
     "INVALID_OPTIMIZATION_OBJECTIVE": 400,
     "OPTIMIZATION_NO_DATA": 422,
@@ -62,7 +63,17 @@ def _json_response(payload: dict) -> JSONResponse:
         status_code = 200
     else:
         error_code = payload.get("error_code", "")
-        status_code = _ERROR_CODE_STATUS.get(error_code, 400)
+        message = str(payload.get("message", ""))
+        remote_failure = (
+            "FinDataProvider" in message
+            or "FINDATA_API_TOKEN" in message
+            or "data service" in message.lower()
+        )
+        if remote_failure:
+            payload = {**payload, "error_code": "DATA_SERVICE_UNAVAILABLE"}
+            status_code = 503
+        else:
+            status_code = _ERROR_CODE_STATUS.get(error_code, 400)
     return JSONResponse(status_code=status_code, content=jsonable_encoder(payload))
 
 
@@ -70,17 +81,7 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
-        """Pre-warm the portfolio price cache on server startup.
-
-        Calls PortfolioService.warmup() to trigger background price
-        refreshes for all holdings. Does NOT block startup if it fails.
-        """
-        try:
-            _log.info("Startup warmup: pre-fetching portfolio prices...")
-            get_application_services().portfolio.warmup()
-            _log.info("Startup warmup: complete")
-        except Exception as exc:
-            _log.warning("Startup warmup failed (non-blocking): %s", exc)
+        """Keep application startup independent from remote-data latency."""
         yield
 
     app = FastAPI(
@@ -145,8 +146,7 @@ def create_app() -> FastAPI:
     def asset_overview() -> JSONResponse:
         try:
             import pandas as pd
-            from findata import fd
-            assets = fd.list_assets()
+            assets = get_application_services().research.market_data.list_assets()
             data = {
                 "asset_count": len(assets),
                 "recent_assets": [{"symbol": a} for a in (assets[:20] if assets else [])],
@@ -165,8 +165,7 @@ def create_app() -> FastAPI:
         page_size: int = Query(default=50, ge=1, le=200),
     ) -> JSONResponse:
         try:
-            from findata import fd
-            assets = fd.list_assets()
+            assets = get_application_services().research.market_data.list_assets()
             result = [{"symbol": a, "type": "unknown"} for a in assets]
             if filter_type:
                 result = [r for r in result if r.get("type") == filter_type]
@@ -190,8 +189,7 @@ def create_app() -> FastAPI:
         limit: int = Query(default=50, ge=1, le=200),
     ) -> JSONResponse:
         try:
-            from findata import fd
-            assets = fd.list_assets()
+            assets = get_application_services().research.market_data.list_assets()
             q = query.lower()
             results = [{"symbol": a, "type": "unknown"} for a in assets if q in a.lower()][:limit]
             data = {"assets": results, "query": query, "count": len(results)}
@@ -356,7 +354,7 @@ def create_app() -> FastAPI:
             load_latest_prices,
             load_portfolio,
         )
-        from findata.store import MarketDataRepository
+        from src.infrastructure import HttpMarketDataClient
         from datetime import date
 
         holdings, cash = load_portfolio()
@@ -367,7 +365,7 @@ def create_app() -> FastAPI:
                 "message": "No holdings to export.",
             })
 
-        repo = MarketDataRepository()
+        repo = HttpMarketDataClient()
         prices = load_latest_prices(holdings, repo)
 
         exporter = GhostfolioExporter(payload.host, payload.token)

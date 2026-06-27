@@ -1,21 +1,22 @@
-# Local Private Workspace
+# Local private workspace
 
-This directory is the preferred home for private business state.
+This directory contains OptiFolio-owned private state only:
 
-Keep real files here:
+- `portfolio_book.sqlite`: accounts, products, confirmed snapshot batches, positions, and cash
+- local exports and private application configuration
+- optional `findata_client.json` containing `base_url` and `api_token`
 
-- `portfolio_book.sqlite` for accounts, products, snapshot batches, positions, and cash
-- broker/account settings
-- downloaded market data
-- SQLite databases
-- ad hoc exports
+Portfolio holdings are loaded exclusively from the latest confirmed SQLite batch. YAML holdings are unsupported.
 
-The directory is ignored by Git. Commit only templates that do not contain holdings or private account state, such as `config/secrets.example.yaml`.
+Market data does **not** belong here. Prices, observations, provider caches, ingestion logs, and quality reports are owned by the independent FinDataProvider service.
 
-Portfolio holdings are loaded from the latest confirmed batch in `local/portfolio_book.sqlite`. Portfolio YAML files are no longer supported.
+Example git-ignored client configuration:
 
-Bootstrap local runtime files:
-
-```bash
-python -m src.runtime.bootstrap
+```json
+{
+  "base_url": "http://127.0.0.1:8020",
+  "api_token": "replace-with-provider-token"
+}
 ```
+
+Prefer environment variables `FINDATA_BASE_URL` and `FINDATA_API_TOKEN` for deployed processes.

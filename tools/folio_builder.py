@@ -20,7 +20,9 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from findata import fd
+from src.infrastructure import HttpMarketDataClient
+
+fd = HttpMarketDataClient()
 
 # ── Asset Universe ─────────────────────────────────────────────────────
 # ETFs + Large Caps for diversification across asset classes

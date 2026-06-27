@@ -96,7 +96,7 @@ class TestDryRun:
         assert result["date"] == date.today().isoformat()
         assert "timestamp_utc" in result
         # All steps should be listed as completed
-        assert "ingest" in result["steps_completed"]
+        assert "data_service" in result["steps_completed"]
         assert "valuation" in result["steps_completed"]
         assert "history" in result["steps_completed"]
         assert "risk_rules" in result["steps_completed"]
@@ -138,7 +138,19 @@ class TestLiveRun:
             # Use a mock alert engine to avoid auto-wire via ApplicationServices
             mock_alerts = MagicMock()
             mock_alerts.run_all.return_value = []
-            with patch.object(runner, "_run_ingestion"):
+            app_services = MagicMock()
+            app_services.research.run_stale_price_check.return_value = {
+                "success": True,
+                "data": {
+                    "issues_found": 0,
+                    "stale_assets": [],
+                    "threshold_pct": 0.0,
+                },
+            }
+            with patch.object(runner, "_run_ingestion"), patch(
+                "src.services.application.get_application_services",
+                return_value=app_services,
+            ):
                 result = runner.run(
                     portfolio_svc=_mock_portfolio_svc(),
                     alert_engine=mock_alerts,
@@ -320,8 +332,8 @@ class TestSnapshotFormat:
 
 
 class TestStepResiliency:
-    def test_run_continues_after_ingestion_failure(self):
-        """When ingestion fails, the pipeline continues to remaining steps."""
+    def test_run_continues_after_data_service_failure(self):
+        """When the remote data service check fails, the pipeline continues to remaining steps."""
         svc = _mock_portfolio_svc()
 
         with tempfile.TemporaryDirectory() as tmp:

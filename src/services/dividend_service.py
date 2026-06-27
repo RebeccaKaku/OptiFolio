@@ -14,6 +14,7 @@ import pandas as pd
 
 from src.core.corporate_actions import CorporateActionProcessor
 from src.domain.corporate_actions import CorporateAction
+from src.infrastructure import HttpMarketDataClient
 
 
 @dataclass
@@ -80,8 +81,9 @@ class DividendEvent:
 class DividendDetectionService:
     """Scans dividend events via findata facade."""
 
-    def __init__(self, processor: Optional[CorporateActionProcessor] = None):
+    def __init__(self, processor: Optional[CorporateActionProcessor] = None, data_provider: Any = None):
         self.processor = processor or CorporateActionProcessor()
+        self.data_provider = data_provider or HttpMarketDataClient()
 
     def scan_year(self, report_year: int = 2025) -> List[DividendEvent]:
         """Scan all A-share dividend events for a given report year.
@@ -92,10 +94,9 @@ class DividendDetectionService:
         Returns:
             List of all DividendEvent objects found.
         """
-        from findata import fd
 
         try:
-            raw_events = fd.dividends(report_year)
+            raw_events = self.data_provider.dividends(report_year)
         except Exception:
             _log.warning("Failed to fetch dividends for year %d", report_year)
             return []

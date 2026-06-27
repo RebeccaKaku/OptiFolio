@@ -49,15 +49,39 @@ class BookValuationService:
                 elif "wmp" in product_type or pid.startswith("wmp.cn."):
                     thresholds[pid] = 30
 
+            public_prices = pd.DataFrame()
+            public_product_ids = sorted(
+                pid
+                for pid, product in products.items()
+                if product
+                and not pid.endswith("_CASH")
+                and ((product.product_type or "").lower() != "deposit")
+            )
+            if public_product_ids:
+                try:
+                    public_prices = self._data_provider.get_prices(
+                        public_product_ids,
+                        end=as_of.isoformat(),
+                    )
+                except Exception:
+                    _log.debug("Failed to fetch batch public prices", exc_info=True)
+
             results = []
             for pos in batch["snapshots"]:
-                candidates = self._gather_candidates(pos, as_of, products.get(pos["product_id"]))
+                candidates = self._gather_candidates(
+                    pos,
+                    as_of,
+                    products.get(pos["product_id"]),
+                    public_prices,
+                )
 
                 product = products.get(pos["product_id"])
                 # Value each position in its product/native currency. Snapshot
                 # currency can be a UI default and is not authoritative for
                 # priced securities such as USD equities.
-                target_currency = (product.currency if product else None) or pos.get("currency", "CNY")
+                target_currency = self._currency(
+                    (product.currency if product else None) or pos.get("currency")
+                )
 
                 val_result = ValuationEngine.select_best(
                     candidates,
@@ -83,7 +107,8 @@ class BookValuationService:
         self,
         pos: Dict[str, Any],
         as_of: date,
-        product: Optional[Any]
+        product: Optional[Any],
+        public_prices: pd.DataFrame,
     ) -> List[ValuationCandidate]:
         """Gather all potential valuation candidates for a position.
 
@@ -98,7 +123,9 @@ class BookValuationService:
         account_id = pos["account_id"]
 
         product_type = (getattr(product, "product_type", "") or "").lower() if product else ""
-        currency = (getattr(product, "currency", None) if product else None) or pos.get("currency", "CNY")
+        currency = self._currency(
+            (getattr(product, "currency", None) if product else None) or pos.get("currency")
+        )
         quality_str = pos.get("quality") or "reported"
         quality = ValuationQuality.CONFIRMED if quality_str == "confirmed" else ValuationQuality.REPORTED
 
@@ -130,7 +157,11 @@ class BookValuationService:
         # 3 & 4. Public candidates — always attempted regardless of data_source
         if product:
             try:
-                price_series = self._data_provider.prices(product_id, end=as_of.isoformat())
+                price_series = (
+                    public_prices[product_id].dropna()
+                    if product_id in public_prices.columns
+                    else None
+                )
                 if price_series is not None and not price_series.empty:
                     latest_price = float(price_series.iloc[-1])
                     price_date = price_series.index[-1].date()
@@ -176,6 +207,11 @@ class BookValuationService:
             ))
 
         return candidates
+
+    @staticmethod
+    def _currency(value: Any) -> str:
+        currency = str(value or "").strip().upper()
+        return currency if len(currency) == 3 and currency.isalpha() else "CNY"
 
     def _get_historical_manual_values(self, product_id: str, account_id: str, before_date: date) -> List[Dict[str, Any]]:
         """Query DB for previous manual valuations of this position."""

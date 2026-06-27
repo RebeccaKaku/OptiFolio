@@ -1,20 +1,30 @@
 # OptiFolio Current State
 
-**Date**: 2026-06-24
-**Branch**: `main`
+> **2026-06-27 architecture change:** FinData was extracted into the private
+> `RebeccaKaku/FinDataProvider` repository and deployed in WSL on port 8020.
+> OptiFolio now consumes its v1 HTTP API through `HttpMarketDataClient`; the
+> private SQLite portfolio book remains local. Older package maps below are
+> historical and must not be used to reintroduce embedded provider code.
+
+**Date**: 2026-06-28
+**Branch**: `codex/split-findata-provider`
 **Package version**: `0.2.0`
 **Runtime**: Python 3.14.2 (Windows)
-**Verified tests**: `983 passed, 0 failures`
+**Verified tests**: `656 passed` on 2026-06-28; historical counts below predate
+the provider extraction.
 
 ---
 
 ## One-Line Status
 
-Major refactoring complete: `FinData/` monolith → `packages/findata/` + `packages/optifolio_contracts/`. All 27 DeepSeek tasks implemented. 3 Jules PRs merged (dead code removal, DB naming, portfolio-file fallback removal — partially reverted). Fund identifiers now carry akshare-derived subtype (`fund.cn.money.000198`). **Next: keep SQLite-only portfolio loading and remove remaining hardcoded data.**
+FinDataProvider is now an independently deployed service. OptiFolio retains
+`packages/optifolio_contracts`, private SQLite state, valuation, analytics, and
+the UI. All production market-data access crosses
+`src.infrastructure.MarketDataGateway`; the old embedded provider is deleted.
 
 ---
 
-## Architecture (2026-06-23)
+## Historical architecture (2026-06-23; superseded)
 
 ```
 packages/

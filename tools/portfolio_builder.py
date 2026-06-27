@@ -19,7 +19,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from findata import fd
+from src.infrastructure import HttpMarketDataClient
+
+fd = HttpMarketDataClient()
 
 # ── Portfolio Universe ─────────────────────────────────────────────────
 # Assets we can actually price (from market data)

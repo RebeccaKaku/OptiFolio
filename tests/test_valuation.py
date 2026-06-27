@@ -10,7 +10,7 @@ from src.core.valuation import (
     NoPriceDataError,
     ValuationEngine,
 )
-from findata.store import MarketDataRepository
+from tests.fakes import InMemoryMarketDataGateway as MarketDataRepository
 from src.domain import ValuationRequest
 
 
@@ -203,7 +203,7 @@ from datetime import date
 import pandas as pd
 
 from src.core.valuation import FxRateProvider, FxRateError
-from findata.store import MarketDataRepository
+from tests.fakes import InMemoryMarketDataGateway as MarketDataRepository
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

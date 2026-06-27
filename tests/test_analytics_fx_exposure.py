@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from src.analytics.fx_exposure import FxExposureAnalyzer, FxExposureItem, FxExposureReport
 from src.core.valuation import FxRateProvider, ValuationEngine
-from findata.store import MarketDataRepository
+from tests.fakes import InMemoryMarketDataGateway as MarketDataRepository
 from src.domain import CashHolding, PositionValue, ValuationRequest
 from src.services.portfolio_service import PortfolioService
 
