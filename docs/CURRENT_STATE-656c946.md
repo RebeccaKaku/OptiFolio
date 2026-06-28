@@ -7,7 +7,7 @@
 > historical and must not be used to reintroduce embedded provider code.
 
 **Date**: 2026-06-28
-**Branch**: `codex/split-findata-provider`
+**Branch**: `main`
 **Package version**: `0.2.0`
 **Runtime**: Python 3.14.2 (Windows)
 **Verified tests**: `656 passed` on 2026-06-28; historical counts below predate
@@ -73,8 +73,8 @@ tests/test_identifiers.py        ← NEW
 | Milestone | DS Tasks | Implementation | Integration |
 |-----------|----------|---------------|-------------|
 | M0: 停止打转 | — | ✅ Complete | ✅ |
-| M1: 可中断建账 | DS-001~010 | ✅ | ⚠️ Needs e2e verification |
-| M2: 可信"我的钱" | DS-011~015 | ✅ | ⚠️ Real data wiring pending |
+| M1: 可中断建账 | DS-001~010 | ✅ | ✅ Existing real book verified; fresh-create test pending |
+| M2: 可信"我的钱" | DS-011~015 | ✅ | ✅ Real provider and SQLite book wired |
 | M3: 看穿产品外壳 | DS-016~019 | ✅ | ⚠️ Exposure data needed |
 | M4: 决策工具 | DS-020~023 | ✅ | ⚠️ Integration pending |
 | M5: 判断实验室 | DS-024~027 | ✅ | ⚠️ Research data needed |
@@ -85,7 +85,10 @@ that the user-visible outcomes described in `PRODUCT_VISION` §7 actually work e
 
 ---
 
-## Known Bugs (2026-06-23)
+## Historical audit snapshot (2026-06-23; superseded)
+
+The findings below describe the pre-extraction tree. Provider findings moved to
+`RebeccaKaku/FinDataProvider`; deleted paths are not active OptiFolio bugs.
 
 ### Confirmed — Fix Required
 
@@ -118,7 +121,10 @@ These were reported in the 2026-06-05 audit. Some may have been fixed in subsequ
 
 ---
 
-## Architecture Questions Pending
+## Historical architecture questions
+
+This list predates the service split. Re-evaluate any remaining domain/core
+questions against `AI_CONTEXT-656c946.md`; do not revive the old package graph.
 
 See `docs/DECISIONS_PENDING-656c946.md` for:
 
