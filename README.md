@@ -50,7 +50,7 @@ Dependency direction: `contracts <- domain/core/analytics <- services <- api`; i
 
 - `GET /health`
 - `GET /api/book/summary`
-- `GET /api/portfolio/v2/value?as_of=YYYY-MM-DD`
+- `GET /api/portfolio/value?as_of=YYYY-MM-DD`
 - `GET /api/market/prices?assets=AAPL,QQQ`
 - `GET /api/market/returns`
 - `GET /api/data/quality`
